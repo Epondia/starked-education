@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { performanceMonitor } from '@/lib/performance-monitor';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -14,6 +15,11 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Initialize performance monitoring
+  if (typeof window !== 'undefined') {
+    performanceMonitor;
+  }
+
   return (
     <html lang="en">
       <body className={inter.className}>{children}</body>
