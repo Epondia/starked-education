@@ -270,7 +270,7 @@ export function PerformanceOptimizer({
 
   // Check for performance issues
   const checkPerformanceIssues = (metrics: PerformanceMetrics) => {
-    const newAlerts = [];
+    const newAlerts: Array<{id: string; type: 'warning' | 'error' | 'info'; message: string; timestamp: number}> = [];
     
     // Low FPS warning
     if (metrics.fps < targetFPS * 0.8) {

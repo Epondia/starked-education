@@ -22,7 +22,7 @@ pub struct AssessmentSession {
     pub start_time: u64,
     pub end_time: Option<u64>,
     pub identity_hash: BytesN<32>, // Biometric data hash
-    pub status: u8, // 0: Pending, 1: Active, 2: Completed, 3: Flagged, 4: Invalidated
+    pub status: u32, // 0: Pending, 1: Active, 2: Completed, 3: Flagged, 4: Invalidated
 }
 
 #[contracttype]

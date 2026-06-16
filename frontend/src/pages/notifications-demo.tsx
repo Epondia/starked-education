@@ -90,22 +90,4 @@ const NotificationsDemo: React.FC = () => {
   );
 };
 
-          {/* Instructions */}
-          <div className="mt-12 bg-blue-50 border border-blue-200 rounded-lg p-6 max-w-2xl mx-auto">
-            <h3 className="font-semibold text-blue-900 mb-3">How to Test:</h3>
-            <ul className="text-left text-sm text-blue-800 space-y-2">
-              <li>• Click the bell icon to open the notification center</li>
-              <li>• Wait for automatic demo notifications (every 10 seconds)</li>
-              <li>• Try filtering by different categories</li>
-              <li>• Mark notifications as read or remove them</li>
-              <li>• Open preferences to customize notification settings</li>
-              <li>• Test quiet hours functionality</li>
-            </ul>
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-};
-
 export default NotificationsDemo;

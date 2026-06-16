@@ -1,5 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { performanceAlertService } from '@/lib/performance-alerts';
+
+// In-memory store for alerts (server-side only)
+const alertHistory: Array<{
+  metric: string;
+  value: number;
+  threshold: number;
+  severity: string;
+  timestamp: number;
+  url: string;
+}> = [];
+
+const defaultConfig = {
+  enabled: true,
+  thresholds: {
+    cls: { warning: 0.1, critical: 0.25 },
+    fid: { warning: 100, critical: 300 },
+    fcp: { warning: 1800, critical: 3000 },
+    lcp: { warning: 2500, critical: 4000 },
+    ttfb: { warning: 800, critical: 1800 },
+  },
+  notifications: {
+    console: true,
+    toast: true,
+    external: false,
+  },
+  cooldown: 30000,
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +39,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Store alert
+    alertHistory.push(alert);
+    if (alertHistory.length > 500) {
+      alertHistory.splice(0, alertHistory.length - 500);
+    }
+
     // Process the alert
     console.log('Performance alert received:', {
       metric: alert.metric,
@@ -22,21 +54,8 @@ export async function POST(request: NextRequest) {
       timestamp: alert.timestamp,
     });
 
-    // Here you would typically:
-    // 1. Store in a database
-    // 2. Send notifications (email, Slack, etc.)
-    // 3. Create incidents in monitoring systems
-    // 4. Trigger automated responses
-
-    // For demonstration, we'll log and acknowledge
     if (alert.severity === 'high' || alert.severity === 'critical') {
       console.warn('🚨 HIGH SEVERITY ALERT:', alert);
-      
-      // In a real implementation, you might:
-      // - Send SMS/pager alerts
-      // - Create incidents in PagerDuty
-      // - Send Slack notifications to on-call engineers
-      // - Trigger automated rollback procedures
     }
 
     return NextResponse.json({ 
@@ -56,13 +75,10 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    // Return recent alerts
-    const alerts = performanceAlertService.getAlertHistory();
-    
     return NextResponse.json({
-      alerts: alerts.slice(-50), // Return last 50 alerts
-      total: alerts.length,
-      config: performanceAlertService.getConfig(),
+      alerts: alertHistory.slice(-50),
+      total: alertHistory.length,
+      config: defaultConfig,
     });
 
   } catch (error) {

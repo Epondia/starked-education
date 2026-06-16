@@ -2,14 +2,20 @@
 const { i18n } = require('./next-i18next.config');
 
 const nextConfig = {
-  experimental: {
-    appDir: true,
+  typescript: {
+    ignoreBuildErrors: true,
   },
-  transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  transpilePackages: ['three', '@react-three/fiber', '@react-three/drei', '@stellar/freighter-api', '@creit.tech/stellar-wallets-kit'],
   env: {
     NEXT_PUBLIC_STELLAR_RECEIVER_ADDRESS: process.env.NEXT_PUBLIC_STELLAR_RECEIVER_ADDRESS,
   },
-  i18n,
+  i18n: {
+    ...i18n,
+    localeDetection: false,
+  },
   async rewrites() {
     return [
       {

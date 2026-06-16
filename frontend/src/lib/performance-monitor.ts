@@ -1,4 +1,4 @@
-import { getCLS, getFID, getFCP, getLCP, getTTFB, Metric } from 'web-vitals';
+import { onCLS, onFID, onFCP, onLCP, onTTFB, Metric } from 'web-vitals';
 
 export interface PerformanceMetrics {
   cls: number;
@@ -27,6 +27,7 @@ class PerformanceMonitor {
   private metrics: PerformanceMetrics[] = [];
   private alerts: PerformanceAlert[] = [];
   private observers: PerformanceObserver[] = [];
+  private initialized = false;
   private alertThresholds = {
     cls: { good: 0.1, needsImprovement: 0.25, poor: 0.5 },
     fid: { good: 100, needsImprovement: 300, poor: 600 },
@@ -36,13 +37,19 @@ class PerformanceMonitor {
   };
 
   constructor() {
-    this.initializeWebVitals();
-    this.initializePerformanceObservers();
-    this.trackResourceTiming();
-    this.trackNavigationTiming();
+    // Defer initialization to avoid SSR issues
+    if (typeof window !== 'undefined') {
+      this.initializeWebVitals();
+      this.initializePerformanceObservers();
+      this.trackResourceTiming();
+      this.trackNavigationTiming();
+      this.initialized = true;
+    }
   }
 
   private initializeWebVitals() {
+    if (typeof window === 'undefined') return;
+
     const handleMetric = (metric: Metric) => {
       const performanceData: Partial<PerformanceMetrics> = {
         timestamp: Date.now(),
@@ -78,14 +85,16 @@ class PerformanceMonitor {
       this.checkAlerts(metric.name as keyof PerformanceMetrics, metric.value);
     };
 
-    getCLS(handleMetric);
-    getFID(handleMetric);
-    getFCP(handleMetric);
-    getLCP(handleMetric);
-    getTTFB(handleMetric);
+    onCLS(handleMetric);
+    onFID(handleMetric);
+    onFCP(handleMetric);
+    onLCP(handleMetric);
+    onTTFB(handleMetric);
   }
 
   private initializePerformanceObservers() {
+    if (typeof window === 'undefined') return;
+
     // Long Task Observer
     if ('PerformanceObserver' in window) {
       const longTaskObserver = new PerformanceObserver((list) => {
@@ -119,6 +128,8 @@ class PerformanceMonitor {
   }
 
   private trackResourceTiming() {
+    if (typeof window === 'undefined') return;
+
     if ('PerformanceObserver' in window) {
       const resourceObserver = new PerformanceObserver((list) => {
         const resources = list.getEntries();
@@ -136,6 +147,8 @@ class PerformanceMonitor {
   }
 
   private trackNavigationTiming() {
+    if (typeof window === 'undefined') return;
+
     if ('PerformanceObserver' in window) {
       const navigationObserver = new PerformanceObserver((list) => {
         const entries = list.getEntries();
@@ -159,12 +172,14 @@ class PerformanceMonitor {
   }
 
   private getFirstPaint(): number | null {
+    if (typeof window === 'undefined') return null;
     const paintEntries = performance.getEntriesByType('paint');
     const firstPaint = paintEntries.find(entry => entry.name === 'first-paint');
     return firstPaint ? firstPaint.startTime : null;
   }
 
   private getFirstContentfulPaint(): number | null {
+    if (typeof window === 'undefined') return null;
     const paintEntries = performance.getEntriesByType('paint');
     const fcp = paintEntries.find(entry => entry.name === 'first-contentful-paint');
     return fcp ? fcp.startTime : null;
@@ -191,7 +206,7 @@ class PerformanceMonitor {
         threshold: threshold.needsImprovement,
         severity,
         timestamp: Date.now(),
-        url: window.location.href,
+        url: typeof window !== 'undefined' ? window.location.href : '',
       };
       
       this.addAlert(alert);
@@ -200,44 +215,40 @@ class PerformanceMonitor {
   }
 
   private notifyAlert(alert: PerformanceAlert) {
-    // Send alert to monitoring service
     if (typeof window !== 'undefined') {
       console.warn('Performance Alert:', alert);
-      
-      // You can integrate with external monitoring services here
-      // Example: Sentry, DataDog, New Relic, etc.
     }
   }
 
   private addMetric(metric: PerformanceMetrics) {
     this.metrics.push(metric);
     
-    // Keep only last 100 metrics to prevent memory issues
     if (this.metrics.length > 100) {
       this.metrics = this.metrics.slice(-100);
     }
 
-    // Store in localStorage for persistence
-    try {
-      localStorage.setItem('performance-metrics', JSON.stringify(this.metrics));
-    } catch (e) {
-      console.warn('Failed to store metrics in localStorage:', e);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('performance-metrics', JSON.stringify(this.metrics));
+      } catch (e) {
+        console.warn('Failed to store metrics in localStorage:', e);
+      }
     }
   }
 
   private addAlert(alert: PerformanceAlert) {
     this.alerts.push(alert);
     
-    // Keep only last 50 alerts
     if (this.alerts.length > 50) {
       this.alerts = this.alerts.slice(-50);
     }
 
-    // Store in localStorage
-    try {
-      localStorage.setItem('performance-alerts', JSON.stringify(this.alerts));
-    } catch (e) {
-      console.warn('Failed to store alerts in localStorage:', e);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('performance-alerts', JSON.stringify(this.alerts));
+      } catch (e) {
+        console.warn('Failed to store alerts in localStorage:', e);
+      }
     }
   }
 
@@ -276,8 +287,10 @@ class PerformanceMonitor {
   public clearMetrics() {
     this.metrics = [];
     this.alerts = [];
-    localStorage.removeItem('performance-metrics');
-    localStorage.removeItem('performance-alerts');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('performance-metrics');
+      localStorage.removeItem('performance-alerts');
+    }
   }
 
   public destroy() {

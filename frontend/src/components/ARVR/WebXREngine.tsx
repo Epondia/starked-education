@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Vr, Ar, Monitor, Settings, Play, Pause, RotateCw, Eye, Hand, Users, Globe } from 'lucide-react';
+import { Glasses, Camera, Monitor, Settings, Play, Pause, RotateCw, Eye, Hand, Users, Globe } from 'lucide-react';
 
 export type XRMode = 'vr' | 'ar' | 'none';
 export type XRSessionState = 'idle' | 'starting' | 'active' | 'ending' | 'error';
@@ -22,7 +22,7 @@ interface XRDevice {
   supported: boolean;
 }
 
-interface XRSession {
+interface XRSessionInfo {
   id: string;
   mode: XRMode;
   state: XRSessionState;
@@ -76,8 +76,8 @@ interface XRSettings {
 }
 
 interface WebXREngineProps {
-  onSessionStart?: (session: XRSession) => void;
-  onSessionEnd?: (session: XRSession) => void;
+  onSessionStart?: (session: XRSessionInfo) => void;
+  onSessionEnd?: (session: XRSessionInfo) => void;
   onControllerConnected?: (controller: XRController) => void;
   onHandDetected?: (hand: XRHand) => void;
   onDeviceConnected?: (device: XRDevice) => void;
@@ -114,7 +114,7 @@ export function WebXREngine({
 }: WebXREngineProps) {
   const [xrSupported, setXrSupported] = useState(false);
   const [availableDevices, setAvailableDevices] = useState<XRDevice[]>([]);
-  const [currentSession, setCurrentSession] = useState<XRSession | null>(null);
+  const [currentSession, setCurrentSession] = useState<XRSessionInfo | null>(null);
   const [controllers, setControllers] = useState<XRController[]>([]);
   const [hands, setHands] = useState<XRHand[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -127,8 +127,8 @@ export function WebXREngine({
     trackingQuality: 'high' as const
   });
 
-  const xrSessionRef = useRef<XRSession | null>(null);
-  const xrFrameRef = useRef<XRFrame | null>(null);
+  const xrSessionRef = useRef<any>(null);
+  const xrFrameRef = useRef<any>(null);
   const animationFrameRef = useRef<number | null>(null);
 
   // Initialize WebXR
@@ -278,8 +278,11 @@ export function WebXREngine({
         throw new Error(`No supported device found for ${mode} mode`);
       }
 
+      // Map internal mode to WebXR session mode
+      const xrSessionMode = mode === 'vr' ? 'immersive-vr' as const : 'immersive-ar' as const;
+
       // Create session
-      const session = await navigator.xr.requestSession(mode, {
+      const session = await navigator.xr.requestSession(xrSessionMode, {
         requiredFeatures: ['local', 'input'],
         optionalFeatures: [
           'hand-tracking',
@@ -296,8 +299,8 @@ export function WebXREngine({
       await initializeXRSession(session, device, mode);
 
       // Create session object
-      const xrSession: XRSession = {
-        id: session.id,
+      const xrSessionInfo: XRSessionInfo = {
+        id: `xr-${Date.now()}`,
         mode,
         state: 'active',
         device,
@@ -307,15 +310,15 @@ export function WebXREngine({
         trackingQuality: 'high'
       };
 
-      setCurrentSession(xrSession);
+      setCurrentSession(xrSessionInfo);
       xrSessionRef.current = session;
-      onSessionStart?.(xrSession);
+      onSessionStart?.(xrSessionInfo);
 
       console.log(`XR session started in ${mode} mode`);
     } catch (error) {
       console.error('Failed to start XR session:', error);
       
-      const errorSession: XRSession = {
+      const errorSession: XRSessionInfo = {
         id: 'error',
         mode,
         state: 'error',
@@ -331,7 +334,7 @@ export function WebXREngine({
   }, [availableDevices, onSessionStart]);
 
   // Initialize XR session
-  const initializeXRSession = async (session: XRSession, device: XRDevice, mode: XRMode) => {
+  const initializeXRSession = async (session: any, device: XRDevice, mode: XRMode) => {
     // Setup render loop
     session.requestAnimationFrame(onXRFrame);
 
@@ -350,7 +353,7 @@ export function WebXREngine({
   };
 
   // Setup input sources
-  const setupInputSources = async (session: XRSession, device: XRDevice) => {
+  const setupInputSources = async (session: any, device: XRDevice) => {
     if (!device.capabilities.controllers) return;
 
     try {
@@ -388,7 +391,7 @@ export function WebXREngine({
   };
 
   // Setup hand tracking
-  const setupHandTracking = async (session: XRSession) => {
+  const setupHandTracking = async (session: any) => {
     try {
       // Request hand tracking
       await session.requestReferenceSpace('viewer');
@@ -401,7 +404,7 @@ export function WebXREngine({
   };
 
   // Setup eye tracking
-  const setupEyeTracking = async (session: XRSession) => {
+  const setupEyeTracking = async (session: any) => {
     try {
       // Request eye tracking
       await session.requestReferenceSpace('viewer');
@@ -527,8 +530,8 @@ export function WebXREngine({
   // Get device icon
   const getDeviceIcon = (device: XRDevice) => {
     switch (device.type) {
-      case 'vr': return Vr;
-      case 'ar': return Ar;
+      case 'vr': return Glasses;
+      case 'ar': return Camera;
       default: return Monitor;
     }
   };
@@ -673,7 +676,7 @@ export function WebXREngine({
                   onClick={() => startXRSession('vr')}
                   className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                 >
-                  <Vr className="h-4 w-4" />
+                  <Glasses className="h-4 w-4" />
                   Start VR
                 </button>
               )}
@@ -683,7 +686,7 @@ export function WebXREngine({
                   onClick={() => startXRSession('ar')}
                   className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                 >
-                  <Ar className="h-4 w-4" />
+                  <Camera className="h-4 w-4" />
                   Start AR
                 </button>
               )}

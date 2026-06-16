@@ -118,6 +118,7 @@ export function VirtualClassroom({
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const recordingRef = useRef<MediaRecorder | null>(null);
@@ -194,6 +195,7 @@ export function VirtualClassroom({
       
       recordingRef.current = recorder;
       recorder.start();
+      setIsRecording(true);
       
       // Start recording timer
       const startTime = Date.now();
@@ -218,6 +220,7 @@ export function VirtualClassroom({
     }
     
     setRecordingTime(0);
+    setIsRecording(false);
     console.log('Recording stopped');
   }, []);
 
@@ -258,9 +261,7 @@ export function VirtualClassroom({
       // Start screen sharing
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            cursor: 'always'
-          },
+          video: true,
           audio: false
         });
         
@@ -285,7 +286,14 @@ export function VirtualClassroom({
 
   // Send chat message
   const sendChatMessage = useCallback((message: string) => {
-      const chatMessage = {
+      const chatMessage: {
+        id: string;
+        userId: string;
+        userName: string;
+        message: string;
+        timestamp: number;
+        type: 'text' | 'system';
+      } = {
         id: Date.now().toString(),
         userId: 'local-user',
         userName: 'You',
@@ -468,16 +476,16 @@ export function VirtualClassroom({
                     </div>
                   </div>
                 </div>
-              ))}
-              
-              {/* Overflow indicator */}
-              {session.students.length > 8 && (
-                <div className="absolute right-2 bottom-8 bg-black/60 backdrop-blur-sm rounded px-2 py-1">
-                  <span className="text-white text-xs">+{session.students.length - 8} more</span>
-                </div>
-              )}
+              </div>
             </div>
           ))}
+          
+          {/* Overflow indicator */}
+          {session.students.length > 8 && (
+            <div className="absolute right-2 bottom-8 bg-black/60 backdrop-blur-sm rounded px-2 py-1">
+              <span className="text-white text-xs">+{session.students.length - 8} more</span>
+            </div>
+          )}
           
           {/* Whiteboard */}
           <div 

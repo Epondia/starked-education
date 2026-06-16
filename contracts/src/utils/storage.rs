@@ -1,4 +1,3 @@
-#![no_std]
 use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec, U256};
 
 /// Bit-packed storage utilities for gas optimization

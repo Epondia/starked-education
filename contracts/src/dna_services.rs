@@ -12,7 +12,7 @@ pub struct SynthesisRequest {
     pub request_id: u64,
     pub credential_ids: Vec<u64>,
     pub synthesis_protocol: DNAStorageProtocol,
-    pub priority_level: u8, // 0=low, 1=medium, 2=high
+    pub priority_level: u32, // 0=low, 1=medium, 2=high
     pub requested_by: Address,
     pub timestamp: u64,
     pub status: SynthesisStatus,

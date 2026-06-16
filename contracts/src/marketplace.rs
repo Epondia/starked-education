@@ -52,7 +52,7 @@ pub struct Dispute {
     pub listing_id: u64,
     pub buyer: Address,
     pub reason: String,
-    pub status: u8, // 0: Open, 1: Resolved, 2: Cancelled
+    pub status: u32, // 0: Open, 1: Resolved, 2: Cancelled
 }
 
 #[contract]

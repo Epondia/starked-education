@@ -35,7 +35,7 @@ pub struct Proposal {
     pub votes_for: u64,
     pub votes_against: u64,
     pub end_time: u64,
-    pub status: u8, // 0: Open, 1: Passed, 2: Rejected, 3: Executed
+    pub status: u32, // 0: Open, 1: Passed, 2: Rejected, 3: Executed
 }
 
 #[contract]

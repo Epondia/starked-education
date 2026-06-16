@@ -37,13 +37,17 @@ class PerformanceAlertService {
 
   private lastAlertTimes: Map<string, number> = new Map();
   private alertHistory: PerformanceAlert[] = [];
+  private pollInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    this.loadConfig();
-    this.setupAlertListeners();
+    if (typeof window !== 'undefined') {
+      this.loadConfig();
+      this.setupAlertListeners();
+    }
   }
 
   private loadConfig() {
+    if (typeof window === 'undefined') return;
     try {
       const stored = localStorage.getItem('performance-alert-config');
       if (stored) {
@@ -55,6 +59,7 @@ class PerformanceAlertService {
   }
 
   private saveConfig() {
+    if (typeof window === 'undefined') return;
     try {
       localStorage.setItem('performance-alert-config', JSON.stringify(this.config));
     } catch (error) {
@@ -63,8 +68,9 @@ class PerformanceAlertService {
   }
 
   private setupAlertListeners() {
+    if (typeof window === 'undefined') return;
     // Listen for performance alerts from the monitor
-    setInterval(() => {
+    this.pollInterval = setInterval(() => {
       const alerts = performanceMonitor.getAlerts();
       const newAlerts = alerts.filter(alert => 
         !this.alertHistory.some(existing => 
@@ -107,7 +113,7 @@ class PerformanceAlertService {
       this.sendConsoleNotification(alert, message, severity);
     }
 
-    if (this.config.notifications.toast) {
+    if (this.config.notifications.toast && typeof window !== 'undefined') {
       this.sendToastNotification(alert, message, severity);
     }
 
@@ -117,7 +123,7 @@ class PerformanceAlertService {
   }
 
   private formatAlertMessage(alert: PerformanceAlert): string {
-    const metricNames = {
+    const metricNames: Record<string, string> = {
       cls: 'Cumulative Layout Shift',
       fid: 'First Input Delay',
       fcp: 'First Contentful Paint',
@@ -133,7 +139,7 @@ class PerformanceAlertService {
   }
 
   private determineSeverity(alert: PerformanceAlert): 'info' | 'warning' | 'error' {
-    const threshold = this.config.thresholds[alert.metric];
+    const threshold = this.config.thresholds[alert.metric as keyof typeof this.config.thresholds];
     if (!threshold) return 'warning';
 
     if (alert.value >= threshold.critical) return 'error';
@@ -158,6 +164,7 @@ class PerformanceAlertService {
   }
 
   private sendToastNotification(alert: PerformanceAlert, message: string, severity: string) {
+    if (typeof window === 'undefined') return;
     // This would integrate with a toast notification system
     // For now, we'll use a simple browser notification if available
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -208,14 +215,15 @@ class PerformanceAlertService {
     this.lastAlertTimes.clear();
   }
 
-  public testAlert(metric: keyof PerformanceAlert['metric']) {
+  public testAlert(metric: string) {
+    const thresholds = this.config.thresholds[metric as keyof typeof this.config.thresholds];
     const testAlert: PerformanceAlert = {
-      metric,
-      value: this.config.thresholds[metric].critical,
-      threshold: this.config.thresholds[metric].warning,
+      metric: metric as PerformanceAlert['metric'],
+      value: thresholds ? thresholds.critical : 100,
+      threshold: thresholds ? thresholds.warning : 50,
       severity: 'high',
       timestamp: Date.now(),
-      url: window.location.href,
+      url: typeof window !== 'undefined' ? window.location.href : '',
     };
 
     this.processAlert(testAlert);

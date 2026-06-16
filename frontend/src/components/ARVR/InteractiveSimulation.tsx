@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, RotateCw, Settings, Flask, Atom, Beaker, Zap, Activity, Clock, Award, BookOpen, Lightbulb, Target } from 'lucide-react';
+import { Play, Pause, RotateCw, Settings, Beaker, Atom, Zap, Activity, Clock, Award, BookOpen, Lightbulb, Target } from 'lucide-react';
 
 export type SimulationType = 'physics' | 'chemistry' | 'biology' | 'mathematics' | 'engineering' | 'astronomy';
 export type ExperimentState = 'idle' | 'running' | 'paused' | 'completed' | 'error';
@@ -141,9 +141,10 @@ export function InteractiveSimulation({
 
   // Timer
   useEffect(() => {
-    if (simulationState === 'running' && startTimeRef.current) {
+    const startTime = startTimeRef.current;
+    if (simulationState === 'running' && startTime) {
       const interval = setInterval(() => {
-        setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
       }, 1000);
       
       return () => clearInterval(interval);
@@ -582,7 +583,7 @@ export function InteractiveSimulation({
   const getSimulationIcon = (type: SimulationType) => {
     const icons = {
       'physics': Atom,
-      'chemistry': Flask,
+      'chemistry':  Beaker,
       'biology': Beaker,
       'mathematics': Target,
       'engineering': Zap,
@@ -704,7 +705,7 @@ export function InteractiveSimulation({
             <div className="text-gray-400 text-xs mb-2">{experiment.description}</div>
             <div className="flex items-center gap-2 text-xs">
               <span className="text-gray-400">Type:</span>
-              <span className={getSimulationColor(experiment.type)} capitalize>{experiment.type}</span>
+              <span className={`${getSimulationColor(experiment.type)} capitalize`}>{experiment.type}</span>
               <span className="text-gray-400">•</span>
               <span className="text-yellow-300 capitalize">{experiment.difficulty}</span>
             </div>

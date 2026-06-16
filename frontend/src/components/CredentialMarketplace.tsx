@@ -34,7 +34,7 @@ const CredentialMarketplace = () => {
               <div style={{ height: '180px', borderRadius: '0.75rem', backgroundImage: `linear-gradient(135deg, rgba(0,212,255,0.2), rgba(255,0,200,0.2)), url('https://placehold.co/400x200?text=Credential+${cred.id}')`, backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                  <div style={{ fontSize: '3rem', filter: 'drop-shadow(0 0 10px rgba(0,0,0,1))' }}>🏅</div>
               </div>
-              <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.7)', padding: '5px 10px', borderRadius: '5px', fontSize: '0.8rem', color: var('--primary-accent') }}>
+              <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.7)', padding: '5px 10px', borderRadius: '5px', fontSize: '0.8rem', color: 'var(--primary-accent)' }}>
                  NFT / Stellar Asset
               </div>
             </div>

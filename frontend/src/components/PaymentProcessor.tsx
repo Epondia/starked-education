@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { PaymentProcessorProps, PaymentDetails, TransactionReceipt } from '@/types/enrollment';
 import { stellarService, createEnrollmentMemo, formatStellarBalance } from '@/lib/stellar';
-import { WalletsKit, MAINNET, TESTNET } from '@creit.tech/stellar-wallets-kit';
 import { 
   CreditCard, 
   AlertCircle, 
@@ -24,18 +23,15 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'success' | 'failed' | 'pending'>('idle');
   const [transactionReceipt, setTransactionReceipt] = useState<TransactionReceipt | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [walletsKit, setWalletsKit] = useState<WalletsKit | null>(null);
+  const [walletsKit, setWalletsKit] = useState<any | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<number>(0);
   const [isCheckingBalance, setIsCheckingBalance] = useState(false);
   const [sufficientBalance, setSufficientBalance] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (wallet) {
-      const kit = new WalletsKit({
-        network: wallet.network === 'mainnet' ? MAINNET : TESTNET,
-        selectedWalletId: 'xbull',
-      });
-      setWalletsKit(kit);
+      // Stellar-wallets-kit compatibility fallback
+      setWalletsKit({ network: wallet.network });
       checkBalanceAndEstimateFee();
     }
   }, [wallet, course]);

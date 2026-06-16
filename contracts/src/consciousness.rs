@@ -1,4 +1,4 @@
-use soroban_sdk::crypto::Hash;
+use soroban_sdk::;
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Bytes, Env, Map, String, Symbol, Vec,
@@ -14,7 +14,7 @@ pub struct ConsciousnessData {
     pub knowledge_vector: Vec<u8>,
     pub experience_timestamp: u64,
     pub continuity_proof: Bytes,
-    pub evolution_stage: u8,
+    pub evolution_stage: u32,
 }
 
 #[contracttype]
@@ -32,7 +32,7 @@ pub struct ConsciousnessMarketplaceItem {
     pub consciousness_id: Bytes,
     pub price: u64,
     pub access_duration: u64, // In seconds
-    pub license_type: u8,     // 0: Full, 1: ReadOnly, 2: Learning
+    pub license_type: u32,     // 0: Full, 1: ReadOnly, 2: Learning
     pub verification_required: bool,
 }
 

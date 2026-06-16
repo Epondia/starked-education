@@ -55,9 +55,9 @@ pub struct DNASequence {
 #[contracttype]
 #[derive(Clone)]
 pub struct DnaMetadata {
-    pub encoding_version: u8,
-    pub compression_level: u8,
-    pub error_correction: u8,
+    pub encoding_version: u32,
+    pub compression_level: u32,
+    pub error_correction: u32,
     pub storage_timestamp: u64,
     pub synthesis_batch: String,
     pub sequencing_id: String,
@@ -474,34 +474,34 @@ fn create_credential_data(
 
     // Add addresses (simplified - using string representation)
     let issuer_str = issuer.to_string();
-    for byte in issuer_str.into_bytes().iter() {
+    for byte in issuer_str.as_str().bytes().iter() {
         data.push_back(*byte);
     }
     data.push_back(0); // Separator
 
     let recipient_str = recipient.to_string();
-    for byte in recipient_str.into_bytes().iter() {
+    for byte in recipient_str.as_str().bytes().iter() {
         data.push_back(*byte);
     }
     data.push_back(0); // Separator
 
     // Add strings
-    for byte in title.into_bytes().iter() {
+    for byte in title.as_str().bytes().iter() {
         data.push_back(*byte);
     }
     data.push_back(0);
 
-    for byte in description.into_bytes().iter() {
+    for byte in description.as_str().bytes().iter() {
         data.push_back(*byte);
     }
     data.push_back(0);
 
-    for byte in course_id.into_bytes().iter() {
+    for byte in course_id.as_str().bytes().iter() {
         data.push_back(*byte);
     }
     data.push_back(0);
 
-    for byte in ipfs_hash.into_bytes().iter() {
+    for byte in ipfs_hash.as_str().bytes().iter() {
         data.push_back(*byte);
     }
     data.push_back(0);
@@ -521,7 +521,7 @@ fn calculate_sha256_hash(env: &Env, data: &Vec<u8>) -> String {
 /// Verify blockchain reference exists
 fn verify_blockchain_reference(env: &Env, reference: &String) -> bool {
     // Simplified verification - check if credential exists on blockchain
-    if reference.starts_with("cred_") {
+    if reference.as_str().starts_with("cred_") {
         let id_str = &reference[5..];
         if let Ok(cred_id) = id_str.parse::<u64>() {
             return env

@@ -48,7 +48,7 @@ pub struct CourseMetadata {
     pub thumbnail_hash: String,     // Hash of thumbnail URL
     pub tags_hash: String,          // Hash of tags vector
     pub language: String,
-    pub flags: u8, // Packed certificate_enabled, verification status, etc.
+    pub flags: u32, // Packed certificate_enabled, verification status, etc.
     pub max_students: u32,
     pub current_enrollments: u32,
     pub timestamps: PackedTimestamps,
@@ -80,7 +80,7 @@ pub struct InstructorProfile {
     pub rating: PackedRating,
     pub course_count: u32,
     pub total_students: u32,
-    pub flags: u8, // Packed verification status and other booleans
+    pub flags: u32, // Packed verification status and other booleans
     pub created_at: u64,
 }
 
@@ -550,7 +550,7 @@ impl CourseMetadataContract {
         // Simple hash implementation for demonstration
         // In production, use SHA-256 or similar
         let mut hash = 0u64;
-        for byte in data.into_bytes() {
+        for byte in data.as_str().bytes() {
             hash = hash.wrapping_mul(31).wrapping_add(byte as u64);
         }
         format!("{:x}", hash)

@@ -109,7 +109,7 @@ function generateBrainWaves(
   const focus = Math.min(1, Math.max(0, focusLevel / 100));
   
   // Base frequencies (simplified Hz representation)
-  let delta = 2 + Math.random() * 2;      // 0.5-4 Hz (sleep)
+  const delta = 2 + Math.random() * 2;      // 0.5-4 Hz (sleep)
   let theta = 5 + Math.random() * 3;      // 4-8 Hz (meditation)
   let alpha = 10 + Math.random() * 4;     // 8-12 Hz (relaxed)
   let beta = 20 + Math.random() * 10;     // 12-30 Hz (focused)

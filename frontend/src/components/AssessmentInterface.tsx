@@ -48,7 +48,7 @@ const AssessmentInterface = ({ assessmentId, onComplete }) => {
         <h1 style={{ margin: 0, textShadow: '0 0 20px rgba(0,212,255,0.4)' }}>
           DECERNTRALIZED ASSESSMENT PROCTORING
         </h1>
-        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: var('--primary-accent') }}>
+        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--primary-accent)' }}>
           {formatTime(timeLeft)}
         </div>
       </div>

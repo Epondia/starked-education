@@ -40,7 +40,7 @@ pub struct DynamicNFT {
     pub owner: Address,
     pub creator: Address,
     pub base_uri: String,
-    pub current_level: u8,
+    pub current_level: u32,
     pub experience_points: u64,
     pub achievements: Vec<u64>, // Achievement IDs that contribute to evolution
     pub visual_traits: VisualTraits,
@@ -55,10 +55,10 @@ pub struct DynamicNFT {
 #[contracttype]
 #[derive(Clone)]
 pub struct VisualTraits {
-    pub background: u8,
-    pub border: u8,
-    pub emblem: u8,
-    pub glow_effect: u8,
+    pub background: u32,
+    pub border: u32,
+    pub emblem: u32,
+    pub glow_effect: u32,
     pub special_effects: Vec<u8>,
     pub rarity_tier: RarityTier,
 }
@@ -202,7 +202,7 @@ pub fn upgrade_contract(env: &Env, new_version: ContractVersion, implementation_
 /// Verify IPFS metadata integrity
 pub fn verify_ipfs_metadata(env: &Env, metadata: &IPFSMetadata) -> bool {
     // Basic hash validation (simplified - in production would use IPFS gateway)
-    if metadata.hash.len() < 46 || !metadata.hash.starts_with("Qm") {
+    if metadata.hash.len() < 46 || !metadata.hash.as_str().starts_with("Qm") {
         return false;
     }
     

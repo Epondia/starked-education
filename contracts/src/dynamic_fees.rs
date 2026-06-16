@@ -33,7 +33,7 @@ pub struct UserBehaviorMetrics {
 #[contracttype]
 #[derive(Clone)]
 pub struct FeeDiscountTier {
-    pub tier_id: u8,
+    pub tier_id: u32,
     pub min_reputation: u64,
     pub discount_percentage: u32,
     pub requirements: String,            // JSON string of requirements

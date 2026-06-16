@@ -13,7 +13,7 @@ import {
 import {
   BellRing,
   Compass,
-  Layers3,
+  Layers,
   Mic,
   Search as SearchIcon,
   Sparkles,
@@ -427,7 +427,7 @@ export const DiscoveryExperience: React.FC = () => {
                       Full-text + semantic ranking
                     </span>
                     <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1">
-                      <Layers3 size={14} />
+                      <Layers size={14} />
                       Faceted navigation
                     </span>
                     <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1">

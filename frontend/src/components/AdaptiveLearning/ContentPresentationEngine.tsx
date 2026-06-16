@@ -230,8 +230,8 @@ export function ContentPresentationEngine({
       
       // Transform content based on learning style
       let transformedContent = item.content;
-      let supplementaryMaterials: string[] = [];
-      let alternativeFormats: ContentType[] = [];
+      const supplementaryMaterials: string[] = [];
+      const alternativeFormats: ContentType[] = [];
 
       switch (style) {
         case 'visual':

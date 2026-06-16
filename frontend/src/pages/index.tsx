@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import { useState } from 'react';
 import styles from './index.module.css';
 import {
@@ -133,9 +134,9 @@ export default function HomePage() {
               <button className={styles.secondaryButton} onClick={normalizeSession}>
                 Normalize Session
               </button>
-              <a className={styles.textLink} href="/notifications-demo">
+              <Link className={styles.textLink} href="/notifications-demo">
                 View existing demo
-              </a>
+              </Link>
             </div>
 
             <div className={styles.notice}>

@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, String, Vec, U256, u256,
-    Map, BytesN, IntoVal, crypto::Hash,
+    contract, contractimpl, contracttype, Address, Env, String, Vec, U256,
+    Map, BytesN, IntoVal, 
 };
 
 /// Verifiable Random Function (VRF) implementation for Stellar blockchain
@@ -81,7 +81,7 @@ impl VRFSystem {
         Self::register_entropy_source(
             env.clone(),
             "Blockchain Entropy".into_val(&env),
-            Address::from_account(env.current_contract_address()),
+            Address::from_contract_id(env.current_contract_address()),
             10000, // Max weight
         ).unwrap();
     }
@@ -96,7 +96,7 @@ impl VRFSystem {
         provider.require_auth();
 
         if weight > 10000 {
-            return Err("Weight must be <= 10000".to_string());
+            return Err(String::from_str(&env, "Weight must be <= 10000"));
         }
 
         let source_id: u64 = env.storage().persistent()
@@ -187,28 +187,28 @@ impl VRFSystem {
     ) -> Result<(), String> {
         let source: EntropySource = env.storage().persistent()
             .get(&StorageKey::EntropySource(source_id))
-            .ok_or_else(|| "Entropy source not found".to_string())?;
+            .ok_or_else(|| String::from_str(&env, "Entropy source not found"))?;
 
         if !source.is_active {
-            return Err("Entropy source is not active".to_string());
+            return Err(String::from_str(&env, "Entropy source is not active"));
         }
 
         // Verify provider
-        if env.invoker() != source.provider {
-            return Err("Unauthorized entropy provider".to_string());
+        if env.current_contract_address() != source.provider {
+            return Err(String::from_str(&env, "Unauthorized entropy provider"));
         }
 
         let mut request: VRFRequest = env.storage().persistent()
             .get(&StorageKey::VRFRequest(request_id))
-            .ok_or_else(|| "VRF request not found".to_string())?;
+            .ok_or_else(|| String::from_str(&env, "VRF request not found"))?;
 
         if request.is_fulfilled {
-            return Err("Request already fulfilled".to_string());
+            return Err(String::from_str(&env, "Request already fulfilled"));
         }
 
         // Aggregate entropy with existing contributions
         let current_seed = request.seed.clone();
-        let new_seed = Self::aggregate_entropy(&env, current_seed.as_slice(), entropy.as_slice());
+        let new_seed = Self::aggregate_entropy(&env, current_seed, entropy);
         request.seed = new_seed;
         request.total_contributions.unwrap_or(0) + 1;
 
@@ -231,10 +231,10 @@ impl VRFSystem {
     ) -> Result<(), String> {
         let mut request: VRFRequest = env.storage().persistent()
             .get(&StorageKey::VRFRequest(request_id))
-            .ok_or_else(|| "VRF request not found".to_string())?;
+            .ok_or_else(|| String::from_str(&env, "VRF request not found"))?;
 
         if request.is_fulfilled {
-            return Err("Request already fulfilled".to_string());
+            return Err(String::from_str(&env, "Request already fulfilled"));
         }
 
         request.is_fulfilled = true;
@@ -309,16 +309,16 @@ impl VRFSystem {
         
         let commitment: CommitmentData = env.storage().temporary()
             .get(&key)
-            .ok_or_else(|| "No commitment found".to_string())?;
+            .ok_or_else(|| String::from_str(&env, "No commitment found"))?;
 
         if env.ledger().timestamp() > commitment.valid_until {
-            return Err("Commitment expired".to_string());
+            return Err(String::from_str(&env, "Commitment expired"));
         }
 
         // Verify the reveal matches the commitment
         let computed_hash = Self::hash_reveal(&env, &revealed_value);
-        if computed_hash.as_slice() != commitment.hash.as_slice() {
-            return Err("Reveal does not match commitment".to_string());
+        if computed_hash != commitment.hash {
+            return Err(String::from_str(&env, "Reveal does not match commitment"));
         }
 
         // Clean up
@@ -341,14 +341,14 @@ impl VRFSystem {
         // Get latest beacon entropy
         let beacon_id: u64 = env.storage().persistent()
             .get(&StorageKey::LatestBeacon)
-            .ok_or_else(|| "No randomness beacon available".to_string())?;
+            .ok_or_else(|| String::from_str(&env, "No randomness beacon available"))?;
 
         let beacon: RandomnessBeacon = env.storage().persistent()
             .get(&StorageKey::RandomnessBeacon(beacon_id))
-            .ok_or_else(|| "Beacon not found".to_string())?;
+            .ok_or_else(|| String::from_str(&env, "Beacon not found"))?;
 
         // Combine seed with beacon entropy
-        let combined = Self::combine_seeds(&env, seed.as_slice(), beacon.entropy_hash.as_slice());
+        let combined = Self::combine_seeds(&env, seed, beacon.entropy_hash);
         
         // Generate random value in range
         let random_value = Self::random_in_range(&combined, min, max);
@@ -368,7 +368,7 @@ impl VRFSystem {
     pub fn get_request(env: Env, request_id: u64) -> Result<VRFRequest, String> {
         env.storage().persistent()
             .get(&StorageKey::VRFRequest(request_id))
-            .ok_or_else(|| "Request not found".to_string())
+            .ok_or_else(|| String::from_str(&env, "Request not found"))
     }
 
     /// Get requests by user
@@ -400,18 +400,18 @@ impl VRFSystem {
     pub fn get_entropy_source(env: Env, source_id: u64) -> Result<EntropySource, String> {
         env.storage().persistent()
             .get(&StorageKey::EntropySource(source_id))
-            .ok_or_else(|| "Source not found".to_string())
+            .ok_or_else(|| String::from_str(&env, "Source not found"))
     }
 
     /// Get latest beacon
     pub fn get_latest_beacon(env: Env) -> Result<RandomnessBeacon, String> {
         let beacon_id: u64 = env.storage().persistent()
             .get(&StorageKey::LatestBeacon)
-            .ok_or_else(|| "No beacon available".to_string())?;
+            .ok_or_else(|| String::from_str(&env, "No beacon available"))?;
 
         env.storage().persistent()
             .get(&StorageKey::RandomnessBeacon(beacon_id))
-            .ok_or_else(|| "Beacon not found".to_string())
+            .ok_or_else(|| String::from_str(&env, "Beacon not found"))
     }
 
     /// Verify randomness proof (placeholder for actual VRF verification)
@@ -422,12 +422,12 @@ impl VRFSystem {
     ) -> Result<bool, String> {
         let request: VRFRequest = env.storage().persistent()
             .get(&StorageKey::VRFRequest(request_id))
-            .ok_or_else(|| "Request not found".to_string())?;
+            .ok_or_else(|| String::from_str(&env, "Request not found"))?;
 
         if let Some(stored_proof) = request.proof {
-            Ok(stored_proof.as_slice() == proof.as_slice())
+            Ok(stored_proof == proof)
         } else {
-            Err("No proof stored for this request".to_string())
+            Err(String::from_str(&env, "No proof stored for this request"))
         }
     }
 
@@ -479,7 +479,7 @@ impl VRFSystem {
         }
         
         let hash = env.crypto().sha256(&combined);
-        *hash.as_slice()
+        *hash
     }
 
     fn random_in_range(data: &[u8; 32], min: U256, max: U256) -> U256 {
@@ -491,7 +491,7 @@ impl VRFSystem {
     }
 
     fn hash_reveal(env: &Env, value: &String) -> BytesN<32> {
-        env.crypto().sha256(&value.into_bytes()).into()
+        env.crypto().sha256(&value.as_str().bytes()).into()
     }
 }
 
