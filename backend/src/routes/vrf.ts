@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { vrfService } from '../services/vrfService';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -33,7 +33,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { seed, purpose, context } = req.body;
-      const requester = req.user?.address;
+      const user = (req as AuthenticatedRequest).user;
+      const requester = user?.address;
 
       if (!requester) {
         return res.status(401).json({ 
@@ -82,7 +83,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { purpose, seed, min, max } = req.body;
-      const requester = req.user?.address;
+      const user = (req as AuthenticatedRequest).user;
+      const requester = user?.address;
 
       if (!requester) {
         return res.status(401).json({ 
@@ -265,7 +267,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { commitmentHash, validUntil } = req.body;
-      const committer = req.user?.address;
+      const user = (req as AuthenticatedRequest).user;
+      const committer = user?.address;
 
       if (!committer) {
         return res.status(401).json({ 
@@ -309,7 +312,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { revealedValue } = req.body;
-      const committer = req.user?.address;
+      const user = (req as AuthenticatedRequest).user;
+      const committer = user?.address;
 
       if (!committer) {
         return res.status(401).json({ 

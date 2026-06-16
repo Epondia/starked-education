@@ -3,7 +3,7 @@
  * Provides comprehensive analytics for AI-powered search functionality
  */
 
-import { logger } from '../utils/logger';
+import logger from '../../utils/logger';
 
 export interface SearchMetrics {
   timestamp: Date;

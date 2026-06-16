@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { timeLockCredentialService } from '../services/timeLockCredentialService';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -35,7 +35,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { recipient, credentialHash, metadata, releaseTime } = req.body;
-      const issuer = req.user?.address; // From auth middleware
+      const user = (req as AuthenticatedRequest).user;
+      const issuer = user?.address; // From auth middleware
 
       if (!issuer) {
         return res.status(401).json({ 
@@ -82,7 +83,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { credentialId } = req.params;
-      const caller = req.user?.address;
+      const user = (req as AuthenticatedRequest).user;
+      const caller = user?.address;
 
       if (!caller) {
         return res.status(401).json({ 
@@ -143,7 +145,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { credentialIds } = req.body;
-      const caller = req.user?.address;
+      const user = (req as AuthenticatedRequest).user;
+      const caller = user?.address;
 
       if (!caller) {
         return res.status(401).json({ 
@@ -199,7 +202,8 @@ router.post(
     try {
       const { credentialId } = req.params;
       const { reason } = req.body;
-      const admin = req.user?.address;
+      const user = (req as AuthenticatedRequest).user;
+      const admin = user?.address;
 
       if (!admin) {
         return res.status(401).json({ 
@@ -262,7 +266,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { credentialIds, releaseTimes } = req.body;
-      const creator = req.user?.address;
+      const user = (req as AuthenticatedRequest).user;
+      const creator = user?.address;
 
       if (!creator) {
         return res.status(401).json({ 

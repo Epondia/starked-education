@@ -136,7 +136,7 @@ export class NaturalLanguageProcessor {
           return {
             type: patternData.intent,
             confidence: patternData.confidence,
-            entities,
+            entities: entities as any,
             sentiment: this.analyzeSentiment(normalizedQuery),
             urgency: this.analyzeUrgency(normalizedQuery),
             complexity: this.analyzeComplexity(normalizedQuery)
@@ -148,7 +148,7 @@ export class NaturalLanguageProcessor {
       return {
         type: 'course_search',
         confidence: 0.5,
-        entities: this.extractEntities(query),
+        entities: this.extractEntities(query) as any,
         sentiment: this.analyzeSentiment(normalizedQuery),
         urgency: this.analyzeUrgency(normalizedQuery),
         complexity: this.analyzeComplexity(normalizedQuery)
@@ -470,20 +470,9 @@ export class NaturalLanguageProcessor {
    */
   private getDefaultIntent(): SearchIntent {
     return {
-      type: 'course_search',
+      type: 'course_search' as const,
       confidence: 0.5,
-      entities: {
-        skills: [],
-        categories: [],
-        levels: [],
-        price_ranges: [],
-        durations: [],
-        languages: [],
-        instructors: [],
-        ratings: [],
-        keywords: [],
-        phrases: []
-      },
+      entities: {} as any,
       sentiment: 'neutral',
       urgency: 'medium',
       complexity: 'simple'

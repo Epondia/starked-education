@@ -107,6 +107,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
 /**
  * Check if a role has a specific permission
  */
+export { UserRole };
+
 export function hasPermission(role: string, permission: string): boolean {
   const permissions = ROLE_PERMISSIONS[role] || [];
   return permissions.includes(permission);

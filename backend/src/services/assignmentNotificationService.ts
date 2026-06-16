@@ -49,7 +49,7 @@ export class AssignmentNotificationService {
     
     for (const studentId of enrolledStudents) {
       await this.createNotification({
-        type: 'assignment_created',
+        type: 'assignment_created' as any,
         recipientId: studentId,
         title: `New Assignment: ${assignment.title}`,
         message: `A new assignment has been posted for your course. Due: ${assignment.dueDate.toLocaleDateString()}`,
@@ -67,8 +67,7 @@ export class AssignmentNotificationService {
   }
 
   async notifyGradeCreated(grade: Grade): Promise<void> {
-    await this.createNotification({
-      type: 'submission_graded',
+    await this.createNotification({        type: 'submission_graded' as any,
       recipientId: grade.studentId,
       title: `Assignment Graded: ${grade.percentage.toFixed(1)}%`,
       message: `Your assignment has been graded. You earned ${grade.earnedPoints}/${grade.totalPoints} points (${grade.percentage.toFixed(1)}%).`,
@@ -89,7 +88,7 @@ export class AssignmentNotificationService {
   async createNotification(notificationData: NotificationData): Promise<AssignmentNotification> {
     const notification: AssignmentNotification = {
       id: uuidv4(),
-      type: notificationData.type,
+      type: notificationData.type as any,
       assignmentId: notificationData.data?.assignmentId,
       recipientId: notificationData.recipientId,
       title: notificationData.title,

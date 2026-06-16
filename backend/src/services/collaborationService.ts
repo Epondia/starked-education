@@ -305,4 +305,47 @@ export class CollaborationService {
       createdAt: room.createdAt
     };
   }
+
+  // Stub methods for CollaborationController compatibility
+  listClassrooms(): any[] { return []; }
+  createClassroom(data: any): any { return data; }
+  getClassroom(id: string): any { return this.getRoomInfo(id); }
+  getDefaultWorkspaceForClassroom(classroomId: string): any { return null; }
+  generateMeetingSummary(classroomId: string): any { return null; }
+  joinClassroom(classroomId: string, data: any): any { return { participants: [] }; }
+  leaveClassroom(classroomId: string, userId: string): any { return { participants: [] }; }
+  recordAttendance(classroomId: string, userId: string, status: string): any { return {}; }
+  setHandRaise(classroomId: string, userId: string, raised: boolean): any { return { presenterControls: { queue: [] } }; }
+  advanceQueue(classroomId: string): any { return {}; }
+  setRecordingStatus(classroomId: string, isRecording: boolean, playbackUrl?: string): any { return {}; }
+  setStreamingStatus(classroomId: string, isLive: boolean, streamUrl?: string): any { return {}; }
+  setScreenShare(classroomId: string, userId: string, screenLabel?: string): any { return { screenShare: { userId, screenLabel } }; }
+  clearScreenShare(classroomId: string): any { return { screenShare: null }; }
+  setPresenterControls(classroomId: string, controls: any): any { return {}; }
+  updateParticipantMediaState(classroomId: string, userId: string, data: any): any { return {}; }
+  enqueueSignal(classroomId: string, signal: any): any { return signal; }
+  pullSignals(classroomId: string, userId: string): any[] { return []; }
+  reportMediaQuality(classroomId: string, data: any): any { return data; }
+  reportInterruption(classroomId: string, data: any): any { return data; }
+  getMediaHealth(classroomId: string): any { return {}; }
+  addMessage(classroomId: string, message: any): any { return message; }
+  shareFile(classroomId: string, file: any): any { return file; }
+  addWhiteboardStroke(classroomId: string, stroke: any): any { return stroke; }
+  createPoll(classroomId: string, question: string, options: string[], createdBy: string, closesAt?: Date): any { return {}; }
+  respondToPoll(classroomId: string, pollId: string, optionId: string, userId: string): any { return {}; }
+  createBreakoutRoom(classroomId: string, title: string, participantIds: string[]): any { return {}; }
+  listWorkspaces(): any[] { return []; }
+  getWorkspace(workspaceId: string): any { return null; }
+  createWorkspace(data: any): any { return data; }
+  syncDocument(data: any): any { return data; }
+  addWorkspaceNote(workspaceId: string, userId: string, userName: string, body: string): any { return {}; }
+  addDiscussionPost(workspaceId: string, userId: string, authorName: string, body: string): any { return {}; }
+  listPeerReviews(): any[] { return []; }
+  createPeerReviewAssignment(workspaceId: string, submissionId: string, authorId: string, reviewerIds: string[], rubric: any[], dueAt: Date): any { return {}; }
+  submitPeerReview(assignmentId: string, reviewerId: string, score: number, summary: string, strengths: string[], improvements: string[]): any { return {}; }
+  listStudyGroups(): any[] { return []; }
+  createStudyGroup(topic: string, focusArea: string, members: string[], recommendedSchedule: string, workspaceId?: string): any { return {}; }
 }
+
+const collaborationServiceInstance = new CollaborationService(undefined as any);
+export default collaborationServiceInstance;

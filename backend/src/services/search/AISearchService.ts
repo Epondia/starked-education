@@ -4,10 +4,10 @@
  */
 
 import { Course, SearchFilter, SearchResult, SearchAnalytics as BaseSearchAnalytics } from '../../models/Course';
-import { AISearchEngine, AISearchResult, AISearchOptions, SearchIntent } from '../search/AISearchEngine';
-import { SemanticSearch } from '../search/SemanticSearch';
-import { NaturalLanguageProcessor } from '../search/NaturalLanguageProcessor';
-import { IntelligentRanking } from '../search/IntelligentRanking';
+import { AISearchEngine, AISearchResult, AISearchOptions, SearchIntent } from '../../search/AISearchEngine';
+import { SemanticSearch } from '../../search/SemanticSearch';
+import { NaturalLanguageProcessor } from '../../search/NaturalLanguageProcessor';
+import { IntelligentRanking } from '../../search/IntelligentRanking';
 import logger from '../../utils/logger';
 
 export interface AISearchRequest {
@@ -196,7 +196,7 @@ export class AISearchService {
    */
   async recognizeIntent(query: string): Promise<SearchIntent> {
     try {
-      return await this.nlpProcessor.recognizeIntent(query);
+      return await (this.nlpProcessor.recognizeIntent(query) as any) as SearchIntent;
     } catch (error) {
       logger.error('Error recognizing intent', error);
       throw error;
@@ -399,7 +399,7 @@ export class AISearchService {
       rankingTime: results.processingTime * 0.3,
       cacheHitRate: 0.75, // Mock value
       memoryUsage: 50, // Mock MB
-      queryComplexity: results.intent ? this.mapIntentToComplexity(results.intent.complexity) : 'simple',
+      queryComplexity: results.intent ? this.mapIntentToComplexity((results.intent as any).complexity) : 'simple',
       aiFeaturesUsed: this.getUsedFeatures(results)
     };
   }
@@ -567,9 +567,8 @@ export class AISearchService {
       confidence: 0.5,
       entities: {},
       sentiment: 'neutral',
-      urgency: 'medium',
-      complexity: 'simple'
-    };
+      urgency: 'medium'
+    } as any;
   }
 }
 

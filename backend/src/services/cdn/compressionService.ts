@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { EventEmitter } from 'events';
 import logger from '../../utils/logger';
-import { MediaFormat } from '../models/Content';
+import { MediaFormat } from '../../models/Content';
 
 export interface CompressionConfig {
   contentType: 'image' | 'video' | 'audio' | 'document';
@@ -345,7 +345,7 @@ export class IntelligentCompressionService {
       case 'frequency_optimization':
         const sharpen = optimization.parameters.sharpen || false;
         if (sharpen) {
-          return image.sharpen({ sigma: 1, flat: 1, jagged: 2 });
+          return image.sharpen(1, 2, 2);
         }
         return image;
 

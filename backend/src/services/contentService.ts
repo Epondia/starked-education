@@ -43,7 +43,7 @@ export class ContentService {
 
       const content: Content = {
         id: this.generateContentId(),
-        courseId: request.courseId,
+        courseId: request.courseId as string,
         moduleId: request.moduleId,
         type: request.type,
         title: request.title,
@@ -55,11 +55,11 @@ export class ContentService {
         mediaFiles: [],
         tags: request.tags || [],
         metadata: {
-          difficulty: 'beginner',
+          difficulty: 'beginner' as const,
           prerequisites: [],
           learningObjectives: [],
           ...request.metadata
-        },
+        } as any,
         seo: {
           slug: this.generateSlug(request.title),
           ...request.seo
@@ -154,11 +154,11 @@ export class ContentService {
       }
 
       // Update content
-      const updatedContent: Content = {
+      const updatedContent = {
         ...existingContent,
         ...request,
         updatedAt: new Date()
-      };
+      } as Content;
 
       // Update slug if title changed
       if (request.title) {
@@ -314,9 +314,9 @@ export class ContentService {
         case 'move':
           for (const contentId of operation.contentIds) {
             await this.updateContent(contentId, {
-              courseId: operation.data.courseId,
+              courseId: operation.data.courseId as string,
               moduleId: operation.data.moduleId
-            }, performedBy);
+            } as any, performedBy);
           }
           break;
         default:

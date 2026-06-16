@@ -47,7 +47,7 @@ export class ElasticsearchService {
               }
             }
           }
-        });
+        } as any);
         logger.info('Created courses index in Elasticsearch');
       }
       
@@ -65,7 +65,7 @@ export class ElasticsearchService {
               }
             }
           }
-        });
+        } as any);
         logger.info('Created users index in Elasticsearch');
       }
     } catch (error) {
@@ -75,7 +75,7 @@ export class ElasticsearchService {
 
   async indexCourse(course: any) {
     try {
-      await this.client.index({
+      await (this.client as any).index({
         index: this.indices.courses,
         id: course.id,
         body: {
@@ -143,7 +143,7 @@ export class ElasticsearchService {
             levels: { terms: { field: 'level' } }
           }
         }
-      });
+      } as any);
 
       return {
         hits: response.hits.hits.map((hit: any) => hit._source),
@@ -171,9 +171,9 @@ export class ElasticsearchService {
             }
           }
         }
-      });
+      } as any);
       
-      const suggestions = response.suggest?.course_suggest?.[0]?.options.map((opt: any) => opt.text) || [];
+      const suggestions = (response.suggest as any)?.course_suggest?.[0]?.options.map((opt: any) => opt.text) || [];
       return suggestions;
     } catch (error) {
       logger.error('Error getting suggestions from Elasticsearch', error);

@@ -417,13 +417,6 @@ declare global {
         message: string;
         value?: any;
       }>;
-      user?: {
-        id: string;
-        email?: string;
-        role?: any;
-        username?: string;
-        address?: string;
-      };
       file?: Express.Multer.File;
       files?: Express.Multer.File[] | { [fieldname: string]: Express.Multer.File[] };
     }

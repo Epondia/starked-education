@@ -22,8 +22,7 @@ export class QuantumResistantCrypto {
   async generateKeyPair(): Promise<{ publicKey: string; privateKey: string }> {
     await this.initialize();
     
-    const keyPair = sodium.crypto_box_keypair();
-    
+    const keyPair: any = sodium.crypto_box_keypair();
     return {
       publicKey: sodium.to_hex(keyPair.publicKey),
       privateKey: sodium.to_hex(keyPair.privateKey)
@@ -50,13 +49,13 @@ export class QuantumResistantCrypto {
     const salt = crypto.randomBytes(32);
     const info = Buffer.from('quantum-resistant-communication');
     
-    const derivedKey = crypto.hkdfSync(
+    const derivedKey = (crypto as any).hkdfSync(
       'sha512',
       sharedSecret,
       salt,
       info,
       64
-    );
+    ) as Buffer;
     
     return Buffer.concat([salt, derivedKey]).toString('hex');
   }
@@ -182,7 +181,7 @@ export class QuantumResistantCrypto {
     
     purposes.forEach(purpose => {
       const info = Buffer.from(`quantum-resistant-${purpose}`);
-      const derivedKey = crypto.hkdfSync('sha512', masterBuffer, Buffer.alloc(0), info, 32);
+      const derivedKey = (crypto as any).hkdfSync('sha512', masterBuffer, Buffer.alloc(0), info, 32);
       keys[purpose] = derivedKey.toString('hex');
     });
     

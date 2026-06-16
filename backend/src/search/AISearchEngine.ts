@@ -3,7 +3,9 @@
  * Main orchestrator for AI-powered search capabilities
  */
 
-import { Course, SearchFilter, SearchResult, SearchAnalytics } from '../models/Course';
+import { Course, SearchFilter, SearchResult } from '../models/Course';
+import { SearchAnalytics as SearchAnalyticsModel } from '../models/Course';
+import { SearchIntent as NLPIntent } from './NaturalLanguageProcessor';
 import { SemanticSearch } from './SemanticSearch';
 import { NaturalLanguageProcessor } from './NaturalLanguageProcessor';
 import { IntelligentRanking } from './IntelligentRanking';
@@ -44,7 +46,7 @@ export interface AISearchResult extends SearchResult {
   aiEnhanced: boolean;
 }
 
-export interface SearchAnalytics {
+export interface SearchAnalyticsData {
   id: string;
   query: string;
   filters: SearchFilter;
@@ -106,7 +108,7 @@ export class AISearchEngine {
       if (this.options.enableNLPProcessing) {
         const nlpResult = await this.nlpProcessor.processQuery(query);
         processedQuery = nlpResult.processedQuery;
-        searchIntent = nlpResult.intent;
+        searchIntent = nlpResult.intent as unknown as SearchIntent;
         suggestions = nlpResult.suggestions;
       }
 
@@ -140,7 +142,7 @@ export class AISearchEngine {
         combinedResults = await this.intelligentRanking.rankResults(
           combinedResults,
           processedQuery,
-          searchIntent,
+          searchIntent as any,
           userId
         );
       }
@@ -211,7 +213,7 @@ export class AISearchEngine {
    */
   async recognizeIntent(query: string): Promise<SearchIntent> {
     try {
-      return await this.nlpProcessor.recognizeIntent(query);
+      return await this.nlpProcessor.recognizeIntent(query) as unknown as SearchIntent;
     } catch (error) {
       logger.error('Error recognizing intent', error);
       return {

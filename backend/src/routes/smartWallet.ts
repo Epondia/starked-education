@@ -4,7 +4,8 @@
  */
 
 import express from 'express';
-import { smartWalletController } from '../controllers/smartWalletController';
+import Joi from 'joi';
+import * as smartWalletController from '../controllers/smartWalletController';
 import { authenticate } from '../middleware/auth';
 import { validateRequestSchema } from '../middleware/validation';
 
@@ -21,11 +22,11 @@ router.use(authenticate);
 router.post(
   '/create',
   validateRequestSchema({
-    body: {
-      ownerAddress: { type: 'string', required: true },
-      guardians: { type: 'array', required: false },
-      threshold: { type: 'number', required: false },
-    },
+    body: Joi.object({
+      ownerAddress: Joi.string().required(),
+      guardians: Joi.array().optional(),
+      threshold: Joi.number().optional(),
+    }),
   }),
   smartWalletController.createSmartWallet
 );
@@ -38,13 +39,13 @@ router.post(
 router.post(
   '/execute',
   validateRequestSchema({
-    body: {
-      walletAddress: { type: 'string', required: true },
-      to: { type: 'string', required: true },
-      value: { type: 'string', required: true },
-      data: { type: 'string', required: true },
-      signature: { type: 'string', required: true },
-    },
+    body: Joi.object({
+      walletAddress: Joi.string().required(),
+      to: Joi.string().required(),
+      value: Joi.string().required(),
+      data: Joi.string().required(),
+      signature: Joi.string().required(),
+    }),
   }),
   smartWalletController.executeTransaction
 );
@@ -57,11 +58,11 @@ router.post(
 router.post(
   '/execute-batch',
   validateRequestSchema({
-    body: {
-      walletAddress: { type: 'string', required: true },
-      transactions: { type: 'array', required: true },
-      signature: { type: 'string', required: true },
-    },
+    body: Joi.object({
+      walletAddress: Joi.string().required(),
+      transactions: Joi.array().required(),
+      signature: Joi.string().required(),
+    }),
   }),
   smartWalletController.executeBatchTransactions
 );
@@ -74,11 +75,11 @@ router.post(
 router.post(
   '/recovery/setup',
   validateRequestSchema({
-    body: {
-      walletAddress: { type: 'string', required: true },
-      guardians: { type: 'array', required: true },
-      threshold: { type: 'number', required: true },
-    },
+    body: Joi.object({
+      walletAddress: Joi.string().required(),
+      guardians: Joi.array().required(),
+      threshold: Joi.number().required(),
+    }),
   }),
   smartWalletController.setupSocialRecovery
 );
@@ -91,12 +92,12 @@ router.post(
 router.post(
   '/recovery/initiate',
   validateRequestSchema({
-    body: {
-      walletAddress: { type: 'string', required: true },
-      newOwner: { type: 'string', required: true },
-      guardianAddress: { type: 'string', required: true },
-      guardianSignature: { type: 'string', required: true },
-    },
+    body: Joi.object({
+      walletAddress: Joi.string().required(),
+      newOwner: Joi.string().required(),
+      guardianAddress: Joi.string().required(),
+      guardianSignature: Joi.string().required(),
+    }),
   }),
   smartWalletController.initiateRecovery
 );
@@ -109,11 +110,11 @@ router.post(
 router.post(
   '/recovery/support',
   validateRequestSchema({
-    body: {
-      recoveryId: { type: 'string', required: true },
-      guardianAddress: { type: 'string', required: true },
-      guardianSignature: { type: 'string', required: true },
-    },
+    body: Joi.object({
+      recoveryId: Joi.string().required(),
+      guardianAddress: Joi.string().required(),
+      guardianSignature: Joi.string().required(),
+    }),
   }),
   smartWalletController.supportRecovery
 );
@@ -136,11 +137,11 @@ router.get(
 router.post(
   '/multisig/setup',
   validateRequestSchema({
-    body: {
-      walletAddress: { type: 'string', required: true },
-      signers: { type: 'array', required: true },
-      threshold: { type: 'number', required: true },
-    },
+    body: Joi.object({
+      walletAddress: Joi.string().required(),
+      signers: Joi.array().required(),
+      threshold: Joi.number().required(),
+    }),
   }),
   smartWalletController.setupMultiSig
 );
@@ -153,13 +154,13 @@ router.post(
 router.post(
   '/multisig/propose',
   validateRequestSchema({
-    body: {
-      walletAddress: { type: 'string', required: true },
-      to: { type: 'string', required: true },
-      value: { type: 'string', required: true },
-      data: { type: 'string', required: true },
-      proposer: { type: 'string', required: true },
-    },
+    body: Joi.object({
+      walletAddress: Joi.string().required(),
+      to: Joi.string().required(),
+      value: Joi.string().required(),
+      data: Joi.string().required(),
+      proposer: Joi.string().required(),
+    }),
   }),
   smartWalletController.proposeTransaction
 );
@@ -182,11 +183,11 @@ router.get(
 router.post(
   '/session-key/create',
   validateRequestSchema({
-    body: {
-      walletAddress: { type: 'string', required: true },
-      permissions: { type: 'object', required: true },
-      validUntil: { type: 'string', required: true },
-    },
+    body: Joi.object({
+      walletAddress: Joi.string().required(),
+      permissions: Joi.object().required(),
+      validUntil: Joi.string().required(),
+    }),
   }),
   smartWalletController.createSessionKey
 );
@@ -239,10 +240,10 @@ router.get(
 router.post(
   '/credentials/auto-renewal',
   validateRequestSchema({
-    body: {
-      credentialId: { type: 'string', required: true },
-      renewalThreshold: { type: 'number', required: true },
-    },
+    body: Joi.object({
+      credentialId: Joi.string().required(),
+      renewalThreshold: Joi.number().required(),
+    }),
   }),
   smartWalletController.enableAutoRenewal
 );

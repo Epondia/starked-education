@@ -9,15 +9,15 @@ import { PaymentStatus, PaymentMethod } from '../models/Enrollment';
 
 export class StellarPaymentService {
   private server: Horizon.Server;
-  private network: typeof Networks.PUBLIC | typeof Networks.TESTNET;
+  private networkPassphrase: string;
   private distributionKeypair: Keypair;
   private settings: StellarPaymentSettings;
 
   constructor(settings: StellarPaymentSettings) {
     this.settings = settings;
     this.server = new Horizon.Server(settings.horizonUrl);
-    this.network = settings.network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
-    this.distributionKeypair = Keypair.fromSecret(settings.distributionAccount);
+    this.networkPassphrase = String(settings.network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET);
+    this.distributionKeypair = Keypair.fromSecret(settings.distributionAccount || '');
   }
 
   /**
@@ -40,8 +40,8 @@ export class StellarPaymentService {
       
       // Create transaction
       const transaction = new TransactionBuilder(sourceAccount, {
-        fee: await this.server.fetchBaseFee(),
-        networkPassphrase: this.network.passphrase
+        fee: String(await this.server.fetchBaseFee()),
+        networkPassphrase: this.networkPassphrase
       })
         .addOperation(Operation.payment({
           destination: this.distributionKeypair.publicKey(),
@@ -69,7 +69,7 @@ export class StellarPaymentService {
    */
   async submitTransaction(signedXDR: string): Promise<StellarPayment> {
     try {
-      const transaction = TransactionBuilder.fromXDR(signedXDR, this.network.passphrase) as any;
+      const transaction = TransactionBuilder.fromXDR(signedXDR, this.networkPassphrase) as any;
       const result = await this.server.submitTransaction(transaction) as any;
 
       if (!result.successful) {
@@ -108,7 +108,7 @@ export class StellarPaymentService {
       }
 
       // Verify payment details
-      const paymentOperation = transaction.operations.find(op => op.type === 'payment');
+      const paymentOperation = (transaction as any).operations.find((op: any) => (op as any).type === 'payment');
       if (!paymentOperation) {
         errors.push('No payment operation found in transaction');
       }
@@ -163,7 +163,7 @@ export class StellarPaymentService {
         return 0;
       }
 
-      return latestLedger.records[0].sequence - transaction.ledger;
+      return Number(latestLedger.records[0].sequence) - Number(transaction.ledger);
     } catch (error) {
       console.error('Error getting transaction confirmations:', error);
       return 0;
@@ -339,8 +339,8 @@ export class StellarPaymentService {
 
       // Create transaction
       const transaction = new TransactionBuilder(sourceAccount, {
-        fee: await this.server.fetchBaseFee(),
-        networkPassphrase: this.network.passphrase
+        fee: String(await this.server.fetchBaseFee()),
+        networkPassphrase: this.networkPassphrase
       })
         .addOperation(Operation.payment({
           destination: toAddress,
@@ -376,7 +376,7 @@ export class StellarPaymentService {
         .payments()
         .forAccount(address)
         .limit(limit)
-        .order('desc');
+        .order('desc') as any;
 
       if (cursor) {
         paymentsBuilder.cursor(cursor);
@@ -405,7 +405,7 @@ export class StellarPaymentService {
     return {
       from: record.from,
       to: record.to,
-      amount: record.amount,
+      amount: String(record.amount),
       assetCode: record.asset_type === 'native' ? 'XLM' : record.asset_code,
       assetIssuer: record.asset_issuer,
       transactionHash: record.transaction_hash,

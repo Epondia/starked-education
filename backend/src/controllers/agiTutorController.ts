@@ -35,13 +35,13 @@ export class AGITutorController {
       });
 
       // Get comprehensive knowledge graph for the subject
-      const knowledgeGraph = await this.knowledgeService.getSubjectKnowledge(subject, topic);
+      const knowledgeGraph = await this.knowledgeService.getSubjectKnowledge(subject, topic) as any;
 
       // Integrate cross-domain knowledge connections
       const crossDomainConnections = await this.integrationService.findConnections(subject, topic);
 
       // Generate emotionally intelligent teaching approach
-      const emotionalProfile = await this.emotionalService.analyzeEmotionalState(emotionalState);
+      const emotionalProfile = await this.emotionalService.analyzeEmotionalState(emotionalState) as any;
 
       // Create personalized learning session
       const learningSession = await this.agiTutorService.createLearningSession({
@@ -93,7 +93,7 @@ export class AGITutorController {
       );
 
       // Generate next teaching action
-      const nextAction = await this.agiTutorService.generateNextAction({
+      const nextAction = await (this.agiTutorService as any).generateNextAction({
         sessionId,
         responseAnalysis,
         updatedProfile

@@ -171,7 +171,8 @@ export class EnrollmentController {
         totalAmount: paymentDetails.amount,
         currency: paymentDetails.currency,
         status: EnrollmentStatus.PENDING,
-        paymentStatus: PaymentStatus.PENDING
+        paymentStatus: PaymentStatus.PENDING,
+        prerequisitesMet: false
       });
 
       // Process payment

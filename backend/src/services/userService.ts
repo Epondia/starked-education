@@ -1,4 +1,4 @@
-import { UserProfile, Achievement, PrivacyLevel, UserStats } from '../models/User';
+import { UserProfile, Achievement, PrivacyLevel, UserStats, UserRole } from '../models/User';
 import { UserSettings, DEFAULT_SETTINGS } from '../models/Settings';
 import logger from '../utils/logger';
 
@@ -28,7 +28,8 @@ class UserService {
         achievements: [1, 2],
         credentials: [101],
         reputation: 50,
-        privacyLevel: PrivacyLevel.Public
+        privacyLevel: PrivacyLevel.Public,
+        role: UserRole.STUDENT
       };
     } catch (error) {
       logger.error(`Error fetching profile for ${address}`, error);
@@ -57,7 +58,8 @@ class UserService {
         achievements: [1, 2],
         credentials: [101],
         reputation: 50,
-        privacyLevel: data.privacyLevel || PrivacyLevel.Public
+        privacyLevel: data.privacyLevel || PrivacyLevel.Public,
+        role: data.role || UserRole.STUDENT
       };
     } catch (error) {
       logger.error(`Error updating profile for ${address}`, error);
@@ -111,16 +113,16 @@ class UserService {
   }
 
   async getProfileStats(address: string): Promise<UserStats> {
-    
-    if (!profile) {
+    const userProfile = await this.getProfile(address);
+    if (!userProfile) {
       return { totalCourses: 0, totalCredentials: 0, totalAchievements: 0, reputation: 0 };
     }
 
     return { 
       totalCourses: 5, // Mock: In production, fetch from CourseService
-      totalCredentials: profile.credentials.length, 
-      totalAchievements: profile.achievements.length, 
-      reputation: profile.reputation 
+      totalCredentials: userProfile.credentials.length, 
+      totalAchievements: userProfile.achievements.length, 
+      reputation: userProfile.reputation 
     };
   }
 }

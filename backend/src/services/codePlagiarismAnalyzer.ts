@@ -255,7 +255,7 @@ export class CodePlagiarismAnalyzer {
     const similarities: number[] = [];
 
     // Compare functions
-    const funcSimilarity = this.compareFunctionLists(struct1.functions, struct2.functions);
+    const funcSimilarity = this.compareFunctionList(struct1.functions, struct2.functions);
     similarities.push(funcSimilarity);
 
     // Compare classes
@@ -430,7 +430,7 @@ export class CodePlagiarismAnalyzer {
       id: this.generateUUID(),
       source: {
         id: sample.id,
-        type: 'code_repository',
+        type: 'code_repository' as any,
         title: sample.title,
         url: sample.url,
         author: sample.author,

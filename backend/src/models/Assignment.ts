@@ -3,8 +3,6 @@
  * Defines the structure and interfaces for assignment data
  */
 
-import { User } from './User';
-
 export enum AssignmentType {
   QUIZ = 'quiz',
   ESSAY = 'essay',

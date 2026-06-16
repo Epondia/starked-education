@@ -56,7 +56,7 @@ export class TimeLockCredentialService {
       releaseTime,
     });
 
-    await credential.addAuditEntry('ISSUE', issuer, 'Credential issued with time lock');
+    await (credential as any).addAuditEntry('ISSUE', issuer, 'Credential issued with time lock');
 
     // Cache the credential
     await this.cacheCredential(credential);
@@ -94,7 +94,7 @@ export class TimeLockCredentialService {
     }
 
     credential.isReleased = true;
-    await credential.addAuditEntry('RELEASE', caller, 'Credential released');
+    await (credential as any).addAuditEntry('RELEASE', caller, 'Credential released');
 
     // Update cache
     await this.cacheCredential(credential);
@@ -109,7 +109,7 @@ export class TimeLockCredentialService {
    * Batch release multiple credentials (gas optimized)
    */
   async batchReleaseCredentials(credentialIds: string[], caller: string): Promise<any[]> {
-    const results = await TimeLockedCredential.batchRelease(credentialIds, caller);
+    const results = await (TimeLockedCredential as any).batchRelease(credentialIds, caller);
 
     // Cache updated credentials
     for (const result of results) {
@@ -151,7 +151,7 @@ export class TimeLockCredentialService {
     credential.isRevoked = true;
     credential.emergencyOverrideBy = admin;
     credential.revokeReason = reason;
-    await credential.addAuditEntry('EMERGENCY_REVOKE', admin, `Emergency revoke: ${reason}`);
+    await (credential as any).addAuditEntry('EMERGENCY_REVOKE', admin, `Emergency revoke: ${reason}`);
 
     // Update cache
     await this.cacheCredential(credential);
@@ -223,7 +223,7 @@ export class TimeLockCredentialService {
       }
     }
 
-    const upcoming = await TimeLockedCredential.findUpcomingReleases(recipient, timeWindowMs);
+    const upcoming = await (TimeLockedCredential as any).findUpcomingReleases(recipient, timeWindowMs);
 
     // Cache for 5 minutes
     if (this.redis) {

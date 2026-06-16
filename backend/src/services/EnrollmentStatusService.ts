@@ -473,11 +473,8 @@ export class EnrollmentStatusService {
   /**
    * Get enrollment status trends
    */
-  async getStatusTrends(days: number = 30): Promise<{
-    date: string;
-    [key in EnrollmentStatus]?: number;
-  }[]> {
-    const trends: { date: string; [key in EnrollmentStatus]?: number }[] = [];
+  async getStatusTrends(days: number = 30): Promise<Record<string, number | string>[]> {
+    const trends: Record<string, number | string>[] = [];
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
@@ -487,7 +484,7 @@ export class EnrollmentStatusService {
       date.setDate(date.getDate() + i);
       
       const dateStr = date.toISOString().split('T')[0];
-      trends.push({ date });
+      trends.push({ date: dateStr });
     }
 
     // In production, this would query actual transition data

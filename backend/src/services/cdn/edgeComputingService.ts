@@ -737,7 +737,6 @@ export class EdgeComputingService {
       this.eventEmitter.emit('edge:node:health', node);
     } catch (error) {
       node.health.status = 'unhealthy';
-      node.lastError = new Date();
       logger.warn(`Health check failed for node ${node.id}:`, error);
     }
   }

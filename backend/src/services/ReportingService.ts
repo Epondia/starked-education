@@ -707,7 +707,7 @@ export class ReportingService {
           {
             type: 'pie',
             title: 'Enrollment Status Breakdown',
-            data: Object.entries(data.statusBreakdown).map(([status, count]) => ({
+            data: Object.entries(data.statusBreakdown).map(([status, count]: [string, any]) => ({
               status,
               count
             }))
@@ -731,9 +731,9 @@ export class ReportingService {
           {
             type: 'pie',
             title: 'Payment Method Distribution',
-            data: Object.entries(data.paymentMethodBreakdown).map(([method, data]) => ({
+            data: Object.entries(data.paymentMethodBreakdown).map(([method, paymentData]: [string, any]) => ({
               method,
-              count: data.count
+              count: paymentData.count
             }))
           }
         );
