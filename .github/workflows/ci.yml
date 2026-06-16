@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -8,40 +8,40 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  NODE_VERSION: '18'
 
 jobs:
-  # ─── Smart Contracts ───────────────────────────────────────────────
+  # ─── Smart Contracts ─────────────────────────────────────────────
   contracts:
-    name: Smart Contracts
+    name: Contracts
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
 
-    - name: Build contracts
-      uses: nick-fields/retry@v3
-      with:
-        timeout_minutes: 10
-        max_attempts: 3
-        retry_on: error
-        command: cd contracts && cargo build --release --lib
+      - name: Build contracts
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_on: error
+          command: cd contracts && cargo build --release --lib
 
-    - name: Run contract tests
-      continue-on-error: true
-      uses: nick-fields/retry@v3
-      with:
-        timeout_minutes: 10
-        max_attempts: 3
-        retry_on: error
-        command: cd contracts && cargo test
-      # Note: tests may fail due to stellar-xdr/arbitrary crate compatibility
+      - name: Run contract tests
+        continue-on-error: true
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_on: error
+          command: cd contracts && cargo test
 
-  # ─── Backend ───────────────────────────────────────────────────────
+  # ─── Backend ─────────────────────────────────────────────────────
   backend:
     name: Backend
     runs-on: ubuntu-latest
@@ -71,119 +71,107 @@ jobs:
           - 6379:6379
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
-    - name: Install dependencies
-      uses: nick-fields/retry@v3
-      with:
-        timeout_minutes: 5
-        max_attempts: 3
-        retry_on: error
-        command: cd backend && npm ci
+      - name: Install dependencies
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_on: error
+          command: cd backend && npm ci
 
-    - name: TypeScript typecheck
-      run: |
-        cd backend
-        npx tsc --noEmit
+      - name: Type check
+        run: cd backend && npx tsc --noEmit
 
-    - name: Run linting
-      continue-on-error: true
-      run: |
-        cd backend
-        npm run lint
+      - name: Lint
+        continue-on-error: true
+        run: cd backend && npm run lint
 
-    - name: Run tests
-      continue-on-error: true
-      timeout-minutes: 25
-      uses: nick-fields/retry@v3
-      with:
-        timeout_minutes: 10
-        max_attempts: 2
-        retry_on: error
-        command: cd backend && npm run test:ci
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/starked_test
-        REDIS_URL: redis://localhost:6379
-        JWT_SECRET: test_secret
+      - name: Test
+        continue-on-error: true
+        timeout-minutes: 25
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 2
+          retry_on: error
+          command: cd backend && npm run test:ci
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/starked_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test_secret
 
-    - name: Build backend
-      run: |
-        cd backend
-        npm run build
+      - name: Build
+        run: cd backend && npm run build
 
-  # ─── Frontend ──────────────────────────────────────────────────────
+  # ─── Frontend ────────────────────────────────────────────────────
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
-    - name: Install dependencies
-      uses: nick-fields/retry@v3
-      with:
-        timeout_minutes: 5
-        max_attempts: 3
-        retry_on: error
-        command: cd frontend && npm ci
+      - name: Install dependencies
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_on: error
+          command: cd frontend && npm ci
 
-    - name: TypeScript typecheck
-      continue-on-error: true
-      run: |
-        cd frontend
-        npx tsc --noEmit
+      - name: Type check
+        continue-on-error: true
+        run: cd frontend && npx tsc --noEmit
 
-    - name: Run linting
-      continue-on-error: true
-      run: |
-        cd frontend
-        npm run lint
+      - name: Lint
+        continue-on-error: true
+        run: cd frontend && npm run lint
 
-    - name: Run tests
-      continue-on-error: true
-      timeout-minutes: 25
-      uses: nick-fields/retry@v3
-      with:
-        timeout_minutes: 10
-        max_attempts: 2
-        retry_on: error
-        command: cd frontend && npm run test:ci
+      - name: Test
+        continue-on-error: true
+        timeout-minutes: 25
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 2
+          retry_on: error
+          command: cd frontend && npm run test:ci
 
-    - name: Build frontend
-      run: |
-        cd frontend
-        npm run build
+      - name: Build
+        run: cd frontend && npm run build
 
-  # ─── Security Scan ─────────────────────────────────────────────────
+  # ─── Security Scan ───────────────────────────────────────────────
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      continue-on-error: true
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
 
-    - name: Upload Trivy scan results
-      if: always()
-      continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: 'trivy-results.sarif'
+      - name: Upload scan results
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
