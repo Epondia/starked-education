@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
 
 // NOTE: Non-core modules disabled for build compatibility.
 // Original code preserved in files; re-enable after SDK upgrade.

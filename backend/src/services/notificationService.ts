@@ -459,6 +459,32 @@ class NotificationService {
 
     return { success: successCount, failed: failedCount };
   }
+
+  // Stub methods for controller compatibility
+  public async sendEnrollmentCancellationNotification(userId: string, _enrollment: any): Promise<void> {
+    await this.createNotification(userId, 'Enrollment Cancelled', 'Your enrollment has been cancelled.', 'course');
+  }
+
+  public async sendCertificateIssuanceNotification(userId: string, _certificate: any): Promise<void> {
+    await this.createNotification(userId, 'Certificate Issued', 'Your certificate has been issued.', 'achievement');
+  }
+
+  public async sendPaymentConfirmationNotification(userId: string, _transaction: any): Promise<void> {
+    await this.createNotification(userId, 'Payment Confirmed', 'Your payment has been confirmed.', 'course');
+  }
+
+  public async sendRefundNotification(userId: string, _refund: any): Promise<void> {
+    await this.createNotification(userId, 'Refund Processed', 'Your refund has been processed.', 'course');
+  }
+
+  public async notifyAssignmentCreated(userId: string, _assignment: any): Promise<void> {
+    await this.createNotification(userId, 'Assignment Created', 'A new assignment has been created.', 'course');
+  }
+
+  public async notifyGradeCreated(userId: string, _grade: any): Promise<void> {
+    await this.createNotification(userId, 'Grade Posted', 'Your grade has been posted.', 'course');
+  }
 }
 
+export { NotificationService };
 export const notificationService = new NotificationService();

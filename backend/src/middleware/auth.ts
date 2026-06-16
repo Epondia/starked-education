@@ -13,6 +13,7 @@ export interface AuthenticatedRequest extends Request {
     email: string;
     role: UserRole;
     username: string;
+    address?: string;
   };
 }
 
@@ -35,11 +36,12 @@ export const authMiddleware = async (
 
     const decoded = jwt.verify(token, jwtSecret) as any;
     
-    req.user = {
+    (req as AuthenticatedRequest).user = {
       id: decoded.id,
       email: decoded.email,
       role: decoded.role,
-      username: decoded.username
+      username: decoded.username,
+      address: decoded.address
     };
 
     next();
@@ -62,6 +64,11 @@ export const requireRole = (roles: UserRole[]) => {
   };
 };
 
-export const requireInstructor = requireRole([UserRole.EDUCATOR, UserRole.ADMIN]);
+export const requireInstructor = requireRole([UserRole.INSTRUCTOR, UserRole.EDUCATOR, UserRole.ADMIN]);
+export const requireEducatorOrAdmin = requireRole([UserRole.EDUCATOR, UserRole.ADMIN]);
 export const requireAdmin = requireRole([UserRole.ADMIN]);
-export const requireStudent = requireRole([UserRole.STUDENT, UserRole.EDUCATOR, UserRole.ADMIN]);
+export const requireStudent = requireRole([UserRole.STUDENT, UserRole.INSTRUCTOR, UserRole.EDUCATOR, UserRole.ADMIN]);
+
+// Compatibility aliases
+export const authenticateToken = authMiddleware;
+export const authenticate = authMiddleware;

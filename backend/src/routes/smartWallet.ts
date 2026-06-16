@@ -4,9 +4,9 @@
  */
 
 import express from 'express';
-import * as smartWalletController from '../controllers/smartWalletController';
+import { smartWalletController } from '../controllers/smartWalletController';
 import { authenticate } from '../middleware/auth';
-import { validateRequest } from '../middleware/validation';
+import { validateRequestSchema } from '../middleware/validation';
 
 const router = express.Router();
 
@@ -20,7 +20,7 @@ router.use(authenticate);
  */
 router.post(
   '/create',
-  validateRequest({
+  validateRequestSchema({
     body: {
       ownerAddress: { type: 'string', required: true },
       guardians: { type: 'array', required: false },
@@ -37,7 +37,7 @@ router.post(
  */
 router.post(
   '/execute',
-  validateRequest({
+  validateRequestSchema({
     body: {
       walletAddress: { type: 'string', required: true },
       to: { type: 'string', required: true },
@@ -56,7 +56,7 @@ router.post(
  */
 router.post(
   '/execute-batch',
-  validateRequest({
+  validateRequestSchema({
     body: {
       walletAddress: { type: 'string', required: true },
       transactions: { type: 'array', required: true },
@@ -73,7 +73,7 @@ router.post(
  */
 router.post(
   '/recovery/setup',
-  validateRequest({
+  validateRequestSchema({
     body: {
       walletAddress: { type: 'string', required: true },
       guardians: { type: 'array', required: true },
@@ -90,7 +90,7 @@ router.post(
  */
 router.post(
   '/recovery/initiate',
-  validateRequest({
+  validateRequestSchema({
     body: {
       walletAddress: { type: 'string', required: true },
       newOwner: { type: 'string', required: true },
@@ -108,7 +108,7 @@ router.post(
  */
 router.post(
   '/recovery/support',
-  validateRequest({
+  validateRequestSchema({
     body: {
       recoveryId: { type: 'string', required: true },
       guardianAddress: { type: 'string', required: true },
@@ -135,7 +135,7 @@ router.get(
  */
 router.post(
   '/multisig/setup',
-  validateRequest({
+  validateRequestSchema({
     body: {
       walletAddress: { type: 'string', required: true },
       signers: { type: 'array', required: true },
@@ -152,7 +152,7 @@ router.post(
  */
 router.post(
   '/multisig/propose',
-  validateRequest({
+  validateRequestSchema({
     body: {
       walletAddress: { type: 'string', required: true },
       to: { type: 'string', required: true },
@@ -181,7 +181,7 @@ router.get(
  */
 router.post(
   '/session-key/create',
-  validateRequest({
+  validateRequestSchema({
     body: {
       walletAddress: { type: 'string', required: true },
       permissions: { type: 'object', required: true },
@@ -238,7 +238,7 @@ router.get(
  */
 router.post(
   '/credentials/auto-renewal',
-  validateRequest({
+  validateRequestSchema({
     body: {
       credentialId: { type: 'string', required: true },
       renewalThreshold: { type: 'number', required: true },

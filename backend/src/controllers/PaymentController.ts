@@ -668,3 +668,5 @@ export class PaymentController {
     console.log('Processing PayPal webhook:', event, data);
   }
 }
+
+export const paymentController = new PaymentController();

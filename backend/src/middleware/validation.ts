@@ -417,6 +417,15 @@ declare global {
         message: string;
         value?: any;
       }>;
+      user?: {
+        id: string;
+        email?: string;
+        role?: any;
+        username?: string;
+        address?: string;
+      };
+      file?: Express.Multer.File;
+      files?: Express.Multer.File[] | { [fieldname: string]: Express.Multer.File[] };
     }
   }
 }
@@ -428,7 +437,7 @@ export interface ValidationSchema {
   params?: Joi.ObjectSchema;
 }
 
-export const validateRequest = (schema: ValidationSchema) => {
+export const validateRequestSchema = (schema: ValidationSchema) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const errors: string[] = [];
 
@@ -612,3 +621,8 @@ export const bulkGradeSchema: ValidationSchema = {
     assignmentId: Joi.string().uuid().required()
   })
 };
+
+// Stub validation exports for enrollment/payment routes
+export const validateEnrollment = (req: Request, res: Response, next: NextFunction) => next();
+export const validateEnrollmentUpdate = (req: Request, res: Response, next: NextFunction) => next();
+export const validatePayment = (req: Request, res: Response, next: NextFunction) => next();

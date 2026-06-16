@@ -8,14 +8,14 @@ import { AssignmentController } from '../controllers/assignmentController';
 import { authMiddleware } from '../middleware/auth';
 import { uploadMiddleware } from '../middleware/upload';
 import { rateLimitMiddleware } from '../middleware/rateLimit';
-import { validateRequest } from '../middleware/validation';
+import { validateRequestSchema } from '../middleware/validation';
 import { 
   createAssignmentSchema,
   updateAssignmentSchema,
   createSubmissionSchema,
   gradeSubmissionSchema,
   bulkGradeSchema
-} from '../utils/schemas';
+} from '../middleware/validation';
 
 export function createAssignmentRoutes(controller: AssignmentController): Router {
   const router = Router();
@@ -27,7 +27,7 @@ export function createAssignmentRoutes(controller: AssignmentController): Router
   router.post(
     '/courses/:courseId/assignments',
     rateLimitMiddleware({ max: 10, windowMs: 15 * 60 * 1000 }), // 10 requests per 15 minutes
-    validateRequest(createAssignmentSchema),
+    validateRequestSchema(createAssignmentSchema),
     controller.createAssignment.bind(controller)
   );
 
@@ -46,7 +46,7 @@ export function createAssignmentRoutes(controller: AssignmentController): Router
   router.put(
     '/assignments/:assignmentId',
     rateLimitMiddleware({ max: 20, windowMs: 15 * 60 * 1000 }),
-    validateRequest(updateAssignmentSchema),
+    validateRequestSchema(updateAssignmentSchema),
     controller.updateAssignment.bind(controller)
   );
 
@@ -61,7 +61,7 @@ export function createAssignmentRoutes(controller: AssignmentController): Router
     '/assignments/:assignmentId/submissions',
     rateLimitMiddleware({ max: 20, windowMs: 15 * 60 * 1000 }),
     uploadMiddleware.array('files', 10), // Max 10 files
-    validateRequest(createSubmissionSchema),
+    validateRequestSchema(createSubmissionSchema),
     controller.createSubmission.bind(controller)
   );
 
@@ -81,7 +81,7 @@ export function createAssignmentRoutes(controller: AssignmentController): Router
     '/submissions/:submissionId',
     rateLimitMiddleware({ max: 30, windowMs: 15 * 60 * 1000 }),
     uploadMiddleware.array('files', 5), // Max 5 additional files
-    validateRequest(createSubmissionSchema),
+    validateRequestSchema(createSubmissionSchema),
     controller.updateSubmission.bind(controller)
   );
 
@@ -95,7 +95,7 @@ export function createAssignmentRoutes(controller: AssignmentController): Router
   router.post(
     '/submissions/:submissionId/grade',
     rateLimitMiddleware({ max: 50, windowMs: 15 * 60 * 1000 }),
-    validateRequest(gradeSubmissionSchema),
+    validateRequestSchema(gradeSubmissionSchema),
     controller.gradeSubmission.bind(controller)
   );
 
@@ -122,7 +122,7 @@ export function createAssignmentRoutes(controller: AssignmentController): Router
   router.post(
     '/assignments/:assignmentId/bulk-grade',
     rateLimitMiddleware({ max: 5, windowMs: 15 * 60 * 1000 }),
-    validateRequest(bulkGradeSchema),
+    validateRequestSchema(bulkGradeSchema),
     controller.bulkGrade.bind(controller)
   );
 

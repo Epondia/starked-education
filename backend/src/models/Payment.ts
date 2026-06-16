@@ -5,7 +5,7 @@
 
 import { PaymentMethod, PaymentStatus, StellarPayment } from './Enrollment';
 
-export { PaymentMethod, PaymentStatus, StellarPayment } from './Enrollment';
+export { PaymentMethod, PaymentStatus, StellarPayment, Payment, RefundRequest } from './Enrollment';
 
 export interface PaymentGateway {
   id: string;
@@ -226,4 +226,13 @@ export interface PaymentNotification {
   read: boolean;
   createdAt: Date;
   sentAt?: Date;
+}
+
+export interface RefundAnalytics {
+  totalRefunds: number;
+  totalRefunded: number;
+  currency: string;
+  refundRate: number;
+  refundByMonth: { month: string; count: number; amount: number }[];
+  refundByReason: { reason: string; count: number; amount: number }[];
 }

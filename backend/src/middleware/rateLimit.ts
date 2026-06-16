@@ -19,10 +19,7 @@ export const rateLimitMiddleware = (options: RateLimitOptions) => {
   return rateLimit({
     windowMs: options.windowMs,
     max: options.max,
-    message: options.message || {
-      error: 'Too many requests from this IP, please try again later.',
-      retryAfter: Math.ceil(options.windowMs / 1000)
-    },
+    message: options.message || 'Too many requests from this IP, please try again later.',
     standardHeaders: options.standardHeaders !== false, // Send rate limit info in headers
     legacyHeaders: options.legacyHeaders !== false, // Send rate limit info in legacy headers
     skipSuccessfulRequests: options.skipSuccessfulRequests || false,
@@ -42,20 +39,14 @@ export const rateLimits = {
   auth: rateLimitMiddleware({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // 5 attempts per 15 minutes
-    message: {
-      error: 'Too many authentication attempts, please try again later.',
-      retryAfter: 900
-    }
+    message: 'Too many authentication attempts, please try again later.'
   }),
 
   // Strict limits for file uploads
   upload: rateLimitMiddleware({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20, // 20 uploads per 15 minutes
-    message: {
-      error: 'Too many file uploads, please try again later.',
-      retryAfter: 900
-    }
+    message: 'Too many file uploads, please try again later.'
   }),
 
   // Moderate limits for general API usage

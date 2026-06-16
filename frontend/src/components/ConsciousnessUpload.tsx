@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { useWallet } from '../contexts/WalletContext';
+import { useStellarWallet } from '../context/WalletContext';
 import { uploadConsciousness, verifyConsciousness, transferConsciousness } from '../services/consciousnessService';
 import { NeuralEncoder } from '../utils/neuralEncoder';
 
@@ -20,7 +20,7 @@ interface ContinuityProof {
 }
 
 const ConsciousnessUpload: React.FC = () => {
-  const { publicKey, isConnected } = useWallet();
+  const { address, isConnected } = useStellarWallet();
   const [uploading, setUploading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [transferring, setTransferring] = useState(false);
@@ -57,7 +57,7 @@ const ConsciousnessUpload: React.FC = () => {
   }, []);
 
   const handleUpload = useCallback(async () => {
-    if (!isConnected || !publicKey || !neuralFile) {
+    if (!isConnected || !address || !neuralFile) {
       alert('Please connect your wallet and select a neural data file.');
       return;
     }
@@ -73,12 +73,12 @@ const ConsciousnessUpload: React.FC = () => {
         continuityProof = await NeuralEncoder.createContinuityProof(
           previousConsciousnessId,
           knowledgeTransferData,
-          publicKey
+          address
         );
       }
 
       const result = await uploadConsciousness({
-        ownerPublicKey: publicKey,
+        ownerPublicKey: address,
         neuralData,
         encodingVersion,
         continuityProof
@@ -92,7 +92,7 @@ const ConsciousnessUpload: React.FC = () => {
     } finally {
       setUploading(false);
     }
-  }, [isConnected, publicKey, neuralFile, encodingVersion, previousConsciousnessId, knowledgeTransferData]);
+  }, [isConnected, address, neuralFile, encodingVersion, previousConsciousnessId, knowledgeTransferData]);
 
   const handleVerify = useCallback(async () => {
     if (!consciousnessData) {
@@ -127,7 +127,7 @@ const ConsciousnessUpload: React.FC = () => {
     try {
       const result = await transferConsciousness({
         consciousnessId: consciousnessData.consciousnessId,
-        currentOwnerPublicKey: publicKey!,
+        currentOwnerPublicKey: address!,
         newOwnerPublicKey: transferToAddress,
         transferProof
       });
@@ -145,7 +145,7 @@ const ConsciousnessUpload: React.FC = () => {
     } finally {
       setTransferring(false);
     }
-  }, [consciousnessData, transferToAddress, transferProof, publicKey]);
+  }, [consciousnessData, transferToAddress, transferProof, address]);
 
   const generateTransferProof = useCallback(async () => {
     if (!consciousnessData || !transferToAddress) {
@@ -156,7 +156,7 @@ const ConsciousnessUpload: React.FC = () => {
     // Generate transfer proof (simplified - in production would use cryptographic signing)
     const proofData = {
       consciousnessId: consciousnessData.consciousnessId,
-      currentOwner: publicKey,
+      currentOwner: address,
       newOwner: transferToAddress,
       timestamp: Date.now()
     };
@@ -165,7 +165,7 @@ const ConsciousnessUpload: React.FC = () => {
     const proof = btoa(proofString); // Base64 encoding for demo
     setTransferProof(proof);
     alert('Transfer proof generated!');
-  }, [consciousnessData, transferToAddress, publicKey]);
+  }, [consciousnessData, transferToAddress, address]);
 
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">

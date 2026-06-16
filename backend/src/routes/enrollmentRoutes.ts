@@ -4,8 +4,9 @@
  */
 
 import express, { Router } from "express";
-import { EnrollmentController } from "../controllers/EnrollmentController";
+import { enrollmentController } from "../controllers/EnrollmentController";
 import { authenticateToken, requireRole } from "../middleware/auth";
+import { UserRole } from "../models/User";
 import {
   validateEnrollment,
   validateEnrollmentUpdate,
@@ -36,14 +37,14 @@ const paymentLimiter = rateLimit({
  * @desc Get user's enrollments with filtering and pagination
  * @access Private
  */
-router.get("/", authenticateToken, EnrollmentController.getUserEnrollments);
+router.get("/", authenticateToken, (req, res, next) => enrollmentController.getUserEnrollments(req, res));
 
 /**
  * @route GET /api/enrollments/:id
  * @desc Get specific enrollment details
  * @access Private
  */
-router.get("/:id", authenticateToken, EnrollmentController.getEnrollmentById);
+router.get("/:id", authenticateToken, (req, res, next) => enrollmentController.getEnrollmentById(req, res));
 
 /**
  * @route POST /api/enrollments
@@ -55,7 +56,7 @@ router.post(
   authenticateToken,
   enrollmentLimiter,
   validateEnrollment,
-  EnrollmentController.createEnrollment,
+  (req, res, next) => enrollmentController.createEnrollment(req, res),
 );
 
 /**
@@ -67,7 +68,7 @@ router.put(
   "/:id",
   authenticateToken,
   validateEnrollmentUpdate,
-  EnrollmentController.updateEnrollment,
+  (req, res, next) => enrollmentController.updateEnrollment(req, res),
 );
 
 /**
@@ -75,7 +76,7 @@ router.put(
  * @desc Cancel enrollment
  * @access Private
  */
-router.delete("/:id", authenticateToken, EnrollmentController.cancelEnrollment);
+router.delete("/:id", authenticateToken, (req, res, next) => enrollmentController.cancelEnrollment(req, res));
 
 /**
  * @route POST /api/enrollments/:id/complete
@@ -85,7 +86,7 @@ router.delete("/:id", authenticateToken, EnrollmentController.cancelEnrollment);
 router.post(
   "/:id/complete",
   authenticateToken,
-  EnrollmentController.completeEnrollment,
+  (req, res, next) => enrollmentController.completeEnrollment(req, res),
 );
 
 /**
@@ -96,7 +97,7 @@ router.post(
 router.get(
   "/:id/progress",
   authenticateToken,
-  EnrollmentController.getEnrollmentProgress,
+  (req, res, next) => enrollmentController.getEnrollmentProgress(req, res),
 );
 
 /**
@@ -107,7 +108,7 @@ router.get(
 router.put(
   "/:id/progress",
   authenticateToken,
-  EnrollmentController.updateEnrollmentProgress,
+  (req, res, next) => enrollmentController.updateEnrollmentProgress(req, res),
 );
 
 /**
@@ -118,8 +119,8 @@ router.put(
 router.get(
   "/course/:courseId",
   authenticateToken,
-  requireRole(["educator", "admin"]),
-  EnrollmentController.getCourseEnrollments,
+  requireRole([UserRole.EDUCATOR, UserRole.ADMIN]),
+  (req, res, next) => enrollmentController.getCourseEnrollments(req, res),
 );
 
 /**
@@ -130,8 +131,8 @@ router.get(
 router.post(
   "/:id/certificate",
   authenticateToken,
-  requireRole(["educator", "admin"]),
-  EnrollmentController.issueCertificate,
+  requireRole([UserRole.EDUCATOR, UserRole.ADMIN]),
+  (req, res, next) => enrollmentController.issueCertificate(req, res),
 );
 
 /**
@@ -142,8 +143,8 @@ router.post(
 router.get(
   "/waitlist/:courseId",
   authenticateToken,
-  requireRole(["educator", "admin"]),
-  EnrollmentController.getCourseWaitlist,
+  requireRole([UserRole.EDUCATOR, UserRole.ADMIN]),
+  (req, res, next) => enrollmentController.getCourseWaitlist(req, res),
 );
 
 /**
@@ -155,7 +156,7 @@ router.post(
   "/waitlist/:courseId",
   authenticateToken,
   enrollmentLimiter,
-  EnrollmentController.addToWaitlist,
+  (req, res, next) => enrollmentController.addToWaitlist(req, res),
 );
 
 /**
@@ -166,7 +167,7 @@ router.post(
 router.delete(
   "/waitlist/:courseId",
   authenticateToken,
-  EnrollmentController.removeFromWaitlist,
+  (req, res, next) => enrollmentController.removeFromWaitlist(req, res),
 );
 
 /**
@@ -177,7 +178,7 @@ router.delete(
 router.get(
   "/analytics/user",
   authenticateToken,
-  EnrollmentController.getUserEnrollmentAnalytics,
+  (req, res, next) => enrollmentController.getUserEnrollmentAnalytics(req, res),
 );
 
 /**
@@ -188,8 +189,8 @@ router.get(
 router.get(
   "/analytics/course/:courseId",
   authenticateToken,
-  requireRole(["educator", "admin"]),
-  EnrollmentController.getCourseEnrollmentAnalytics,
+  requireRole([UserRole.EDUCATOR, UserRole.ADMIN]),
+  (req, res, next) => enrollmentController.getCourseEnrollmentAnalytics(req, res),
 );
 
 /**
@@ -200,8 +201,8 @@ router.get(
 router.get(
   "/analytics/global",
   authenticateToken,
-  requireRole(["admin"]),
-  EnrollmentController.getGlobalEnrollmentAnalytics,
+  requireRole([UserRole.ADMIN]),
+  (req, res, next) => enrollmentController.getGlobalEnrollmentAnalytics(req, res),
 );
 
 /**
@@ -212,8 +213,8 @@ router.get(
 router.post(
   "/bulk",
   authenticateToken,
-  requireRole(["admin"]),
-  EnrollmentController.bulkEnrollmentOperations,
+  requireRole([UserRole.ADMIN]),
+  (req, res, next) => enrollmentController.bulkEnrollmentOperations(req, res),
 );
 
 /**
@@ -224,7 +225,7 @@ router.post(
 router.get(
   "/capacity/:courseId",
   authenticateToken,
-  EnrollmentController.getCourseCapacity,
+  (req, res, next) => enrollmentController.getCourseCapacity(req, res),
 );
 
 /**
@@ -235,7 +236,7 @@ router.get(
 router.post(
   "/validate-prerequisites",
   authenticateToken,
-  EnrollmentController.validatePrerequisites,
+  (req, res, next) => enrollmentController.validatePrerequisites(req, res),
 );
 
 /**
@@ -246,7 +247,7 @@ router.post(
 router.get(
   "/history/:userId",
   authenticateToken,
-  EnrollmentController.getUserEnrollmentHistory,
+  (req, res, next) => enrollmentController.getUserEnrollmentHistory(req, res),
 );
 
 /**
@@ -258,7 +259,7 @@ router.post(
   "/:id/renew",
   authenticateToken,
   paymentLimiter,
-  EnrollmentController.renewEnrollment,
+  (req, res, next) => enrollmentController.renewEnrollment(req, res),
 );
 
 /**
@@ -269,8 +270,8 @@ router.post(
 router.get(
   "/export/:courseId",
   authenticateToken,
-  requireRole(["educator", "admin"]),
-  EnrollmentController.exportCourseEnrollments,
+  requireRole([UserRole.EDUCATOR, UserRole.ADMIN]),
+  (req, res, next) => enrollmentController.exportCourseEnrollments(req, res),
 );
 
 export default router;

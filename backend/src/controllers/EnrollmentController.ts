@@ -6,7 +6,7 @@
 import { Request, Response } from 'express';
 import { EnrollmentService } from '../services/EnrollmentService';
 import { PaymentService } from '../services/PaymentService';
-import { NotificationService } from '../services/NotificationService';
+import { NotificationService } from '../services/notificationService';
 import { 
   Enrollment, 
   EnrollmentFilter, 
@@ -815,3 +815,5 @@ export class EnrollmentController {
     }
   }
 }
+
+export const enrollmentController = new EnrollmentController();

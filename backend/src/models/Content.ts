@@ -120,6 +120,9 @@ export interface Content {
   version: {
     current: number;
     history: ContentVersion[];
+    autoVersioning?: boolean;
+    lastVersionUpdate?: Date;
+    maxVersions?: number;
   };
   analytics: {
     views: number;
