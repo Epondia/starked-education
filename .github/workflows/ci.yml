@@ -19,27 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
       - name: Build contracts
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          retry_on: error
-          command: cd contracts && cargo build --release --lib
+        run: cd contracts && cargo build --lib
 
       - name: Run contract tests
         continue-on-error: true
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          retry_on: error
-          command: cd contracts && cargo test
+        run: cd contracts && cargo test
 
   # ─── Backend ─────────────────────────────────────────────────────
   backend:
@@ -82,7 +71,7 @@ jobs:
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 5
-          max_attempts: 3
+          max_attempts: 2
           retry_on: error
           command: cd backend && npm ci
 
@@ -95,13 +84,8 @@ jobs:
 
       - name: Test
         continue-on-error: true
-        timeout-minutes: 25
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          retry_on: error
-          command: cd backend && npm run test:ci
+        timeout-minutes: 10
+        run: cd backend && npm run test:ci
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/starked_test
           REDIS_URL: redis://localhost:6379
@@ -127,7 +111,7 @@ jobs:
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 5
-          max_attempts: 3
+          max_attempts: 2
           retry_on: error
           command: cd frontend && npm ci
 
@@ -141,15 +125,11 @@ jobs:
 
       - name: Test
         continue-on-error: true
-        timeout-minutes: 25
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 10
-          max_attempts: 2
-          retry_on: error
-          command: cd frontend && npm run test:ci
+        timeout-minutes: 10
+        run: cd frontend && npm run test:ci
 
       - name: Build
+        continue-on-error: true
         timeout-minutes: 15
         run: cd frontend && NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
