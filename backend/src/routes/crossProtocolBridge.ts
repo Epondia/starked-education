@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { crossProtocolBridgeService } from '../services/crossProtocolBridgeService';
-import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -34,7 +34,7 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { destinationChain, payload, messageType, gasLimit } = req.body;
-      const user = (req as AuthenticatedRequest).user;
+      const user = (req as any).user;
       const sender = user?.address;
 
       if (!sender) {

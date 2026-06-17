@@ -93,7 +93,7 @@ describe('Profile Components', () => {
     })
 
     it('handles null stats gracefully', () => {
-      render(<ProfileStats stats={null} />)
+      render(<ProfileStats stats={null as any} />)
       
       // Should not crash and should show 0 for all stats
       expect(screen.getByText('0')).toBeInTheDocument()

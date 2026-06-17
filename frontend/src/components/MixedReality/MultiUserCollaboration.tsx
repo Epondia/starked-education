@@ -350,7 +350,7 @@ export function MultiUserCollaboration({
       case 'object-shared':
         onObjectShared?.(message.object);
         break;
-      'case: object-updated':
+      case 'object-updated':
         onObjectUpdated?.(message.object);
         break;
       case 'chat-message':

@@ -28,7 +28,7 @@ describe('Event Logger API Tests', () => {
     jest.clearAllMocks();
   });
 
-  describe('POST /api/events/course-completion', () => {
+  describe('POST /api/v1/events/course-completion', () => {
     it('should log course completion event successfully', async () => {
       const eventData = {
         userId: 'user_123',
@@ -54,7 +54,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.logCourseCompletion.mockResolvedValue(loggedEvent);
 
       const response = await request(app)
-        .post('/api/events/course-completion')
+        .post('/api/v1/events/course-completion')
         .send(eventData);
 
       expect(response.status).toBe(201);
@@ -71,7 +71,7 @@ describe('Event Logger API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/events/course-completion')
+        .post('/api/v1/events/course-completion')
         .send(invalidData);
 
       expect(response.status).toBe(400);
@@ -82,7 +82,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.logCourseCompletion.mockRejectedValue(new Error('Logging failed'));
 
       const response = await request(app)
-        .post('/api/events/course-completion')
+        .post('/api/v1/events/course-completion')
         .send({ userId: 'user_123', courseId: 'course_123' });
 
       expect(response.status).toBe(500);
@@ -90,7 +90,7 @@ describe('Event Logger API Tests', () => {
     });
   });
 
-  describe('POST /api/events/credential-issuance', () => {
+  describe('POST /api/v1/events/credential-issuance', () => {
     it('should log credential issuance event successfully', async () => {
       const eventData = {
         userId: 'user_123',
@@ -113,7 +113,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.logCredentialIssuance.mockResolvedValue(loggedEvent);
 
       const response = await request(app)
-        .post('/api/events/credential-issuance')
+        .post('/api/v1/events/credential-issuance')
         .send(eventData);
 
       expect(response.status).toBe(201);
@@ -130,7 +130,7 @@ describe('Event Logger API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/events/credential-issuance')
+        .post('/api/v1/events/credential-issuance')
         .send(invalidData);
 
       expect(response.status).toBe(400);
@@ -138,7 +138,7 @@ describe('Event Logger API Tests', () => {
     });
   });
 
-  describe('POST /api/events/user-achievement', () => {
+  describe('POST /api/v1/events/user-achievement', () => {
     it('should log user achievement event successfully', async () => {
       const eventData = {
         userId: 'user_123',
@@ -166,7 +166,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.logUserAchievement.mockResolvedValue(loggedEvent);
 
       const response = await request(app)
-        .post('/api/events/user-achievement')
+        .post('/api/v1/events/user-achievement')
         .send(eventData);
 
       expect(response.status).toBe(201);
@@ -178,7 +178,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.logUserAchievement.mockRejectedValue(new Error('Achievement already earned'));
 
       const response = await request(app)
-        .post('/api/events/user-achievement')
+        .post('/api/v1/events/user-achievement')
         .send({ userId: 'user_123', achievementId: 'ach_123' });
 
       expect(response.status).toBe(409);
@@ -186,7 +186,7 @@ describe('Event Logger API Tests', () => {
     });
   });
 
-  describe('POST /api/events/profile-update', () => {
+  describe('POST /api/v1/events/profile-update', () => {
     it('should log profile update event successfully', async () => {
       const eventData = {
         userId: 'user_123',
@@ -217,7 +217,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.logProfileUpdate.mockResolvedValue(loggedEvent);
 
       const response = await request(app)
-        .post('/api/events/profile-update')
+        .post('/api/v1/events/profile-update')
         .send(eventData);
 
       expect(response.status).toBe(201);
@@ -233,7 +233,7 @@ describe('Event Logger API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/events/profile-update')
+        .post('/api/v1/events/profile-update')
         .send(invalidData);
 
       expect(response.status).toBe(400);
@@ -241,7 +241,7 @@ describe('Event Logger API Tests', () => {
     });
   });
 
-  describe('POST /api/events/course-enrollment', () => {
+  describe('POST /api/v1/events/course-enrollment', () => {
     it('should log course enrollment event successfully', async () => {
       const eventData = {
         userId: 'user_123',
@@ -265,7 +265,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.logCourseEnrollment.mockResolvedValue(loggedEvent);
 
       const response = await request(app)
-        .post('/api/events/course-enrollment')
+        .post('/api/v1/events/course-enrollment')
         .send(eventData);
 
       expect(response.status).toBe(201);
@@ -277,7 +277,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.logCourseEnrollment.mockRejectedValue(new Error('Already enrolled'));
 
       const response = await request(app)
-        .post('/api/events/course-enrollment')
+        .post('/api/v1/events/course-enrollment')
         .send({ userId: 'user_123', courseId: 'course_123' });
 
       expect(response.status).toBe(409);
@@ -285,7 +285,7 @@ describe('Event Logger API Tests', () => {
     });
   });
 
-  describe('GET /api/events/event/:eventId', () => {
+  describe('GET /api/v1/events/event/:eventId', () => {
     it('should retrieve specific event', async () => {
       const mockEvent = {
         id: 'event_123',
@@ -302,7 +302,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.getEventById.mockResolvedValue(mockEvent);
 
       const response = await request(app)
-        .get('/api/events/event/event_123');
+        .get('/api/v1/events/event/event_123');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -314,14 +314,14 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.getEventById.mockResolvedValue(null);
 
       const response = await request(app)
-        .get('/api/events/event/nonexistent');
+        .get('/api/v1/events/event/nonexistent');
 
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /api/events/user/:userId/events', () => {
+  describe('GET /api/v1/events/user/:userId/events', () => {
     it('should retrieve user events with pagination', async () => {
       const mockEvents = [
         { id: 'event_1', type: 'course_completion', userId: 'user_123' },
@@ -338,7 +338,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.getUserEvents.mockResolvedValue(mockResult);
 
       const response = await request(app)
-        .get('/api/events/user/user_123/events?page=1&limit=10&eventType=course_completion');
+        .get('/api/v1/events/user/user_123/events?page=1&limit=10&eventType=course_completion');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -362,14 +362,14 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.getUserEvents.mockResolvedValue(mockResult);
 
       const response = await request(app)
-        .get('/api/events/user/user_123/events');
+        .get('/api/v1/events/user/user_123/events');
 
       expect(response.status).toBe(200);
       expect(response.body.data.events).toEqual([]);
     });
   });
 
-  describe('GET /api/events/type/:eventType', () => {
+  describe('GET /api/v1/events/type/:eventType', () => {
     it('should retrieve events by type', async () => {
       const mockEvents = [
         { id: 'event_1', type: 'course_completion', userId: 'user_1' },
@@ -386,7 +386,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.getEventsByType.mockResolvedValue(mockResult);
 
       const response = await request(app)
-        .get('/api/events/type/course_completion?page=1&limit=10');
+        .get('/api/v1/events/type/course_completion?page=1&limit=10');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -399,14 +399,14 @@ describe('Event Logger API Tests', () => {
 
     it('should handle invalid event type', async () => {
       const response = await request(app)
-        .get('/api/events/type/invalid_type');
+        .get('/api/v1/events/type/invalid_type');
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /api/events/recent', () => {
+  describe('GET /api/v1/events/recent', () => {
     it('should retrieve recent events', async () => {
       const mockEvents = [
         { id: 'event_1', type: 'course_completion', timestamp: new Date() },
@@ -416,7 +416,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.getRecentEvents.mockResolvedValue(mockEvents);
 
       const response = await request(app)
-        .get('/api/events/recent?limit=10&eventType=course_completion');
+        .get('/api/v1/events/recent?limit=10&eventType=course_completion');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -429,14 +429,14 @@ describe('Event Logger API Tests', () => {
 
     it('should validate limit parameter', async () => {
       const response = await request(app)
-        .get('/api/events/recent?limit=1000'); // Too high
+        .get('/api/v1/events/recent?limit=1000'); // Too high
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /api/events/count', () => {
+  describe('GET /api/v1/events/count', () => {
     it('should retrieve event count', async () => {
       const mockCount = {
         total: 1000,
@@ -456,7 +456,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.getEventCount.mockResolvedValue(mockCount);
 
       const response = await request(app)
-        .get('/api/events/count?startDate=2024-03-01&endDate=2024-03-31');
+        .get('/api/v1/events/count?startDate=2024-03-01&endDate=2024-03-31');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -472,7 +472,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.getEventCount.mockResolvedValue(mockCount);
 
       const response = await request(app)
-        .get('/api/events/count?eventType=course_completion&userId=user_123');
+        .get('/api/v1/events/count?eventType=course_completion&userId=user_123');
 
       expect(response.status).toBe(200);
       expect(eventLoggerController.getEventCount).toHaveBeenCalledWith({
@@ -482,7 +482,7 @@ describe('Event Logger API Tests', () => {
     });
   });
 
-  describe('GET /api/events/search', () => {
+  describe('GET /api/v1/events/search', () => {
     it('should search events', async () => {
       const searchParams = {
         query: 'course completion',
@@ -506,7 +506,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.searchEvents.mockResolvedValue(mockSearchResult);
 
       const response = await request(app)
-        .get('/api/events/search')
+        .get('/api/v1/events/search')
         .query(searchParams);
 
       expect(response.status).toBe(200);
@@ -517,7 +517,7 @@ describe('Event Logger API Tests', () => {
 
     it('should validate search parameters', async () => {
       const response = await request(app)
-        .get('/api/events/search?query='); // Empty query
+        .get('/api/v1/events/search?query='); // Empty query
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -535,14 +535,14 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.searchEvents.mockResolvedValue(mockResult);
 
       const response = await request(app)
-        .get('/api/events/search?query=nonexistent');
+        .get('/api/v1/events/search?query=nonexistent');
 
       expect(response.status).toBe(200);
       expect(response.body.data.events).toEqual([]);
     });
   });
 
-  describe('GET /api/events/verify/:eventId', () => {
+  describe('GET /api/v1/events/verify/:eventId', () => {
     it('should verify event successfully', async () => {
       const eventId = 'event_123';
       const verificationResult = {
@@ -559,7 +559,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.verifyEvent.mockResolvedValue(verificationResult);
 
       const response = await request(app)
-        .get(`/api/events/verify/${eventId}`);
+        .get(`/api/v1/events/verify/${eventId}`);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -579,7 +579,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.verifyEvent.mockResolvedValue(verificationResult);
 
       const response = await request(app)
-        .get(`/api/events/verify/${eventId}`);
+        .get(`/api/v1/events/verify/${eventId}`);
 
       expect(response.status).toBe(200);
       expect(response.body.data.isValid).toBe(false);
@@ -589,14 +589,14 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.verifyEvent.mockRejectedValue(new Error('Verification failed'));
 
       const response = await request(app)
-        .get('/api/events/verify/event_123');
+        .get('/api/v1/events/verify/event_123');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /api/events/audit-report/:userId', () => {
+  describe('GET /api/v1/events/audit-report/:userId', () => {
     it('should generate user audit report', async () => {
       const userId = 'user_123';
       const auditReport = {
@@ -629,7 +629,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.generateUserAuditReport.mockResolvedValue(auditReport);
 
       const response = await request(app)
-        .get(`/api/events/audit-report/${userId}`);
+        .get(`/api/v1/events/audit-report/${userId}`);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -641,7 +641,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.generateUserAuditReport.mockRejectedValue(new Error('Report generation failed'));
 
       const response = await request(app)
-        .get('/api/events/audit-report/user_123');
+        .get('/api/v1/events/audit-report/user_123');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
@@ -652,7 +652,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.generateUserAuditReport.mockResolvedValue(mockReport);
 
       const response = await request(app)
-        .get('/api/events/audit-report/user_123?startDate=2024-03-01&endDate=2024-03-31');
+        .get('/api/v1/events/audit-report/user_123?startDate=2024-03-01&endDate=2024-03-31');
 
       expect(response.status).toBe(200);
       expect(eventLoggerController.generateUserAuditReport).toHaveBeenCalledWith('user_123', {
@@ -665,7 +665,7 @@ describe('Event Logger API Tests', () => {
   describe('Edge Cases and Error Handling', () => {
     it('should handle malformed request bodies', async () => {
       const response = await request(app)
-        .post('/api/events/course-completion')
+        .post('/api/v1/events/course-completion')
         .set('Content-Type', 'application/json')
         .send('{"invalid": json}');
 
@@ -680,8 +680,8 @@ describe('Event Logger API Tests', () => {
         .mockResolvedValueOnce({ id: 'event_2' });
 
       const [response1, response2] = await Promise.all([
-        request(app).post('/api/events/course-completion').send(eventData),
-        request(app).post('/api/events/course-completion').send(eventData)
+        request(app).post('/api/v1/events/course-completion').send(eventData),
+        request(app).post('/api/v1/events/course-completion').send(eventData)
       ]);
 
       expect(response1.status).toBe(201);
@@ -700,7 +700,7 @@ describe('Event Logger API Tests', () => {
       eventLoggerController.logCourseCompletion.mockRejectedValue(new Error('Payload too large'));
 
       const response = await request(app)
-        .post('/api/events/course-completion')
+        .post('/api/v1/events/course-completion')
         .send(largeEventData);
 
       expect(response.status).toBe(400);
@@ -715,7 +715,7 @@ describe('Event Logger API Tests', () => {
       );
 
       const response = await request(app)
-        .get('/api/events/user/user_123/events');
+        .get('/api/v1/events/user/user_123/events');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
@@ -723,7 +723,7 @@ describe('Event Logger API Tests', () => {
 
     it('should handle invalid date formats', async () => {
       const response = await request(app)
-        .get('/api/events/search?startDate=invalid-date&endDate=invalid-date');
+        .get('/api/v1/events/search?startDate=invalid-date&endDate=invalid-date');
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -732,7 +732,7 @@ describe('Event Logger API Tests', () => {
     it('should handle unauthorized access', async () => {
       // This would require authentication middleware to be implemented
       const response = await request(app)
-        .post('/api/events/course-completion')
+        .post('/api/v1/events/course-completion')
         .send({ userId: 'user_123', courseId: 'course_123' });
 
       // Based on current implementation, this should work without auth

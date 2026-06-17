@@ -34,12 +34,12 @@ describe('Content Delivery System Tests', () => {
 
     // Get tokens
     const studentResponse = await request(app)
-      .post('/api/users/login')
+      .post('/api/v1/users/login')
       .send({ email: 'student@test.com', password: 'password123' });
     token = studentResponse.body.token;
 
     const instructorResponse = await request(app)
-      .post('/api/users/login')
+      .post('/api/v1/users/login')
       .send({ email: 'instructor@test.com', password: 'password123' });
     instructorToken = instructorResponse.body.token;
 
@@ -101,9 +101,9 @@ describe('Content Delivery System Tests', () => {
       await testContent.save();
     });
 
-    test('GET /api/content/:id - should fetch content by ID', async () => {
+    test('GET /api/v1/content/:id - should fetch content by ID', async () => {
       const response = await request(app)
-        .get(`/api/content/${testContent._id}`)
+        .get(`/api/v1/content/${testContent._id}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -112,9 +112,9 @@ describe('Content Delivery System Tests', () => {
       expect(response.body.viewCount).toBe(1); // Should increment view count
     });
 
-    test('GET /api/content/course/:courseId - should fetch course content', async () => {
+    test('GET /api/v1/content/course/:courseId - should fetch course content', async () => {
       const response = await request(app)
-        .get(`/api/content/course/${testCourse._id}`)
+        .get(`/api/v1/content/course/${testCourse._id}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -123,7 +123,7 @@ describe('Content Delivery System Tests', () => {
       expect(response.body[0].title).toBe('Test Video Content');
     });
 
-    test('GET /api/content/search - should search content', async () => {
+    test('GET /api/v1/content/search - should search content', async () => {
       // Add more test content
       await Content.create({
         title: 'JavaScript Basics',
@@ -139,7 +139,7 @@ describe('Content Delivery System Tests', () => {
       });
 
       const response = await request(app)
-        .get('/api/content/search?q=javascript')
+        .get('/api/v1/content/search?q=javascript')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -147,7 +147,7 @@ describe('Content Delivery System Tests', () => {
       expect(response.body.pagination).toBeDefined();
     });
 
-    test('POST /api/content - should create new content (instructor only)', async () => {
+    test('POST /api/v1/content - should create new content (instructor only)', async () => {
       const newContent = {
         title: 'New Video Content',
         description: 'Another test video',
@@ -159,7 +159,7 @@ describe('Content Delivery System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/content')
+        .post('/api/v1/content')
         .set('Authorization', `Bearer ${instructorToken}`)
         .send(newContent)
         .expect(201);
@@ -168,7 +168,7 @@ describe('Content Delivery System Tests', () => {
       expect(response.body.type).toBe('video');
     });
 
-    test('POST /api/content - should fail for non-instructor', async () => {
+    test('POST /api/v1/content - should fail for non-instructor', async () => {
       const newContent = {
         title: 'New Video Content',
         description: 'Another test video',
@@ -179,7 +179,7 @@ describe('Content Delivery System Tests', () => {
       };
 
       await request(app)
-        .post('/api/content')
+        .post('/api/v1/content')
         .set('Authorization', `Bearer ${token}`)
         .send(newContent)
         .expect(403);
@@ -200,7 +200,7 @@ describe('Content Delivery System Tests', () => {
       await testContent.save();
     });
 
-    test('POST /api/progress - should track progress', async () => {
+    test('POST /api/v1/progress - should track progress', async () => {
       const progressData = {
         content: testContent._id,
         currentTime: 300,
@@ -209,7 +209,7 @@ describe('Content Delivery System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/progress')
+        .post('/api/v1/progress')
         .set('Authorization', `Bearer ${token}`)
         .send(progressData)
         .expect(201);
@@ -218,7 +218,7 @@ describe('Content Delivery System Tests', () => {
       expect(response.body.currentTime).toBe(300);
     });
 
-    test('GET /api/progress/content/:contentId - should get content progress', async () => {
+    test('GET /api/v1/progress/content/:contentId - should get content progress', async () => {
       // Create progress first
       await Progress.create({
         user: testUser._id,
@@ -229,7 +229,7 @@ describe('Content Delivery System Tests', () => {
       });
 
       const response = await request(app)
-        .get(`/api/progress/content/${testContent._id}`)
+        .get(`/api/v1/progress/content/${testContent._id}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -252,7 +252,7 @@ describe('Content Delivery System Tests', () => {
       await testContent.save();
     });
 
-    test('POST /api/bookmarks - should create bookmark', async () => {
+    test('POST /api/v1/bookmarks - should create bookmark', async () => {
       const bookmarkData = {
         contentId: testContent._id,
         timestamp: 300,
@@ -260,7 +260,7 @@ describe('Content Delivery System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/bookmarks')
+        .post('/api/v1/bookmarks')
         .set('Authorization', `Bearer ${token}`)
         .send(bookmarkData)
         .expect(200);
@@ -270,7 +270,7 @@ describe('Content Delivery System Tests', () => {
       expect(response.body.note).toBe('Important section');
     });
 
-    test('GET /api/bookmarks - should get user bookmarks', async () => {
+    test('GET /api/v1/bookmarks - should get user bookmarks', async () => {
       // Create bookmark first
       await Bookmark.create({
         user: testUser._id,
@@ -280,7 +280,7 @@ describe('Content Delivery System Tests', () => {
       });
 
       const response = await request(app)
-        .get('/api/bookmarks')
+        .get('/api/v1/bookmarks')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -289,7 +289,7 @@ describe('Content Delivery System Tests', () => {
       expect(response.body[0].note).toBe('Test bookmark');
     });
 
-    test('POST /api/bookmarks/notes - should create note', async () => {
+    test('POST /api/v1/bookmarks/notes - should create note', async () => {
       const noteData = {
         contentId: testContent._id,
         timestamp: 300,
@@ -298,7 +298,7 @@ describe('Content Delivery System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/bookmarks/notes')
+        .post('/api/v1/bookmarks/notes')
         .set('Authorization', `Bearer ${token}`)
         .send(noteData)
         .expect(201);
@@ -308,7 +308,7 @@ describe('Content Delivery System Tests', () => {
       expect(response.body.tags).toEqual(['important', 'review']);
     });
 
-    test('GET /api/bookmarks/notes - should get user notes', async () => {
+    test('GET /api/v1/bookmarks/notes - should get user notes', async () => {
       // Create note first
       await Note.create({
         user: testUser._id,
@@ -319,7 +319,7 @@ describe('Content Delivery System Tests', () => {
       });
 
       const response = await request(app)
-        .get('/api/bookmarks/notes')
+        .get('/api/v1/bookmarks/notes')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -349,7 +349,7 @@ describe('Content Delivery System Tests', () => {
       await testContent.save();
     });
 
-    test('POST /api/offline/request - should request offline download', async () => {
+    test('POST /api/v1/offline/request - should request offline download', async () => {
       const requestData = {
         contentId: testContent._id,
         deviceId: 'test-device-123',
@@ -357,7 +357,7 @@ describe('Content Delivery System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/offline/request')
+        .post('/api/v1/offline/request')
         .set('Authorization', `Bearer ${token}`)
         .send(requestData)
         .expect(201);
@@ -367,10 +367,10 @@ describe('Content Delivery System Tests', () => {
       expect(response.body.isDownloaded).toBe(false);
     });
 
-    test('PUT /api/offline/:offlineId/progress - should update download progress', async () => {
+    test('PUT /api/v1/offline/:offlineId/progress - should update download progress', async () => {
       // Create offline content first
       const offlineContent = await request(app)
-        .post('/api/offline/request')
+        .post('/api/v1/offline/request')
         .set('Authorization', `Bearer ${token}`)
         .send({
           contentId: testContent._id,
@@ -388,7 +388,7 @@ describe('Content Delivery System Tests', () => {
       };
 
       const response = await request(app)
-        .put(`/api/offline/${offlineContent.body._id}/progress`)
+        .put(`/api/v1/offline/${offlineContent.body._id}/progress`)
         .set('Authorization', `Bearer ${token}`)
         .send(progressData)
         .expect(200);
@@ -397,9 +397,9 @@ describe('Content Delivery System Tests', () => {
       expect(response.body.cachedFiles).toHaveLength(1);
     });
 
-    test('GET /api/offline/storage/:deviceId - should get storage usage', async () => {
+    test('GET /api/v1/offline/storage/:deviceId - should get storage usage', async () => {
       const response = await request(app)
-        .get('/api/offline/storage/test-device-123')
+        .get('/api/v1/offline/storage/test-device-123')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -447,9 +447,9 @@ describe('Content Delivery System Tests', () => {
       ]);
     });
 
-    test('GET /api/content/:id/analytics - should get content analytics (instructor only)', async () => {
+    test('GET /api/v1/content/:id/analytics - should get content analytics (instructor only)', async () => {
       const response = await request(app)
-        .get(`/api/content/${testContent._id}/analytics`)
+        .get(`/api/v1/content/${testContent._id}/analytics`)
         .set('Authorization', `Bearer ${instructorToken}`)
         .expect(200);
 
@@ -459,9 +459,9 @@ describe('Content Delivery System Tests', () => {
       expect(response.body.analytics.completedViews).toBe(1);
     });
 
-    test('GET /api/content/:id/analytics - should fail for non-instructor', async () => {
+    test('GET /api/v1/content/:id/analytics - should fail for non-instructor', async () => {
       await request(app)
-        .get(`/api/content/${testContent._id}/analytics`)
+        .get(`/api/v1/content/${testContent._id}/analytics`)
         .set('Authorization', `Bearer ${token}`)
         .expect(403);
     });
@@ -509,9 +509,9 @@ describe('Content Delivery System Tests', () => {
       });
     });
 
-    test('GET /api/content/recommendations/:userId - should get recommendations', async () => {
+    test('GET /api/v1/content/recommendations/:userId - should get recommendations', async () => {
       const response = await request(app)
-        .get(`/api/content/recommendations/${testUser._id}`)
+        .get(`/api/v1/content/recommendations/${testUser._id}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -544,7 +544,7 @@ describe('Content Delivery System Tests', () => {
       const startTime = Date.now();
       
       const response = await request(app)
-        .get('/api/content/search?q=common')
+        .get('/api/v1/content/search?q=common')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -562,7 +562,7 @@ describe('Content Delivery System Tests', () => {
       for (let i = 0; i < 50; i++) {
         progressPromises.push(
           request(app)
-            .post('/api/progress')
+            .post('/api/v1/progress')
             .set('Authorization', `Bearer ${token}`)
             .send({
               content: testContent._id,
@@ -584,7 +584,7 @@ describe('Content Delivery System Tests', () => {
   describe('Security Tests', () => {
     test('Should prevent unauthorized access to content', async () => {
       await request(app)
-        .get(`/api/content/${testContent._id}`)
+        .get(`/api/v1/content/${testContent._id}`)
         .expect(401);
     });
 
@@ -600,7 +600,7 @@ describe('Content Delivery System Tests', () => {
       await unpublishedContent.save();
 
       await request(app)
-        .get(`/api/content/${unpublishedContent._id}`)
+        .get(`/api/v1/content/${unpublishedContent._id}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
@@ -615,7 +615,7 @@ describe('Content Delivery System Tests', () => {
 
       // Try to delete bookmark with different user token
       await request(app)
-        .delete(`/api/bookmarks/${bookmark._id}`)
+        .delete(`/api/v1/bookmarks/${bookmark._id}`)
         .set('Authorization', `Bearer ${instructorToken}`)
         .expect(404); // Should not find bookmark for different user
     });

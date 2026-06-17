@@ -6,66 +6,10 @@ export { InteractiveSimulation } from './InteractiveSimulation';
 export { GestureControls } from './GestureControls';
 export { PerformanceOptimizer } from './PerformanceOptimizer';
 
-// Types
-export type { 
-  XRMode, 
-  XRSessionState, 
-  XRDevice, 
-  XRController, 
-  XRHand, 
-  XRSession,
-  XRSettings
-} from './WebXREngine';
-
-export type {
-  ModelFormat,
-  RenderMode,
-  InteractionMode,
-  LoadingState,
-  ModelInfo,
-  ModelViewerSettings,
-  PerformanceStats
-} from './ModelViewer';
-
-export type {
-  ClassroomLayout,
-  AvatarState,
-  UserRole,
-  UserAvatar,
-  ClassroomEnvironment,
-  ClassroomSession,
-  VirtualClassroomProps
-} from './VirtualClassroom';
-
-export type {
-  SimulationType,
-  ExperimentState,
-  InteractionMode as SimInteractionMode,
-  SimulationParameter,
-  SimulationObject,
-  SimulationResult,
-  SimulationExperiment,
-  InteractiveSimulationProps
-} from './InteractiveSimulation';
-
-export type {
-  GestureType,
-  HandSide,
-  TrackingMode,
-  ConfidenceLevel,
-  HandGesture,
-  GesturePattern,
-  TrackingSettings,
-  GestureControlsProps
-} from './GestureControls';
-
-export type {
-  PerformanceMode,
-  OptimizationStrategy,
-  DeviceType,
-  PerformanceMetrics,
-  LODSettings,
-  RenderSettings,
-  OptimizationSettings,
-  PerformanceOptimizerProps
-} from './PerformanceOptimizer';
+// Types - only export what is actually exported from source modules
+export type { XRMode, XRSessionState } from './WebXREngine';
+export type { ModelFormat, RenderMode, InteractionMode, LoadingState } from './ModelViewer';
+export type { ClassroomLayout, AvatarState, UserRole } from './VirtualClassroom';
+export type { SimulationType, ExperimentState } from './InteractiveSimulation';
+export type { GestureType, HandSide, TrackingMode, ConfidenceLevel } from './GestureControls';
+export type { PerformanceMode, OptimizationStrategy, DeviceType } from './PerformanceOptimizer';

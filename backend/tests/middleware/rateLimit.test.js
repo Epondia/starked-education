@@ -48,13 +48,13 @@ describe('Rate Limiting Middleware', () => {
     // Auth limit is 5 in config
     for (let i = 0; i < 5; i++) {
        await request(app)
-        .post('/api/auth/login')
+        .post('/api/v1/auth/login')
         .set('x-test-security', 'true')
         .send({ username: 'test', password: 'password' });
     }
 
     const res = await request(app)
-      .post('/api/auth/login')
+      .post('/api/v1/auth/login')
       .set('x-test-security', 'true')
       .send({ username: 'test', password: 'password' });
 

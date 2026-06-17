@@ -56,19 +56,19 @@ export function testNullHandling() {
     // Test with null data
     const nullData = null;
     const undefinedData = undefined;
-    const emptyArray = [];
+    const emptyArray: any[] = [];
     
     // Test null coalescing
     const result1 = nullData ?? 'default';
     const result2 = undefinedData ?? 'default';
     
     // Test optional chaining
-    const result3 = nullData?.someProperty;
-    const result4 = undefinedData?.someProperty;
+    const result3 = (nullData as any)?.someProperty;
+    const result4 = (undefinedData as any)?.someProperty;
     
     // Test array handling
-    const result5 = (emptyArray || []).map(item => item);
-    const result6 = (nullData || []).map(item => item);
+    const result5 = (emptyArray || []).map((item: any) => item);
+    const result6 = ((nullData || []) as any[]).map((item: any) => item);
     
     console.log('✅ Null handling works:', {
       result1, result2, result3, result4, 
@@ -250,7 +250,7 @@ export function testEdgeCases() {
   
   try {
     // Test empty arrays
-    const emptyAchievements = [];
+    const emptyAchievements: any[] = [];
     const emptyCredentials = [];
     
     // Test null values

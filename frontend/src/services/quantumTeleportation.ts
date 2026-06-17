@@ -4,17 +4,22 @@
  * Exports all services and provides a unified interface
  */
 
-export { stateCaptureService, default as StateCaptureService } from './stateCapture';
-export { entanglementService, default as EntanglementService } from './entanglement';
-export { stateTomographyService, default as StateTomographyService } from './stateTomography';
-export { errorCorrectionService, default as ErrorCorrectionService } from './errorCorrection';
-export { networkManager, default as NetworkManager } from './networkManager';
+import { stateCaptureService } from './quantumTeleportation/stateCapture';
+import { entanglementService } from './quantumTeleportation/entanglement';
+import { stateTomographyService } from './quantumTeleportation/stateTomography';
+import { errorCorrectionService } from './quantumTeleportation/errorCorrection';
+import { networkManager } from './quantumTeleportation/networkManager';
+import { quantumTeleportationProtocol } from './quantumTeleportation/teleportationProtocol';
+
+export { stateCaptureService, default as StateCaptureService } from './quantumTeleportation/stateCapture';
+export { entanglementService, default as EntanglementService } from './quantumTeleportation/entanglement';
+export { stateTomographyService, default as StateTomographyService } from './quantumTeleportation/stateTomography';
+export { errorCorrectionService, default as ErrorCorrectionService } from './quantumTeleportation/errorCorrection';
+export { networkManager, default as NetworkManager } from './quantumTeleportation/networkManager';
 export {
   quantumTeleportationProtocol,
   default as QuantumTeleportationProtocol
-} from './teleportationProtocol';
-
-export type { default } from './teleportationProtocol';
+} from './quantumTeleportation/teleportationProtocol';
 
 /**
  * Unified quantum teleportation service providing all capabilities

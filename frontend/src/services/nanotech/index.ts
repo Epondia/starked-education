@@ -3,6 +3,14 @@
  * Central point for importing all nanotechnology services
  */
 
+import { getNeuralInterfaceService, resetNeuralInterfaceService } from './neuralInterface';
+import { getNanobotControllerService, resetNanobotControllerService } from './nanobotController';
+import { getSkillTrackerService, resetSkillTrackerService } from './skillTracker';
+import { getSafetyMonitorService, resetSafetyMonitorService } from './safetyMonitor';
+import { getKnowledgeEncoderService, resetKnowledgeEncoderService } from './knowledgeEncoder';
+import { getLearningProfileService, resetLearningProfileService } from './learningProfile';
+import { getLearningProtocolService, resetLearningProtocolService } from './learningProtocol';
+
 // Core services
 export {
   getNeuralInterfaceService,

@@ -5,6 +5,12 @@ import { WalletInfo } from '@/types/enrollment';
 import { stellarService, isValidStellarAddress, formatStellarBalance } from '@/lib/stellar';
 import { Wallet, AlertCircle, CheckCircle, Copy, ExternalLink } from 'lucide-react';
 
+interface WalletsKit {
+  getWallet: () => Promise<{ publicKey: string; type?: string } | null>;
+}
+
+declare const kit: WalletsKit;
+
 interface WalletConnectorProps {
   onWalletConnect: (wallet: WalletInfo) => void;
   onWalletDisconnect: () => void;

@@ -393,7 +393,7 @@ describe('CDN Optimization API Integration', () => {
   // These tests would require actual HTTP requests to the API endpoints
   // They are placeholders for integration testing
 
-  test('POST /api/cdn/optimize should optimize content', async () => {
+  test('POST /api/v1/cdn/optimize should optimize content', async () => {
     // This would be an actual integration test with HTTP requests
     // For now, we'll just document the expected behavior
     
@@ -427,12 +427,12 @@ describe('CDN Optimization API Integration', () => {
     expect(true).toBe(true); // Placeholder
   });
 
-  test('GET /api/cdn/statistics should return statistics', async () => {
+  test('GET /api/v1/cdn/statistics should return statistics', async () => {
     // Expected response with optimization statistics
     expect(true).toBe(true); // Placeholder
   });
 
-  test('GET /api/cdn/health should return health status', async () => {
+  test('GET /api/v1/cdn/health should return health status', async () => {
     // Expected response with service health
     expect(true).toBe(true); // Placeholder
   });

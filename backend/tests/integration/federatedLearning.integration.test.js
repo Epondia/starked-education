@@ -20,7 +20,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use('/api/federated-learning', federatedLearningRoutes);
+app.use('/api/v1/federated-learning', federatedLearningRoutes);
 
 // Mock auth middleware for testing
 jest.mock('../../src/middleware/auth', () => ({
@@ -44,9 +44,9 @@ describe('Federated Learning API Integration Tests', () => {
   });
 
   describe('Session Management', () => {
-    test('POST /api/federated-learning/sessions - Initialize session', async () => {
+    test('POST /api/v1/federated-learning/sessions - Initialize session', async () => {
       const response = await request(app)
-        .post('/api/federated-learning/sessions')
+        .post('/api/v1/federated-learning/sessions')
         .send({
           modelArchitecture: {
             layers: [
@@ -70,9 +70,9 @@ describe('Federated Learning API Integration Tests', () => {
       sessionId = response.body.sessionId;
     });
 
-    test('GET /api/federated-learning/sessions/:id/status - Get session status', async () => {
+    test('GET /api/v1/federated-learning/sessions/:id/status - Get session status', async () => {
       const response = await request(app)
-        .get(`/api/federated-learning/sessions/${sessionId}/status`);
+        .get(`/api/v1/federated-learning/sessions/${sessionId}/status`);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -80,9 +80,9 @@ describe('Federated Learning API Integration Tests', () => {
       expect(response.body.status).toBeDefined();
     });
 
-    test('GET /api/federated-learning/sessions/invalid/status - Should return 404', async () => {
+    test('GET /api/v1/federated-learning/sessions/invalid/status - Should return 404', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/sessions/invalid-session/status');
+        .get('/api/v1/federated-learning/sessions/invalid-session/status');
 
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
@@ -90,9 +90,9 @@ describe('Federated Learning API Integration Tests', () => {
   });
 
   describe('Participant Management', () => {
-    test('POST /api/federated-learning/participants - Register participant', async () => {
+    test('POST /api/v1/federated-learning/participants - Register participant', async () => {
       const response = await request(app)
-        .post('/api/federated-learning/participants')
+        .post('/api/v1/federated-learning/participants')
         .send({
           institutionName: 'Test University',
           contactEmail: 'admin@testuniversity.edu',
@@ -110,9 +110,9 @@ describe('Federated Learning API Integration Tests', () => {
       participantId = response.body.participantId;
     });
 
-    test('GET /api/federated-learning/participants - List participants', async () => {
+    test('GET /api/v1/federated-learning/participants - List participants', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/participants');
+        .get('/api/v1/federated-learning/participants');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -122,9 +122,9 @@ describe('Federated Learning API Integration Tests', () => {
   });
 
   describe('Training Operations', () => {
-    test('POST /api/federated-learning/rounds - Start training round', async () => {
+    test('POST /api/v1/federated-learning/rounds - Start training round', async () => {
       const response = await request(app)
-        .post('/api/federated-learning/rounds')
+        .post('/api/v1/federated-learning/rounds')
         .send({
           sessionId: sessionId,
           roundConfig: {
@@ -139,7 +139,7 @@ describe('Federated Learning API Integration Tests', () => {
       expect(response.body.roundId).toBeDefined();
     });
 
-    test('POST /api/federated-learning/participants/:id/updates - Submit model update', async () => {
+    test('POST /api/v1/federated-learning/participants/:id/updates - Submit model update', async () => {
       const mockModelUpdate = {
         roundId: 'test-round-1',
         weights: [0.1, 0.2, 0.3, 0.4, 0.5],
@@ -152,7 +152,7 @@ describe('Federated Learning API Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/federated-learning/participants/${participantId}/updates`)
+        .post(`/api/v1/federated-learning/participants/${participantId}/updates`)
         .send(mockModelUpdate);
 
       expect(response.status).toBe(200);
@@ -162,9 +162,9 @@ describe('Federated Learning API Integration Tests', () => {
   });
 
   describe('Analytics and Monitoring', () => {
-    test('GET /api/federated-learning/analytics - Get analytics data', async () => {
+    test('GET /api/v1/federated-learning/analytics - Get analytics data', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/analytics');
+        .get('/api/v1/federated-learning/analytics');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -173,18 +173,18 @@ describe('Federated Learning API Integration Tests', () => {
       expect(response.body.analytics.participants).toBeDefined();
     });
 
-    test('GET /api/federated-learning/analytics/export - Export analytics', async () => {
+    test('GET /api/v1/federated-learning/analytics/export - Export analytics', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/analytics/export')
+        .get('/api/v1/federated-learning/analytics/export')
         .query({ format: 'json' });
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toMatch(/json/);
     });
 
-    test('GET /api/federated-learning/health - Health check', async () => {
+    test('GET /api/v1/federated-learning/health - Health check', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/health');
+        .get('/api/v1/federated-learning/health');
 
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('healthy');
@@ -193,9 +193,9 @@ describe('Federated Learning API Integration Tests', () => {
   });
 
   describe('Model Management', () => {
-    test('GET /api/federated-learning/models/versions - Get model versions', async () => {
+    test('GET /api/v1/federated-learning/models/versions - Get model versions', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/models/versions')
+        .get('/api/v1/federated-learning/models/versions')
         .query({ sessionId: sessionId });
 
       expect(response.status).toBe(200);
@@ -203,9 +203,9 @@ describe('Federated Learning API Integration Tests', () => {
       expect(Array.isArray(response.body.versions)).toBe(true);
     });
 
-    test('POST /api/federated-learning/models/rollback/:id - Rollback model', async () => {
+    test('POST /api/v1/federated-learning/models/rollback/:id - Rollback model', async () => {
       const response = await request(app)
-        .post(`/api/federated-learning/models/rollback/${sessionId}`)
+        .post(`/api/v1/federated-learning/models/rollback/${sessionId}`)
         .send({
           targetVersion: 0,
           reason: 'Test rollback'
@@ -215,9 +215,9 @@ describe('Federated Learning API Integration Tests', () => {
       expect(response.body.success).toBe(true);
     });
 
-    test('GET /api/federated-learning/models/compare - Compare models', async () => {
+    test('GET /api/v1/federated-learning/models/compare - Compare models', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/models/compare')
+        .get('/api/v1/federated-learning/models/compare')
         .query({
           sessionId: sessionId,
           version1: 0,
@@ -231,9 +231,9 @@ describe('Federated Learning API Integration Tests', () => {
   });
 
   describe('Error Handling', () => {
-    test('POST /api/federated-learning/sessions - Invalid architecture', async () => {
+    test('POST /api/v1/federated-learning/sessions - Invalid architecture', async () => {
       const response = await request(app)
-        .post('/api/federated-learning/sessions')
+        .post('/api/v1/federated-learning/sessions')
         .send({
           modelArchitecture: {}, // Invalid empty architecture
           config: {}
@@ -243,9 +243,9 @@ describe('Federated Learning API Integration Tests', () => {
       expect(response.body.success).toBe(false);
     });
 
-    test('POST /api/federated-learning/participants - Missing required fields', async () => {
+    test('POST /api/v1/federated-learning/participants - Missing required fields', async () => {
       const response = await request(app)
-        .post('/api/federated-learning/participants')
+        .post('/api/v1/federated-learning/participants')
         .send({
           institutionName: 'Test University'
           // Missing contactEmail
@@ -255,9 +255,9 @@ describe('Federated Learning API Integration Tests', () => {
       expect(response.body.success).toBe(false);
     });
 
-    test('POST /api/federated-learning/participants/invalid/updates - Invalid participant', async () => {
+    test('POST /api/v1/federated-learning/participants/invalid/updates - Invalid participant', async () => {
       const response = await request(app)
-        .post('/api/federated-learning/participants/invalid-participant/updates')
+        .post('/api/v1/federated-learning/participants/invalid-participant/updates')
         .send({
           roundId: 'test-round',
           weights: [0.1, 0.2, 0.3]
@@ -273,7 +273,7 @@ describe('Federated Learning API Integration Tests', () => {
       // Make multiple rapid requests to a rate-limited endpoint
       const promises = Array(15).fill().map(() =>
         request(app)
-          .post('/api/federated-learning/rounds')
+          .post('/api/v1/federated-learning/rounds')
           .send({
             sessionId: sessionId,
             roundConfig: { roundNumber: 2 }

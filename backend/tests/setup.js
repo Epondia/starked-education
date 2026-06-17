@@ -174,6 +174,40 @@ jest.mock('redis', () => {
   };
 }, { virtual: true });
 
+// Mock ioredis (used by secureCommController.ts at module load time)
+jest.mock('ioredis', () => {
+  const store = new Map();
+
+  class MockRedis {
+    constructor() {}
+    async connect() { return true; }
+    async disconnect() { return true; }
+    async quit() { return true; }
+    async ping() { return 'PONG'; }
+    async get(key) { return store.get(key) || null; }
+    async set(key, val) { store.set(key, val); return 'OK'; }
+    async setex(key, ttl, val) { store.set(key, val); return 'OK'; }
+    async del(...keys) {
+      const flat = keys.flat();
+      flat.forEach((k) => store.delete(k));
+      return flat.length;
+    }
+    async keys(pattern) {
+      const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+      return Array.from(store.keys()).filter((k) => regex.test(k));
+    }
+    async incr(key) {
+      const v = (parseInt(store.get(key) || '0') + 1).toString();
+      store.set(key, v);
+      return parseInt(v);
+    }
+    async expire() { return 1; }
+    on() { return this; }
+  }
+
+  return { Redis: MockRedis, default: MockRedis };
+}, { virtual: true });
+
 let mongoServer;
 
 // Global test setup

@@ -4,7 +4,7 @@
  * Handles deployment, coordination, mission planning, and nanobot lifecycle
  */
 
-import type { Nanobot, NanobotSwarm } from '../types/nanotech';
+import type { Nanobot, NanobotSwarm } from '../../types/nanotech';
 
 /**
  * Singleton instance

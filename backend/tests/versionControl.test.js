@@ -198,15 +198,15 @@ async function testAPIEndpoints() {
 
   // Test endpoint structures (these would be actual HTTP requests in a real test)
   const expectedEndpoints = [
-    'POST /api/courses/:contentId/versions',
-    'GET /api/courses/:contentId/versions',
-    'GET /api/courses/:contentId/versions/current',
-    'GET /api/courses/:contentId/versions/:versionId',
-    'PUT /api/courses/:contentId/versions/:versionId',
-    'DELETE /api/courses/:contentId/versions/:versionId',
-    'POST /api/courses/:contentId/versions/:versionId/restore',
-    'GET /api/courses/:contentId/versions/:versionId/compare/:versionId2',
-    'GET /api/courses/:contentId/versions/export'
+    'POST /api/v1/courses/:contentId/versions',
+    'GET /api/v1/courses/:contentId/versions',
+    'GET /api/v1/courses/:contentId/versions/current',
+    'GET /api/v1/courses/:contentId/versions/:versionId',
+    'PUT /api/v1/courses/:contentId/versions/:versionId',
+    'DELETE /api/v1/courses/:contentId/versions/:versionId',
+    'POST /api/v1/courses/:contentId/versions/:versionId/restore',
+    'GET /api/v1/courses/:contentId/versions/:versionId/compare/:versionId2',
+    'GET /api/v1/courses/:contentId/versions/export'
   ];
 
   expectedEndpoints.forEach((endpoint, index) => {
