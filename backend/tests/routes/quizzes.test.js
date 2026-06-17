@@ -29,7 +29,7 @@ describe('Quiz API Tests', () => {
     jest.clearAllMocks();
   });
 
-  describe('POST /api/quizzes', () => {
+  describe('POST /api/v1/quizzes', () => {
     it('should create a new quiz successfully', async () => {
       const mockQuiz = {
         title: 'Blockchain Fundamentals Quiz',
@@ -55,7 +55,7 @@ describe('Quiz API Tests', () => {
       quizController.createQuiz.mockResolvedValue(createdQuiz);
 
       const response = await request(app)
-        .post('/api/quizzes')
+        .post('/api/v1/quizzes')
         .send(mockQuiz);
 
       expect(response.status).toBe(201);
@@ -75,7 +75,7 @@ describe('Quiz API Tests', () => {
       quizController.createQuiz.mockRejectedValue(new Error('Invalid quiz data'));
 
       const response = await request(app)
-        .post('/api/quizzes')
+        .post('/api/v1/quizzes')
         .send(invalidQuiz);
 
       expect(response.status).toBe(400);
@@ -86,7 +86,7 @@ describe('Quiz API Tests', () => {
       quizController.createQuiz.mockRejectedValue(new Error('Database error'));
 
       const response = await request(app)
-        .post('/api/quizzes')
+        .post('/api/v1/quizzes')
         .send(userData.courses.validCourse);
 
       expect(response.status).toBe(500);
@@ -94,7 +94,7 @@ describe('Quiz API Tests', () => {
     });
   });
 
-  describe('GET /api/quizzes', () => {
+  describe('GET /api/v1/quizzes', () => {
     it('should retrieve quizzes with pagination', async () => {
       const mockQuizzes = [
         { id: 'quiz_1', title: 'Quiz 1', courseId: 'course_1' },
@@ -111,7 +111,7 @@ describe('Quiz API Tests', () => {
       quizController.getQuizzes.mockResolvedValue(mockResult);
 
       const response = await request(app)
-        .get('/api/quizzes?page=1&limit=10&courseId=course_1');
+        .get('/api/v1/quizzes?page=1&limit=10&courseId=course_1');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -135,14 +135,14 @@ describe('Quiz API Tests', () => {
       quizController.getQuizzes.mockResolvedValue(mockResult);
 
       const response = await request(app)
-        .get('/api/quizzes');
+        .get('/api/v1/quizzes');
 
       expect(response.status).toBe(200);
       expect(response.body.data.quizzes).toEqual([]);
     });
   });
 
-  describe('GET /api/quizzes/:id', () => {
+  describe('GET /api/v1/quizzes/:id', () => {
     it('should retrieve specific quiz', async () => {
       const mockQuiz = {
         id: 'quiz_123',
@@ -154,7 +154,7 @@ describe('Quiz API Tests', () => {
       quizController.getQuizById.mockResolvedValue(mockQuiz);
 
       const response = await request(app)
-        .get('/api/quizzes/quiz_123');
+        .get('/api/v1/quizzes/quiz_123');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -166,7 +166,7 @@ describe('Quiz API Tests', () => {
       quizController.getQuizById.mockResolvedValue(null);
 
       const response = await request(app)
-        .get('/api/quizzes/nonexistent');
+        .get('/api/v1/quizzes/nonexistent');
 
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
@@ -174,14 +174,14 @@ describe('Quiz API Tests', () => {
 
     it('should validate quiz ID format', async () => {
       const response = await request(app)
-        .get('/api/quizzes/invalid-id');
+        .get('/api/v1/quizzes/invalid-id');
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('PUT /api/quizzes/:id', () => {
+  describe('PUT /api/v1/quizzes/:id', () => {
     it('should update quiz successfully', async () => {
       const updateData = {
         title: 'Updated Quiz Title',
@@ -197,7 +197,7 @@ describe('Quiz API Tests', () => {
       quizController.updateQuiz.mockResolvedValue(updatedQuiz);
 
       const response = await request(app)
-        .put('/api/quizzes/quiz_123')
+        .put('/api/v1/quizzes/quiz_123')
         .send(updateData);
 
       expect(response.status).toBe(200);
@@ -213,7 +213,7 @@ describe('Quiz API Tests', () => {
       };
 
       const response = await request(app)
-        .put('/api/quizzes/quiz_123')
+        .put('/api/v1/quizzes/quiz_123')
         .send(invalidUpdate);
 
       expect(response.status).toBe(400);
@@ -221,12 +221,12 @@ describe('Quiz API Tests', () => {
     });
   });
 
-  describe('DELETE /api/quizzes/:id', () => {
+  describe('DELETE /api/v1/quizzes/:id', () => {
     it('should delete quiz successfully', async () => {
       quizController.deleteQuiz.mockResolvedValue({ deleted: true });
 
       const response = await request(app)
-        .delete('/api/quizzes/quiz_123');
+        .delete('/api/v1/quizzes/quiz_123');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -237,14 +237,14 @@ describe('Quiz API Tests', () => {
       quizController.deleteQuiz.mockRejectedValue(new Error('Cannot delete quiz'));
 
       const response = await request(app)
-        .delete('/api/quizzes/quiz_123');
+        .delete('/api/v1/quizzes/quiz_123');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('POST /api/quizzes/:id/publish', () => {
+  describe('POST /api/v1/quizzes/:id/publish', () => {
     it('should publish quiz successfully', async () => {
       const publishedQuiz = {
         id: 'quiz_123',
@@ -256,7 +256,7 @@ describe('Quiz API Tests', () => {
       quizController.toggleQuizPublish.mockResolvedValue(publishedQuiz);
 
       const response = await request(app)
-        .post('/api/quizzes/quiz_123/publish');
+        .post('/api/v1/quizzes/quiz_123/publish');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -274,7 +274,7 @@ describe('Quiz API Tests', () => {
       quizController.toggleQuizPublish.mockResolvedValue(unpublishedQuiz);
 
       const response = await request(app)
-        .post('/api/quizzes/quiz_123/publish');
+        .post('/api/v1/quizzes/quiz_123/publish');
 
       expect(response.status).toBe(200);
       expect(response.body.data.isPublished).toBe(false);
@@ -284,14 +284,14 @@ describe('Quiz API Tests', () => {
       quizController.toggleQuizPublish.mockRejectedValue(new Error('Publish failed'));
 
       const response = await request(app)
-        .post('/api/quizzes/quiz_123/publish');
+        .post('/api/v1/quizzes/quiz_123/publish');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('POST /api/quizzes/:id/submit', () => {
+  describe('POST /api/v1/quizzes/:id/submit', () => {
     it('should submit quiz successfully', async () => {
       const submissionData = {
         userId: 'user_123',
@@ -317,7 +317,7 @@ describe('Quiz API Tests', () => {
       quizController.submitQuiz.mockResolvedValue(submissionResult);
 
       const response = await request(app)
-        .post('/api/quizzes/quiz_123/submit')
+        .post('/api/v1/quizzes/quiz_123/submit')
         .send(submissionData);
 
       expect(response.status).toBe(201);
@@ -334,7 +334,7 @@ describe('Quiz API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/quizzes/quiz_123/submit')
+        .post('/api/v1/quizzes/quiz_123/submit')
         .send(invalidSubmission);
 
       expect(response.status).toBe(400);
@@ -345,7 +345,7 @@ describe('Quiz API Tests', () => {
       quizController.submitQuiz.mockRejectedValue(new Error('Already submitted'));
 
       const response = await request(app)
-        .post('/api/quizzes/quiz_123/submit')
+        .post('/api/v1/quizzes/quiz_123/submit')
         .send({ userId: 'user_123', answers: [] });
 
       expect(response.status).toBe(400);
@@ -353,7 +353,7 @@ describe('Quiz API Tests', () => {
     });
   });
 
-  describe('GET /api/quizzes/:id/submission', () => {
+  describe('GET /api/v1/quizzes/:id/submission', () => {
     it('should retrieve user submission', async () => {
       const mockSubmission = {
         id: 'submission_123',
@@ -367,7 +367,7 @@ describe('Quiz API Tests', () => {
       quizController.getUserSubmission.mockResolvedValue(mockSubmission);
 
       const response = await request(app)
-        .get('/api/quizzes/quiz_123/submission?userId=user_123');
+        .get('/api/v1/quizzes/quiz_123/submission?userId=user_123');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -379,14 +379,14 @@ describe('Quiz API Tests', () => {
       quizController.getUserSubmission.mockResolvedValue(null);
 
       const response = await request(app)
-        .get('/api/quizzes/quiz_123/submission?userId=user_123');
+        .get('/api/v1/quizzes/quiz_123/submission?userId=user_123');
 
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /api/quizzes/:id/results', () => {
+  describe('GET /api/v1/quizzes/:id/results', () => {
     it('should retrieve quiz results', async () => {
       const mockResults = {
         quizId: 'quiz_123',
@@ -412,7 +412,7 @@ describe('Quiz API Tests', () => {
       quizController.getQuizResults.mockResolvedValue(mockResults);
 
       const response = await request(app)
-        .get('/api/quizzes/quiz_123/results');
+        .get('/api/v1/quizzes/quiz_123/results');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -424,7 +424,7 @@ describe('Quiz API Tests', () => {
       quizController.getQuizResults.mockResolvedValue(mockResults);
 
       const response = await request(app)
-        .get('/api/quizzes/quiz_123/results?startDate=2024-01-01&endDate=2024-12-31');
+        .get('/api/v1/quizzes/quiz_123/results?startDate=2024-01-01&endDate=2024-12-31');
 
       expect(response.status).toBe(200);
       expect(quizController.getQuizResults).toHaveBeenCalledWith('quiz_123', {
@@ -434,7 +434,7 @@ describe('Quiz API Tests', () => {
     });
   });
 
-  describe('GET /api/quizzes/:id/statistics', () => {
+  describe('GET /api/v1/quizzes/:id/statistics', () => {
     it('should retrieve quiz statistics', async () => {
       const mockStatistics = {
         quizId: 'quiz_123',
@@ -456,7 +456,7 @@ describe('Quiz API Tests', () => {
       quizController.getQuizStatistics.mockResolvedValue(mockStatistics);
 
       const response = await request(app)
-        .get('/api/quizzes/quiz_123/statistics');
+        .get('/api/v1/quizzes/quiz_123/statistics');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -464,7 +464,7 @@ describe('Quiz API Tests', () => {
     });
   });
 
-  describe('GET /api/quizzes/:id/grading-statistics', () => {
+  describe('GET /api/v1/quizzes/:id/grading-statistics', () => {
     it('should retrieve grading statistics', async () => {
       const mockGradingStats = {
         quizId: 'quiz_123',
@@ -490,7 +490,7 @@ describe('Quiz API Tests', () => {
       quizController.getGradingStatistics.mockResolvedValue(mockGradingStats);
 
       const response = await request(app)
-        .get('/api/quizzes/quiz_123/grading-statistics');
+        .get('/api/v1/quizzes/quiz_123/grading-statistics');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -498,7 +498,7 @@ describe('Quiz API Tests', () => {
     });
   });
 
-  describe('GET /api/quizzes/submissions/:submissionId', () => {
+  describe('GET /api/v1/quizzes/submissions/:submissionId', () => {
     it('should retrieve specific submission', async () => {
       const mockSubmission = {
         id: 'submission_123',
@@ -514,7 +514,7 @@ describe('Quiz API Tests', () => {
       quizController.getSubmissionById.mockResolvedValue(mockSubmission);
 
       const response = await request(app)
-        .get('/api/quizzes/submissions/submission_123');
+        .get('/api/v1/quizzes/submissions/submission_123');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -526,14 +526,14 @@ describe('Quiz API Tests', () => {
       quizController.getSubmissionById.mockResolvedValue(null);
 
       const response = await request(app)
-        .get('/api/quizzes/submissions/nonexistent');
+        .get('/api/v1/quizzes/submissions/nonexistent');
 
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('POST /api/quizzes/submissions/:submissionId/regrade', () => {
+  describe('POST /api/v1/quizzes/submissions/:submissionId/regrade', () => {
     it('should regrade submission successfully', async () => {
       const regradeData = {
         newAnswers: [
@@ -555,7 +555,7 @@ describe('Quiz API Tests', () => {
       quizController.regradeSubmission.mockResolvedValue(regradedSubmission);
 
       const response = await request(app)
-        .post('/api/quizzes/submissions/submission_123/regrade')
+        .post('/api/v1/quizzes/submissions/submission_123/regrade')
         .send(regradeData);
 
       expect(response.status).toBe(200);
@@ -571,7 +571,7 @@ describe('Quiz API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/quizzes/submissions/submission_123/regrade')
+        .post('/api/v1/quizzes/submissions/submission_123/regrade')
         .send(invalidRegrade);
 
       expect(response.status).toBe(400);
@@ -579,7 +579,7 @@ describe('Quiz API Tests', () => {
     });
   });
 
-  describe('GET /api/quizzes/health', () => {
+  describe('GET /api/v1/quizzes/health', () => {
     it('should return health status', async () => {
       const healthStatus = {
         status: 'healthy',
@@ -592,7 +592,7 @@ describe('Quiz API Tests', () => {
       quizController.healthCheck.mockResolvedValue(healthStatus);
 
       const response = await request(app)
-        .get('/api/quizzes/health');
+        .get('/api/v1/quizzes/health');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -609,7 +609,7 @@ describe('Quiz API Tests', () => {
       quizController.healthCheck.mockResolvedValue(healthStatus);
 
       const response = await request(app)
-        .get('/api/quizzes/health');
+        .get('/api/v1/quizzes/health');
 
       expect(response.status).toBe(503);
       expect(response.body.data.status).toBe('unhealthy');
@@ -619,7 +619,7 @@ describe('Quiz API Tests', () => {
   describe('Edge Cases and Error Handling', () => {
     it('should handle malformed request bodies', async () => {
       const response = await request(app)
-        .post('/api/quizzes')
+        .post('/api/v1/quizzes')
         .set('Content-Type', 'application/json')
         .send('{"invalid": json}');
 
@@ -634,8 +634,8 @@ describe('Quiz API Tests', () => {
         .mockResolvedValueOnce({ id: 'sub_2', score: 90 });
 
       const [response1, response2] = await Promise.all([
-        request(app).post('/api/quizzes/quiz_123/submit').send(submissionData),
-        request(app).post('/api/quizzes/quiz_123/submit').send(submissionData)
+        request(app).post('/api/v1/quizzes/quiz_123/submit').send(submissionData),
+        request(app).post('/api/v1/quizzes/quiz_123/submit').send(submissionData)
       ]);
 
       expect(response1.status).toBe(201);
@@ -656,7 +656,7 @@ describe('Quiz API Tests', () => {
       quizController.createQuiz.mockRejectedValue(new Error('Quiz too large'));
 
       const response = await request(app)
-        .post('/api/quizzes')
+        .post('/api/v1/quizzes')
         .send(largeQuiz);
 
       expect(response.status).toBe(400);
@@ -671,7 +671,7 @@ describe('Quiz API Tests', () => {
       );
 
       const response = await request(app)
-        .get('/api/quizzes');
+        .get('/api/v1/quizzes');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);

@@ -38,7 +38,7 @@ describe('Content API Tests', () => {
     ipfsService.getContent.mockResolvedValue(Buffer.from('test content'));
   });
 
-  describe('POST /api/content/upload', () => {
+  describe('POST /api/v1/content/upload', () => {
     it('should upload a single file successfully', async () => {
       const mockFile = {
         fieldname: 'file',
@@ -50,7 +50,7 @@ describe('Content API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/content/upload')
+        .post('/api/v1/content/upload')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('file', mockFile.buffer, 'test.txt')
         .field('metadata', JSON.stringify({ name: 'test.txt' }));
@@ -71,7 +71,7 @@ describe('Content API Tests', () => {
 
     it('should reject upload without file', async () => {
       const response = await request(app)
-        .post('/api/content/upload')
+        .post('/api/v1/content/upload')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(400);
@@ -81,7 +81,7 @@ describe('Content API Tests', () => {
 
     it('should reject upload without authentication', async () => {
       const response = await request(app)
-        .post('/api/content/upload');
+        .post('/api/v1/content/upload');
 
       expect(response.status).toBe(401);
       expect(response.body.success).toBe(false);
@@ -94,7 +94,7 @@ describe('Content API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/content/upload')
+        .post('/api/v1/content/upload')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('file', mockFile.buffer, 'test.txt')
         .field('metadata', JSON.stringify({ category: 'document' }))
@@ -117,7 +117,7 @@ describe('Content API Tests', () => {
       ipfsService.uploadFile.mockRejectedValue(new Error('IPFS upload failed'));
 
       const response = await request(app)
-        .post('/api/content/upload')
+        .post('/api/v1/content/upload')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('file', Buffer.from('test content'), 'test.txt');
 
@@ -128,7 +128,7 @@ describe('Content API Tests', () => {
 
     it('should handle malformed metadata JSON', async () => {
       const response = await request(app)
-        .post('/api/content/upload')
+        .post('/api/v1/content/upload')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('file', Buffer.from('test content'), 'test.txt')
         .field('metadata', 'invalid-json');
@@ -144,7 +144,7 @@ describe('Content API Tests', () => {
       const responses = await Promise.all(
         Array(5).fill().map(() =>
           request(app)
-            .post('/api/content/upload')
+            .post('/api/v1/content/upload')
             .set('Authorization', `Bearer ${authToken}`)
             .attach('file', Buffer.from('test content'), 'test.txt')
         )
@@ -154,7 +154,7 @@ describe('Content API Tests', () => {
     });
   });
 
-  describe('POST /api/content/upload/batch', () => {
+  describe('POST /api/v1/content/upload/batch', () => {
     it('should upload multiple files successfully', async () => {
       const mockFiles = [
         { buffer: Buffer.from('content1'), originalname: 'file1.txt' },
@@ -169,7 +169,7 @@ describe('Content API Tests', () => {
       ipfsService.uploadMultipleFiles.mockResolvedValue(mockResults);
 
       const response = await request(app)
-        .post('/api/content/upload/batch')
+        .post('/api/v1/content/upload/batch')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('files', mockFiles[0].buffer, 'file1.txt')
         .attach('files', mockFiles[1].buffer, 'file2.txt');
@@ -195,7 +195,7 @@ describe('Content API Tests', () => {
       ipfsService.uploadMultipleFiles.mockResolvedValue(mockResults);
 
       const response = await request(app)
-        .post('/api/content/upload/batch')
+        .post('/api/v1/content/upload/batch')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('files', mockFiles[0].buffer, 'file1.txt')
         .attach('files', mockFiles[1].buffer, 'file2.txt');
@@ -207,7 +207,7 @@ describe('Content API Tests', () => {
 
     it('should reject batch upload without files', async () => {
       const response = await request(app)
-        .post('/api/content/upload/batch')
+        .post('/api/v1/content/upload/batch')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(400);
@@ -222,7 +222,7 @@ describe('Content API Tests', () => {
       }));
 
       const response = await request(app)
-        .post('/api/content/upload/batch')
+        .post('/api/v1/content/upload/batch')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('files', files[0].buffer, 'file0.txt');
 
@@ -231,7 +231,7 @@ describe('Content API Tests', () => {
     });
   });
 
-  describe('GET /api/content/:cid', () => {
+  describe('GET /api/v1/content/:cid', () => {
     it('should retrieve content successfully', async () => {
       const cid = 'QmTest123456789';
       const mockContent = Buffer.from('test content');
@@ -239,7 +239,7 @@ describe('Content API Tests', () => {
       ipfsService.getContent.mockResolvedValue(mockContent);
 
       const response = await request(app)
-        .get(`/api/content/${cid}`);
+        .get(`/api/v1/content/${cid}`);
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toBe('application/octet-stream');
@@ -254,7 +254,7 @@ describe('Content API Tests', () => {
       ipfsService.getContent.mockResolvedValue(mockContent);
 
       const response = await request(app)
-        .get(`/api/content/${cid}?format=base64`);
+        .get(`/api/v1/content/${cid}?format=base64`);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -269,7 +269,7 @@ describe('Content API Tests', () => {
       ipfsService.getContent.mockResolvedValue(mockContent);
 
       const response = await request(app)
-        .get(`/api/content/${cid}?format=stream`);
+        .get(`/api/v1/content/${cid}?format=stream`);
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toBe('application/octet-stream');
@@ -283,7 +283,7 @@ describe('Content API Tests', () => {
       ipfsService.getContent.mockResolvedValue(mockContent);
 
       const response = await request(app)
-        .get(`/api/content/${cid}?bypassCache=true`);
+        .get(`/api/v1/content/${cid}?bypassCache=true`);
 
       expect(response.status).toBe(200);
       expect(ipfsService.getContent).toHaveBeenCalledWith(cid, {
@@ -297,7 +297,7 @@ describe('Content API Tests', () => {
       ipfsService.getContent.mockRejectedValue(new Error('Content not found'));
 
       const response = await request(app)
-        .get(`/api/content/${cid}`);
+        .get(`/api/v1/content/${cid}`);
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
@@ -305,21 +305,21 @@ describe('Content API Tests', () => {
 
     it('should handle invalid CID format', async () => {
       const response = await request(app)
-        .get('/api/content/invalid-cid');
+        .get('/api/v1/content/invalid-cid');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('PUT /api/content/:cid/pin', () => {
+  describe('PUT /api/v1/content/:cid/pin', () => {
     it('should pin content successfully', async () => {
       const cid = 'QmTest123456789';
       
       ipfsService.pinFile.mockResolvedValue({ pinned: true, cid });
 
       const response = await request(app)
-        .post(`/api/content/${cid}/pin`)
+        .post(`/api/v1/content/${cid}/pin`)
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
@@ -331,7 +331,7 @@ describe('Content API Tests', () => {
       const cid = 'QmTest123456789';
 
       const response = await request(app)
-        .post(`/api/content/${cid}/pin`);
+        .post(`/api/v1/content/${cid}/pin`);
 
       expect(response.status).toBe(401);
       expect(response.body.success).toBe(false);
@@ -343,7 +343,7 @@ describe('Content API Tests', () => {
       ipfsService.pinFile.mockRejectedValue(new Error('Pin failed'));
 
       const response = await request(app)
-        .post(`/api/content/${cid}/pin`)
+        .post(`/api/v1/content/${cid}/pin`)
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(500);
@@ -351,14 +351,14 @@ describe('Content API Tests', () => {
     });
   });
 
-  describe('DELETE /api/content/:cid/pin', () => {
+  describe('DELETE /api/v1/content/:cid/pin', () => {
     it('should unpin content successfully', async () => {
       const cid = 'QmTest123456789';
       
       ipfsService.unpinFile.mockResolvedValue({ unpinned: true, cid });
 
       const response = await request(app)
-        .delete(`/api/content/${cid}/pin`)
+        .delete(`/api/v1/content/${cid}/pin`)
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
@@ -370,14 +370,14 @@ describe('Content API Tests', () => {
       const cid = 'QmTest123456789';
 
       const response = await request(app)
-        .delete(`/api/content/${cid}/pin`);
+        .delete(`/api/v1/content/${cid}/pin`);
 
       expect(response.status).toBe(401);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /api/content/:cid/metadata', () => {
+  describe('GET /api/v1/content/:cid/metadata', () => {
     it('should retrieve file metadata successfully', async () => {
       const cid = 'QmTest123456789';
       const mockMetadata = {
@@ -391,7 +391,7 @@ describe('Content API Tests', () => {
       ipfsService.getFileMetadata.mockResolvedValue(mockMetadata);
 
       const response = await request(app)
-        .get(`/api/content/${cid}/metadata`);
+        .get(`/api/v1/content/${cid}/metadata`);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -404,14 +404,14 @@ describe('Content API Tests', () => {
       ipfsService.getFileMetadata.mockRejectedValue(new Error('Metadata not found'));
 
       const response = await request(app)
-        .get(`/api/content/${cid}/metadata`);
+        .get(`/api/v1/content/${cid}/metadata`);
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('PUT /api/content/:cid/metadata', () => {
+  describe('PUT /api/v1/content/:cid/metadata', () => {
     it('should update file metadata successfully', async () => {
       const cid = 'QmTest123456789';
       const updateData = {
@@ -428,7 +428,7 @@ describe('Content API Tests', () => {
       ipfsService.updateFileMetadata.mockResolvedValue(updatedMetadata);
 
       const response = await request(app)
-        .put(`/api/content/${cid}/metadata`)
+        .put(`/api/v1/content/${cid}/metadata`)
         .set('Authorization', `Bearer ${authToken}`)
         .send(updateData);
 
@@ -442,7 +442,7 @@ describe('Content API Tests', () => {
       const cid = 'QmTest123456789';
 
       const response = await request(app)
-        .put(`/api/content/${cid}/metadata`)
+        .put(`/api/v1/content/${cid}/metadata`)
         .send({ name: 'updated.txt' });
 
       expect(response.status).toBe(401);
@@ -453,7 +453,7 @@ describe('Content API Tests', () => {
       const cid = 'QmTest123456789';
 
       const response = await request(app)
-        .put(`/api/content/${cid}/metadata`)
+        .put(`/api/v1/content/${cid}/metadata`)
         .set('Authorization', `Bearer ${authToken}`)
         .send({ name: '' }); // Empty name
 
@@ -465,7 +465,7 @@ describe('Content API Tests', () => {
   describe('Edge Cases and Error Handling', () => {
     it('should handle malformed request bodies', async () => {
       const response = await request(app)
-        .put('/api/content/QmTest123/metadata')
+        .put('/api/v1/content/QmTest123/metadata')
         .set('Authorization', `Bearer ${authToken}`)
         .set('Content-Type', 'application/json')
         .send('{"invalid": json}');
@@ -480,7 +480,7 @@ describe('Content API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/content/upload')
+        .post('/api/v1/content/upload')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('file', largeFile.buffer, 'large.txt');
 
@@ -497,7 +497,7 @@ describe('Content API Tests', () => {
       const responses = await Promise.all(
         Array(5).fill().map(() =>
           request(app)
-            .post('/api/content/upload')
+            .post('/api/v1/content/upload')
             .set('Authorization', `Bearer ${authToken}`)
             .attach('file', mockFile.buffer, 'test.txt')
         )
@@ -517,7 +517,7 @@ describe('Content API Tests', () => {
       );
 
       const response = await request(app)
-        .post('/api/content/upload')
+        .post('/api/v1/content/upload')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('file', Buffer.from('test content'), 'test.txt');
 
@@ -534,7 +534,7 @@ describe('Content API Tests', () => {
       ipfsService.uploadFile.mockRejectedValue(new Error('File type not allowed'));
 
       const response = await request(app)
-        .post('/api/content/upload')
+        .post('/api/v1/content/upload')
         .set('Authorization', `Bearer ${authToken}`)
         .attach('file', invalidFile.buffer, 'test.exe');
 

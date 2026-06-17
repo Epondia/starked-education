@@ -22,7 +22,7 @@ describe('Sync API Tests', () => {
     jest.clearAllMocks();
   });
 
-  describe('POST /api/sync/devices/register', () => {
+  describe('POST /api/v1/sync/devices/register', () => {
     it('should register a new device successfully', async () => {
       const deviceData = {
         userId: 'user_123',
@@ -49,7 +49,7 @@ describe('Sync API Tests', () => {
       syncController.registerDevice.mockResolvedValue(registeredDevice);
 
       const response = await request(app)
-        .post('/api/sync/devices/register')
+        .post('/api/v1/sync/devices/register')
         .send(deviceData);
 
       expect(response.status).toBe(201);
@@ -66,7 +66,7 @@ describe('Sync API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/sync/devices/register')
+        .post('/api/v1/sync/devices/register')
         .send(invalidData);
 
       expect(response.status).toBe(400);
@@ -77,7 +77,7 @@ describe('Sync API Tests', () => {
       syncController.registerDevice.mockRejectedValue(new Error('Device already registered'));
 
       const response = await request(app)
-        .post('/api/sync/devices/register')
+        .post('/api/v1/sync/devices/register')
         .send({ userId: 'user_123', deviceId: 'device_123', deviceType: 'mobile' });
 
       expect(response.status).toBe(409);
@@ -88,7 +88,7 @@ describe('Sync API Tests', () => {
       syncController.registerDevice.mockRejectedValue(new Error('Registration failed'));
 
       const response = await request(app)
-        .post('/api/sync/devices/register')
+        .post('/api/v1/sync/devices/register')
         .send({ userId: 'user_123', deviceId: 'device_123', deviceType: 'mobile' });
 
       expect(response.status).toBe(500);
@@ -96,7 +96,7 @@ describe('Sync API Tests', () => {
     });
   });
 
-  describe('POST /api/sync/devices/heartbeat', () => {
+  describe('POST /api/v1/sync/devices/heartbeat', () => {
     it('should update device heartbeat successfully', async () => {
       const heartbeatData = {
         userId: 'user_123',
@@ -123,7 +123,7 @@ describe('Sync API Tests', () => {
       syncController.heartbeat.mockResolvedValue(updatedDevice);
 
       const response = await request(app)
-        .post('/api/sync/devices/heartbeat')
+        .post('/api/v1/sync/devices/heartbeat')
         .send(heartbeatData);
 
       expect(response.status).toBe(200);
@@ -140,7 +140,7 @@ describe('Sync API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/sync/devices/heartbeat')
+        .post('/api/v1/sync/devices/heartbeat')
         .send(invalidData);
 
       expect(response.status).toBe(400);
@@ -151,7 +151,7 @@ describe('Sync API Tests', () => {
       syncController.heartbeat.mockRejectedValue(new Error('Device not found'));
 
       const response = await request(app)
-        .post('/api/sync/devices/heartbeat')
+        .post('/api/v1/sync/devices/heartbeat')
         .send({ userId: 'user_123', deviceId: 'nonexistent', batteryLevel: 0.8 });
 
       expect(response.status).toBe(404);
@@ -159,7 +159,7 @@ describe('Sync API Tests', () => {
     });
   });
 
-  describe('DELETE /api/sync/devices/:deviceId', () => {
+  describe('DELETE /api/v1/sync/devices/:deviceId', () => {
     it('should unregister device successfully', async () => {
       const deviceId = 'device_123';
       const userId = 'user_123';
@@ -174,7 +174,7 @@ describe('Sync API Tests', () => {
       syncController.unregisterDevice.mockResolvedValue(unregisteredDevice);
 
       const response = await request(app)
-        .delete(`/api/sync/devices/${deviceId}`)
+        .delete(`/api/v1/sync/devices/${deviceId}`)
         .query({ userId });
 
       expect(response.status).toBe(200);
@@ -187,7 +187,7 @@ describe('Sync API Tests', () => {
       syncController.unregisterDevice.mockRejectedValue(new Error('Device not found'));
 
       const response = await request(app)
-        .delete('/api/sync/devices/nonexistent')
+        .delete('/api/v1/sync/devices/nonexistent')
         .query({ userId: 'user_123' });
 
       expect(response.status).toBe(404);
@@ -196,14 +196,14 @@ describe('Sync API Tests', () => {
 
     it('should validate unregistration parameters', async () => {
       const response = await request(app)
-        .delete('/api/sync/devices/device_123'); // Missing userId
+        .delete('/api/v1/sync/devices/device_123'); // Missing userId
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /api/sync/users/:userId/devices', () => {
+  describe('GET /api/v1/sync/users/:userId/devices', () => {
     it('should retrieve user devices successfully', async () => {
       const userId = 'user_123';
       const mockDevices = [
@@ -228,7 +228,7 @@ describe('Sync API Tests', () => {
       syncController.getDevices.mockResolvedValue(mockDevices);
 
       const response = await request(app)
-        .get(`/api/sync/users/${userId}/devices`);
+        .get(`/api/v1/sync/users/${userId}/devices`);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -241,7 +241,7 @@ describe('Sync API Tests', () => {
       syncController.getDevices.mockResolvedValue([]);
 
       const response = await request(app)
-        .get(`/api/sync/users/${userId}/devices`);
+        .get(`/api/v1/sync/users/${userId}/devices`);
 
       expect(response.status).toBe(200);
       expect(response.body.data).toEqual([]);
@@ -251,14 +251,14 @@ describe('Sync API Tests', () => {
       syncController.getDevices.mockRejectedValue(new Error('Failed to retrieve devices'));
 
       const response = await request(app)
-        .get('/api/sync/users/user_123/devices');
+        .get('/api/v1/sync/users/user_123/devices');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /api/sync/users/:userId/status', () => {
+  describe('GET /api/v1/sync/users/:userId/status', () => {
     it('should retrieve user sync status successfully', async () => {
       const userId = 'user_123';
       const mockStatus = {
@@ -288,7 +288,7 @@ describe('Sync API Tests', () => {
       syncController.getSyncStatus.mockResolvedValue(mockStatus);
 
       const response = await request(app)
-        .get(`/api/sync/users/${userId}/status`);
+        .get(`/api/v1/sync/users/${userId}/status`);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -300,14 +300,14 @@ describe('Sync API Tests', () => {
       syncController.getSyncStatus.mockRejectedValue(new Error('Failed to get sync status'));
 
       const response = await request(app)
-        .get('/api/sync/users/user_123/status');
+        .get('/api/v1/sync/users/user_123/status');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('POST /api/sync/sync', () => {
+  describe('POST /api/v1/sync/sync', () => {
     it('should sync entity successfully', async () => {
       const syncData = {
         userId: 'user_123',
@@ -335,7 +335,7 @@ describe('Sync API Tests', () => {
       syncController.syncEntity.mockResolvedValue(syncResult);
 
       const response = await request(app)
-        .post('/api/sync/sync')
+        .post('/api/v1/sync/sync')
         .send(syncData);
 
       expect(response.status).toBe(200);
@@ -371,7 +371,7 @@ describe('Sync API Tests', () => {
       syncController.syncEntity.mockResolvedValue(syncResult);
 
       const response = await request(app)
-        .post('/api/sync/sync')
+        .post('/api/v1/sync/sync')
         .send(syncData);
 
       expect(response.status).toBe(200);
@@ -388,7 +388,7 @@ describe('Sync API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/sync/sync')
+        .post('/api/v1/sync/sync')
         .send(invalidSyncData);
 
       expect(response.status).toBe(400);
@@ -399,7 +399,7 @@ describe('Sync API Tests', () => {
       syncController.syncEntity.mockRejectedValue(new Error('Sync failed'));
 
       const response = await request(app)
-        .post('/api/sync/sync')
+        .post('/api/v1/sync/sync')
         .send({
           userId: 'user_123',
           deviceId: 'device_123',
@@ -414,7 +414,7 @@ describe('Sync API Tests', () => {
     });
   });
 
-  describe('POST /api/sync/queue', () => {
+  describe('POST /api/v1/sync/queue', () => {
     it('should enqueue sync operation successfully', async () => {
       const queueData = {
         userId: 'user_123',
@@ -441,7 +441,7 @@ describe('Sync API Tests', () => {
       syncController.enqueueSync.mockResolvedValue(queuedItem);
 
       const response = await request(app)
-        .post('/api/sync/queue')
+        .post('/api/v1/sync/queue')
         .send(queueData);
 
       expect(response.status).toBe(201);
@@ -459,7 +459,7 @@ describe('Sync API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/sync/queue')
+        .post('/api/v1/sync/queue')
         .send(invalidQueueData);
 
       expect(response.status).toBe(400);
@@ -470,7 +470,7 @@ describe('Sync API Tests', () => {
       syncController.enqueueSync.mockRejectedValue(new Error('Queue full'));
 
       const response = await request(app)
-        .post('/api/sync/queue')
+        .post('/api/v1/sync/queue')
         .send({
           userId: 'user_123',
           entityType: 'user_profile',
@@ -483,7 +483,7 @@ describe('Sync API Tests', () => {
     });
   });
 
-  describe('POST /api/sync/queue/process', () => {
+  describe('POST /api/v1/sync/queue/process', () => {
     it('should process sync queue successfully', async () => {
       const processData = {
         userId: 'user_123',
@@ -516,7 +516,7 @@ describe('Sync API Tests', () => {
       syncController.processQueue.mockResolvedValue(processResult);
 
       const response = await request(app)
-        .post('/api/sync/queue/process')
+        .post('/api/v1/sync/queue/process')
         .send(processData);
 
       expect(response.status).toBe(200);
@@ -529,7 +529,7 @@ describe('Sync API Tests', () => {
       syncController.processQueue.mockRejectedValue(new Error('Processing failed'));
 
       const response = await request(app)
-        .post('/api/sync/queue/process')
+        .post('/api/v1/sync/queue/process')
         .send({ userId: 'user_123' });
 
       expect(response.status).toBe(500);
@@ -538,7 +538,7 @@ describe('Sync API Tests', () => {
 
     it('should validate processing parameters', async () => {
       const response = await request(app)
-        .post('/api/sync/queue/process')
+        .post('/api/v1/sync/queue/process')
         .send({ batchSize: -1 }); // Invalid batch size
 
       expect(response.status).toBe(400);
@@ -546,7 +546,7 @@ describe('Sync API Tests', () => {
     });
   });
 
-  describe('GET /api/sync/queue/status', () => {
+  describe('GET /api/v1/sync/queue/status', () => {
     it('should retrieve queue status successfully', async () => {
       const mockQueueStatus = {
         totalItems: 100,
@@ -572,7 +572,7 @@ describe('Sync API Tests', () => {
       syncController.getQueueStatus.mockResolvedValue(mockQueueStatus);
 
       const response = await request(app)
-        .get('/api/sync/queue/status');
+        .get('/api/v1/sync/queue/status');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -584,7 +584,7 @@ describe('Sync API Tests', () => {
       syncController.getQueueStatus.mockResolvedValue(mockStatus);
 
       const response = await request(app)
-        .get('/api/sync/queue/status?userId=user_123&priority=high');
+        .get('/api/v1/sync/queue/status?userId=user_123&priority=high');
 
       expect(response.status).toBe(200);
       expect(syncController.getQueueStatus).toHaveBeenCalledWith({
@@ -597,7 +597,7 @@ describe('Sync API Tests', () => {
       syncController.getQueueStatus.mockRejectedValue(new Error('Failed to get queue status'));
 
       const response = await request(app)
-        .get('/api/sync/queue/status');
+        .get('/api/v1/sync/queue/status');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
@@ -607,7 +607,7 @@ describe('Sync API Tests', () => {
   describe('Edge Cases and Error Handling', () => {
     it('should handle malformed request bodies', async () => {
       const response = await request(app)
-        .post('/api/sync/devices/register')
+        .post('/api/v1/sync/devices/register')
         .set('Content-Type', 'application/json')
         .send('{"invalid": json}');
 
@@ -622,8 +622,8 @@ describe('Sync API Tests', () => {
         .mockResolvedValueOnce({ id: 'device_2' });
 
       const [response1, response2] = await Promise.all([
-        request(app).post('/api/sync/devices/register').send(deviceData),
-        request(app).post('/api/sync/devices/register').send(deviceData)
+        request(app).post('/api/v1/sync/devices/register').send(deviceData),
+        request(app).post('/api/v1/sync/devices/register').send(deviceData)
       ]);
 
       expect(response1.status).toBe(201);
@@ -645,7 +645,7 @@ describe('Sync API Tests', () => {
       syncController.syncEntity.mockRejectedValue(new Error('Payload too large'));
 
       const response = await request(app)
-        .post('/api/sync/sync')
+        .post('/api/v1/sync/sync')
         .send(largeSyncData);
 
       expect(response.status).toBe(400);
@@ -660,7 +660,7 @@ describe('Sync API Tests', () => {
       );
 
       const response = await request(app)
-        .get('/api/sync/users/user_123/devices');
+        .get('/api/v1/sync/users/user_123/devices');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
@@ -668,7 +668,7 @@ describe('Sync API Tests', () => {
 
     it('should handle invalid device types', async () => {
       const response = await request(app)
-        .post('/api/sync/devices/register')
+        .post('/api/v1/sync/devices/register')
         .send({
           userId: 'user_123',
           deviceId: 'device_123',
@@ -682,7 +682,7 @@ describe('Sync API Tests', () => {
     it('should handle unauthorized device operations', async () => {
       // This would require authentication middleware to be implemented
       const response = await request(app)
-        .delete('/api/sync/devices/device_123')
+        .delete('/api/v1/sync/devices/device_123')
         .query({ userId: 'different_user_123' });
 
       // Based on current implementation, this might work without auth
@@ -694,7 +694,7 @@ describe('Sync API Tests', () => {
       syncController.enqueueSync.mockRejectedValue(new Error('Queue overflow'));
 
       const response = await request(app)
-        .post('/api/sync/queue')
+        .post('/api/v1/sync/queue')
         .send({
           userId: 'user_123',
           entityType: 'user_profile',

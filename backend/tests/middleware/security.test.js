@@ -61,7 +61,7 @@ describe('Security Middleware', () => {
   test('should sanitize suspicious HTML tags in request body', async () => {
     // This test assumes a route that accepts a body
     const res = await request(app)
-      .post('/api/auth/register')
+      .post('/api/v1/auth/register')
       .set('x-test-security', 'true')
       .send({
         username: 'attacker',

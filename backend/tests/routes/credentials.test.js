@@ -44,7 +44,7 @@ describe('Credential API Tests', () => {
     jest.clearAllMocks();
   });
 
-  describe('POST /api/credentials', () => {
+  describe('POST /api/v1/credentials', () => {
     it('should create a new credential successfully', async () => {
       const mockCredential = userData.credentials.validCredential;
       const createdCredential = { ...mockCredential, id: 'cred_123', createdAt: new Date() };
@@ -54,7 +54,7 @@ describe('Credential API Tests', () => {
       ipfsService.uploadToIPFS.mockResolvedValue('QmTest123456789');
 
       const response = await request(app)
-        .post('/api/credentials')
+        .post('/api/v1/credentials')
         .send(mockCredential);
 
       expect(response.status).toBe(201);
@@ -67,7 +67,7 @@ describe('Credential API Tests', () => {
       const invalidCredential = userData.credentials.invalidCredential;
 
       const response = await request(app)
-        .post('/api/credentials')
+        .post('/api/v1/credentials')
         .send(invalidCredential);
 
       expect(response.status).toBe(400);
@@ -81,7 +81,7 @@ describe('Credential API Tests', () => {
       stellarService.verifySignature.mockResolvedValue(false); // Invalid signature
 
       const response = await request(app)
-        .post('/api/credentials')
+        .post('/api/v1/credentials')
         .send(mockCredential);
 
       expect(response.status).toBe(401);
@@ -98,7 +98,7 @@ describe('Credential API Tests', () => {
       ipfsService.uploadToIPFS.mockResolvedValue('QmTest123456789');
 
       const response = await request(app)
-        .post('/api/credentials')
+        .post('/api/v1/credentials')
         .send(mockCredential);
 
       expect(ipfsService.uploadToIPFS).toHaveBeenCalledWith(mockCredential.metadata);
@@ -112,7 +112,7 @@ describe('Credential API Tests', () => {
       ipfsService.uploadToIPFS.mockRejectedValue(new Error('IPFS upload failed'));
 
       const response = await request(app)
-        .post('/api/credentials')
+        .post('/api/v1/credentials')
         .send(mockCredential);
 
       expect(response.status).toBe(500);
@@ -127,7 +127,7 @@ describe('Credential API Tests', () => {
       credentialService.createCredential.mockRejectedValue(new Error('Credential already exists'));
 
       const response = await request(app)
-        .post('/api/credentials')
+        .post('/api/v1/credentials')
         .send(mockCredential);
 
       expect(response.status).toBe(409);
@@ -135,14 +135,14 @@ describe('Credential API Tests', () => {
     });
   });
 
-  describe('GET /api/credentials/:credentialId', () => {
+  describe('GET /api/v1/credentials/:credentialId', () => {
     it('should retrieve specific credential', async () => {
       const mockCredential = userData.credentials.validCredential;
       
       credentialService.getCredential.mockResolvedValue(mockCredential);
 
       const response = await request(app)
-        .get('/api/credentials/cred_123');
+        .get('/api/v1/credentials/cred_123');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -154,7 +154,7 @@ describe('Credential API Tests', () => {
       credentialService.getCredential.mockResolvedValue(null);
 
       const response = await request(app)
-        .get('/api/credentials/nonexistent');
+        .get('/api/v1/credentials/nonexistent');
 
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
@@ -169,7 +169,7 @@ describe('Credential API Tests', () => {
       ipfsService.downloadFromIPFS.mockResolvedValue(ipfsMetadata);
 
       const response = await request(app)
-        .get('/api/credentials/cred_123');
+        .get('/api/v1/credentials/cred_123');
 
       expect(ipfsService.downloadFromIPFS).toHaveBeenCalledWith('QmTest123456789');
       expect(response.status).toBe(200);
@@ -182,14 +182,14 @@ describe('Credential API Tests', () => {
       ipfsService.downloadFromIPFS.mockRejectedValue(new Error('IPFS download failed'));
 
       const response = await request(app)
-        .get('/api/credentials/cred_123');
+        .get('/api/v1/credentials/cred_123');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /api/credentials/recipient/:recipientAddress', () => {
+  describe('GET /api/v1/credentials/recipient/:recipientAddress', () => {
     it('should retrieve credentials by recipient', async () => {
       const mockCredentials = [
         userData.credentials.validCredential,
@@ -199,7 +199,7 @@ describe('Credential API Tests', () => {
       credentialService.getCredentialsByRecipient.mockResolvedValue(mockCredentials);
 
       const response = await request(app)
-        .get('/api/credentials/recipient/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP');
+        .get('/api/v1/credentials/recipient/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -219,7 +219,7 @@ describe('Credential API Tests', () => {
       credentialService.getCredentialsByRecipient.mockResolvedValue(mockResult);
 
       const response = await request(app)
-        .get('/api/credentials/recipient/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP?page=2&limit=5');
+        .get('/api/v1/credentials/recipient/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP?page=2&limit=5');
 
       expect(response.status).toBe(200);
       expect(response.body.data.page).toBe(2);
@@ -228,7 +228,7 @@ describe('Credential API Tests', () => {
 
     it('should validate recipient address format', async () => {
       const response = await request(app)
-        .get('/api/credentials/recipient/invalid-address');
+        .get('/api/v1/credentials/recipient/invalid-address');
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -239,14 +239,14 @@ describe('Credential API Tests', () => {
       credentialService.getCredentialsByRecipient.mockResolvedValue([]);
 
       const response = await request(app)
-        .get('/api/credentials/recipient/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP');
+        .get('/api/v1/credentials/recipient/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP');
 
       expect(response.status).toBe(200);
       expect(response.body.data).toEqual([]);
     });
   });
 
-  describe('GET /api/credentials/issuer/:issuerAddress', () => {
+  describe('GET /api/v1/credentials/issuer/:issuerAddress', () => {
     it('should retrieve credentials by issuer', async () => {
       const mockCredentials = [
         userData.credentials.validCredential,
@@ -256,7 +256,7 @@ describe('Credential API Tests', () => {
       credentialService.getCredentialsByIssuer.mockResolvedValue(mockCredentials);
 
       const response = await request(app)
-        .get('/api/credentials/issuer/GD7YEH5CKZ5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF');
+        .get('/api/v1/credentials/issuer/GD7YEH5CKZ5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -276,7 +276,7 @@ describe('Credential API Tests', () => {
       credentialService.getCredentialsByIssuer.mockResolvedValue(mockResult);
 
       const response = await request(app)
-        .get('/api/credentials/issuer/GD7YEH5CKZ5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF?type=course_completion&status=active');
+        .get('/api/v1/credentials/issuer/GD7YEH5CKZ5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF5Z5J5WDF?type=course_completion&status=active');
 
       expect(response.status).toBe(200);
       expect(credentialService.getCredentialsByIssuer).toHaveBeenCalledWith(
@@ -286,7 +286,7 @@ describe('Credential API Tests', () => {
     });
   });
 
-  describe('POST /api/credentials/:credentialId/verify', () => {
+  describe('POST /api/v1/credentials/:credentialId/verify', () => {
     it('should verify credential successfully', async () => {
       const mockVerificationResult = {
         isValid: true,
@@ -303,7 +303,7 @@ describe('Credential API Tests', () => {
       stellarService.verifySignature.mockResolvedValue(true);
 
       const response = await request(app)
-        .post('/api/credentials/cred_123/verify');
+        .post('/api/v1/credentials/cred_123/verify');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -328,7 +328,7 @@ describe('Credential API Tests', () => {
       credentialService.verifyCredential.mockResolvedValue(mockVerificationResult);
 
       const response = await request(app)
-        .post('/api/credentials/cred_expired/verify');
+        .post('/api/v1/credentials/cred_expired/verify');
 
       expect(response.status).toBe(200);
       expect(response.body.data.isValid).toBe(false);
@@ -351,7 +351,7 @@ describe('Credential API Tests', () => {
       credentialService.verifyCredential.mockResolvedValue(mockVerificationResult);
 
       const response = await request(app)
-        .post('/api/credentials/cred_revoked/verify');
+        .post('/api/v1/credentials/cred_revoked/verify');
 
       expect(response.status).toBe(200);
       expect(response.body.data.isValid).toBe(false);
@@ -362,14 +362,14 @@ describe('Credential API Tests', () => {
       credentialService.verifyCredential.mockRejectedValue(new Error('Verification failed'));
 
       const response = await request(app)
-        .post('/api/credentials/cred_123/verify');
+        .post('/api/v1/credentials/cred_123/verify');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('POST /api/credentials/:credentialId/revoke', () => {
+  describe('POST /api/v1/credentials/:credentialId/revoke', () => {
     it('should revoke credential successfully', async () => {
       const revokeData = {
         reason: 'Issued in error',
@@ -387,7 +387,7 @@ describe('Credential API Tests', () => {
       credentialService.revokeCredential.mockResolvedValue(mockRevokedCredential);
 
       const response = await request(app)
-        .post('/api/credentials/cred_123/revoke')
+        .post('/api/v1/credentials/cred_123/revoke')
         .send(revokeData);
 
       expect(response.status).toBe(200);
@@ -405,7 +405,7 @@ describe('Credential API Tests', () => {
       stellarService.verifySignature.mockResolvedValue(false); // Unauthorized
 
       const response = await request(app)
-        .post('/api/credentials/cred_123/revoke')
+        .post('/api/v1/credentials/cred_123/revoke')
         .send(revokeData);
 
       expect(response.status).toBe(401);
@@ -420,7 +420,7 @@ describe('Credential API Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/credentials/cred_123/revoke')
+        .post('/api/v1/credentials/cred_123/revoke')
         .send(invalidRevokeData);
 
       expect(response.status).toBe(400);
@@ -437,7 +437,7 @@ describe('Credential API Tests', () => {
       credentialService.revokeCredential.mockRejectedValue(new Error('Credential already revoked'));
 
       const response = await request(app)
-        .post('/api/credentials/cred_123/revoke')
+        .post('/api/v1/credentials/cred_123/revoke')
         .send(revokeData);
 
       expect(response.status).toBe(400);
@@ -445,7 +445,7 @@ describe('Credential API Tests', () => {
     });
   });
 
-  describe('PUT /api/credentials/:credentialId', () => {
+  describe('PUT /api/v1/credentials/:credentialId', () => {
     it('should update credential successfully', async () => {
       const updateData = {
         title: 'Updated Certificate Title',
@@ -461,7 +461,7 @@ describe('Credential API Tests', () => {
       credentialService.updateCredential.mockResolvedValue(updatedCredential);
 
       const response = await request(app)
-        .put('/api/credentials/cred_123')
+        .put('/api/v1/credentials/cred_123')
         .send(updateData);
 
       expect(response.status).toBe(200);
@@ -476,7 +476,7 @@ describe('Credential API Tests', () => {
       stellarService.verifySignature.mockResolvedValue(false); // Unauthorized
 
       const response = await request(app)
-        .put('/api/credentials/cred_123')
+        .put('/api/v1/credentials/cred_123')
         .send(updateData);
 
       expect(response.status).toBe(401);
@@ -490,7 +490,7 @@ describe('Credential API Tests', () => {
       };
 
       const response = await request(app)
-        .put('/api/credentials/cred_123')
+        .put('/api/v1/credentials/cred_123')
         .send(invalidUpdateData);
 
       expect(response.status).toBe(400);
@@ -498,7 +498,7 @@ describe('Credential API Tests', () => {
     });
   });
 
-  describe('GET /api/credentials/search', () => {
+  describe('GET /api/v1/credentials/search', () => {
     it('should search credentials with filters', async () => {
       const searchParams = {
         query: 'blockchain',
@@ -519,7 +519,7 @@ describe('Credential API Tests', () => {
       credentialService.searchCredentials.mockResolvedValue(mockSearchResult);
 
       const response = await request(app)
-        .get('/api/credentials/search')
+        .get('/api/v1/credentials/search')
         .query(searchParams);
 
       expect(response.status).toBe(200);
@@ -541,7 +541,7 @@ describe('Credential API Tests', () => {
       credentialService.searchCredentials.mockResolvedValue(mockSearchResult);
 
       const response = await request(app)
-        .get('/api/credentials/search')
+        .get('/api/v1/credentials/search')
         .query(searchParams);
 
       expect(response.status).toBe(200);
@@ -550,7 +550,7 @@ describe('Credential API Tests', () => {
 
     it('should validate search parameters', async () => {
       const response = await request(app)
-        .get('/api/credentials/search')
+        .get('/api/v1/credentials/search')
         .query({ page: -1, limit: 1000 }); // Invalid parameters
 
       expect(response.status).toBe(400);
@@ -558,7 +558,7 @@ describe('Credential API Tests', () => {
     });
   });
 
-  describe('GET /api/credentials/stats', () => {
+  describe('GET /api/v1/credentials/stats', () => {
     it('should retrieve credential statistics', async () => {
       const mockStats = {
         totalCredentials: 1000,
@@ -586,7 +586,7 @@ describe('Credential API Tests', () => {
       credentialService.getCredentialStats.mockResolvedValue(mockStats);
 
       const response = await request(app)
-        .get('/api/credentials/stats');
+        .get('/api/v1/credentials/stats');
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -597,7 +597,7 @@ describe('Credential API Tests', () => {
       credentialService.getCredentialStats.mockRejectedValue(new Error('Stats error'));
 
       const response = await request(app)
-        .get('/api/credentials/stats');
+        .get('/api/v1/credentials/stats');
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
@@ -607,7 +607,7 @@ describe('Credential API Tests', () => {
   describe('Edge Cases and Error Handling', () => {
     it('should handle malformed request bodies', async () => {
       const response = await request(app)
-        .post('/api/credentials')
+        .post('/api/v1/credentials')
         .set('Content-Type', 'application/json')
         .send('{"invalid": json}');
 
@@ -626,8 +626,8 @@ describe('Credential API Tests', () => {
       ipfsService.uploadToIPFS.mockResolvedValue('QmTest123');
 
       const [response1, response2] = await Promise.all([
-        request(app).post('/api/credentials').send(credential1),
-        request(app).post('/api/credentials').send(credential2)
+        request(app).post('/api/v1/credentials').send(credential1),
+        request(app).post('/api/v1/credentials').send(credential2)
       ]);
 
       expect(response1.status).toBe(201);
@@ -640,7 +640,7 @@ describe('Credential API Tests', () => {
 
       const responses = await Promise.all(
         Array(10).fill().map(() =>
-          request(app).post('/api/credentials').send(userData.credentials.validCredential)
+          request(app).post('/api/v1/credentials').send(userData.credentials.validCredential)
         )
       );
 
@@ -660,7 +660,7 @@ describe('Credential API Tests', () => {
       ipfsService.uploadToIPFS.mockRejectedValue(new Error('Data too large'));
 
       const response = await request(app)
-        .post('/api/credentials')
+        .post('/api/v1/credentials')
         .send(largeCredential);
 
       expect(response.status).toBe(400);
@@ -675,7 +675,7 @@ describe('Credential API Tests', () => {
       );
 
       const response = await request(app)
-        .post('/api/credentials')
+        .post('/api/v1/credentials')
         .send(userData.credentials.validCredential);
 
       expect(response.status).toBe(500);

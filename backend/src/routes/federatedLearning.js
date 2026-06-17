@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const FederatedLearningController = require('../controllers/federatedLearningController');
-const auth = require('../middleware/auth');
+const { authenticateToken: auth } = require('../middleware/auth');
 const rateLimit = require('express-rate-limit');
 
 // Initialize controller

@@ -3,7 +3,7 @@ const router = express.Router();
 const Bookmark = require('../models/Bookmark');
 const Note = require('../models/Note');
 const Content = require('../models/Content');
-const auth = require('../middleware/auth');
+const { authenticateToken: auth } = require('../middleware/auth');
 
 // Get all bookmarks for a user
 router.get('/', auth, async (req, res) => {

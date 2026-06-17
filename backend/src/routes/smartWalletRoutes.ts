@@ -5,14 +5,14 @@
 
 import { Router } from 'express';
 import * as smartWalletController from '../controllers/smartWalletController';
-import { authenticate } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
 import { validateRequest } from '../middleware/validation';
 import { body, param, query } from 'express-validator';
 
 const router = Router();
 
 // Apply authentication middleware to all routes
-router.use(authenticate);
+router.use(authenticateToken);
 
 /**
  * @route   POST /api/smart-wallet/create

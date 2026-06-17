@@ -23,7 +23,7 @@ describe('Enrollment System Tests', () => {
   beforeAll(async () => {
     // Setup test data
     const loginResponse = await request(app)
-      .post('/api/auth/login')
+      .post('/api/v1/auth/login')
       .send({
         email: 'test@example.com',
         password: 'testpassword'
@@ -34,7 +34,7 @@ describe('Enrollment System Tests', () => {
 
     // Create a test course
     const courseResponse = await request(app)
-      .post('/api/courses')
+      .post('/api/v1/courses')
       .set('Authorization', `Bearer ${authToken}`)
       .send({
         title: 'Test Course for Enrollment',
@@ -54,7 +54,7 @@ describe('Enrollment System Tests', () => {
   afterAll(async () => {
     // Cleanup test data
     await request(app)
-      .delete(`/api/courses/${testCourseId}`)
+      .delete(`/api/v1/courses/${testCourseId}`)
       .set('Authorization', `Bearer ${authToken}`);
   });
 
@@ -71,7 +71,7 @@ describe('Enrollment System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/enrollments')
+        .post('/api/v1/enrollments')
         .set('Authorization', `Bearer ${authToken}`)
         .send(enrollmentData)
         .expect(201);
@@ -97,7 +97,7 @@ describe('Enrollment System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/enrollments')
+        .post('/api/v1/enrollments')
         .set('Authorization', `Bearer ${authToken}`)
         .send(enrollmentData)
         .expect(404);
@@ -117,7 +117,7 @@ describe('Enrollment System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/enrollments')
+        .post('/api/v1/enrollments')
         .set('Authorization', `Bearer ${authToken}`)
         .send(enrollmentData)
         .expect(400);
@@ -137,7 +137,7 @@ describe('Enrollment System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/enrollments')
+        .post('/api/v1/enrollments')
         .set('Authorization', `Bearer ${authToken}`)
         .send(enrollmentData)
         .expect(400);
@@ -149,7 +149,7 @@ describe('Enrollment System Tests', () => {
   describe('Enrollment Retrieval', () => {
     test('should get user enrollments', async () => {
       const response = await request(app)
-        .get('/api/enrollments')
+        .get('/api/v1/enrollments')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -161,7 +161,7 @@ describe('Enrollment System Tests', () => {
 
     test('should get specific enrollment by ID', async () => {
       const response = await request(app)
-        .get(`/api/enrollments/${testEnrollmentId}`)
+        .get(`/api/v1/enrollments/${testEnrollmentId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -173,7 +173,7 @@ describe('Enrollment System Tests', () => {
     test('should reject access to other user enrollment', async () => {
       // Create another user and try to access first user's enrollment
       const otherUserResponse = await request(app)
-        .post('/api/auth/register')
+        .post('/api/v1/auth/register')
         .send({
           email: 'other@example.com',
           password: 'otherpassword',
@@ -183,7 +183,7 @@ describe('Enrollment System Tests', () => {
       const otherToken = otherUserResponse.body.token;
 
       const response = await request(app)
-        .get(`/api/enrollments/${testEnrollmentId}`)
+        .get(`/api/v1/enrollments/${testEnrollmentId}`)
         .set('Authorization', `Bearer ${otherToken}`)
         .expect(403);
 
@@ -199,7 +199,7 @@ describe('Enrollment System Tests', () => {
       };
 
       const response = await request(app)
-        .put(`/api/enrollments/${testEnrollmentId}/progress`)
+        .put(`/api/v1/enrollments/${testEnrollmentId}/progress`)
         .set('Authorization', `Bearer ${authToken}`)
         .send(progressData)
         .expect(200);
@@ -210,7 +210,7 @@ describe('Enrollment System Tests', () => {
 
     test('should get enrollment progress details', async () => {
       const response = await request(app)
-        .get(`/api/enrollments/${testEnrollmentId}/progress`)
+        .get(`/api/v1/enrollments/${testEnrollmentId}/progress`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -226,7 +226,7 @@ describe('Enrollment System Tests', () => {
       };
 
       const response = await request(app)
-        .put(`/api/enrollments/${testEnrollmentId}/progress`)
+        .put(`/api/v1/enrollments/${testEnrollmentId}/progress`)
         .set('Authorization', `Bearer ${authToken}`)
         .send(invalidProgressData)
         .expect(400);
@@ -241,7 +241,7 @@ describe('Enrollment System Tests', () => {
     beforeEach(async () => {
       // Create a course that's full for waitlist testing
       const fullCourseResponse = await request(app)
-        .post('/api/courses')
+        .post('/api/v1/courses')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           title: 'Full Course for Waitlist',
@@ -259,7 +259,7 @@ describe('Enrollment System Tests', () => {
 
       // Fill the course
       await request(app)
-        .post('/api/enrollments')
+        .post('/api/v1/enrollments')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           courseId: waitlistCourseId,
@@ -273,7 +273,7 @@ describe('Enrollment System Tests', () => {
 
     test('should add user to waitlist when course is full', async () => {
       const response = await request(app)
-        .post(`/api/enrollments/waitlist/${waitlistCourseId}`)
+        .post(`/api/v1/enrollments/waitlist/${waitlistCourseId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(201);
 
@@ -284,7 +284,7 @@ describe('Enrollment System Tests', () => {
 
     test('should get course waitlist', async () => {
       const response = await request(app)
-        .get(`/api/enrollments/waitlist/${waitlistCourseId}`)
+        .get(`/api/v1/enrollments/waitlist/${waitlistCourseId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -294,7 +294,7 @@ describe('Enrollment System Tests', () => {
 
     test('should remove user from waitlist', async () => {
       const response = await request(app)
-        .delete(`/api/enrollments/waitlist/${waitlistCourseId}`)
+        .delete(`/api/v1/enrollments/waitlist/${waitlistCourseId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -306,7 +306,7 @@ describe('Enrollment System Tests', () => {
   describe('Capacity Management', () => {
     test('should get course capacity information', async () => {
       const response = await request(app)
-        .get(`/api/enrollments/capacity/${testCourseId}`)
+        .get(`/api/v1/enrollments/capacity/${testCourseId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -318,7 +318,7 @@ describe('Enrollment System Tests', () => {
 
     test('should validate prerequisites', async () => {
       const response = await request(app)
-        .post('/api/enrollments/validate-prerequisites')
+        .post('/api/v1/enrollments/validate-prerequisites')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           courseId: testCourseId
@@ -339,7 +339,7 @@ describe('Payment System Tests', () => {
 
   beforeAll(async () => {
     const loginResponse = await request(app)
-      .post('/api/auth/login')
+      .post('/api/v1/auth/login')
       .send({
         email: 'test@example.com',
         password: 'testpassword'
@@ -359,7 +359,7 @@ describe('Payment System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/payments/stellar/create')
+        .post('/api/v1/payments/stellar/create')
         .set('Authorization', `Bearer ${authToken}`)
         .send(paymentData)
         .expect(201);
@@ -381,7 +381,7 @@ describe('Payment System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/payments/validate')
+        .post('/api/v1/payments/validate')
         .set('Authorization', `Bearer ${authToken}`)
         .send(validationData)
         .expect(200);
@@ -394,7 +394,7 @@ describe('Payment System Tests', () => {
 
     test('should get supported payment methods', async () => {
       const response = await request(app)
-        .get('/api/payments/methods')
+        .get('/api/v1/payments/methods')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -404,7 +404,7 @@ describe('Payment System Tests', () => {
 
     test('should get exchange rates', async () => {
       const response = await request(app)
-        .get('/api/payments/exchange-rates')
+        .get('/api/v1/payments/exchange-rates')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -421,7 +421,7 @@ describe('Payment System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/payments/stellar/submit')
+        .post('/api/v1/payments/stellar/submit')
         .set('Authorization', `Bearer ${authToken}`)
         .send(paymentData)
         .expect(200);
@@ -438,7 +438,7 @@ describe('Payment System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/payments/stellar/submit')
+        .post('/api/v1/payments/stellar/submit')
         .set('Authorization', `Bearer ${authToken}`)
         .send(paymentData)
         .expect(400);
@@ -453,7 +453,7 @@ describe('Payment System Tests', () => {
     beforeAll(async () => {
       // Create a payment for refund testing
       const paymentResponse = await request(app)
-        .post('/api/payments/intent')
+        .post('/api/v1/payments/intent')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           enrollmentId: 'test-enrollment-id',
@@ -474,7 +474,7 @@ describe('Payment System Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/refunds')
+        .post('/api/v1/refunds')
         .set('Authorization', `Bearer ${authToken}`)
         .send(refundData)
         .expect(201);
@@ -487,7 +487,7 @@ describe('Payment System Tests', () => {
 
     test('should get user refund requests', async () => {
       const response = await request(app)
-        .get('/api/refunds')
+        .get('/api/v1/refunds')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -497,7 +497,7 @@ describe('Payment System Tests', () => {
 
     test('should get refund analytics', async () => {
       const response = await request(app)
-        .get('/api/refunds/analytics')
+        .get('/api/v1/refunds/analytics')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -577,7 +577,7 @@ describe('Integration Tests', () => {
     // This test simulates the complete enrollment flow
     // 1. User login
     const loginResponse = await request(app)
-      .post('/api/auth/login')
+      .post('/api/v1/auth/login')
       .send({
         email: 'integration@example.com',
         password: 'testpassword'
@@ -587,7 +587,7 @@ describe('Integration Tests', () => {
 
     // 2. Create course
     const courseResponse = await request(app)
-      .post('/api/courses')
+      .post('/api/v1/courses')
       .set('Authorization', `Bearer ${token}`)
       .send({
         title: 'Integration Test Course',
@@ -605,7 +605,7 @@ describe('Integration Tests', () => {
 
     // 3. Create enrollment
     const enrollmentResponse = await request(app)
-      .post('/api/enrollments')
+      .post('/api/v1/enrollments')
       .set('Authorization', `Bearer ${token}`)
       .send({
         courseId,
@@ -622,7 +622,7 @@ describe('Integration Tests', () => {
 
     // 4. Update progress
     const progressResponse = await request(app)
-      .put(`/api/enrollments/${enrollmentId}/progress`)
+      .put(`/api/v1/enrollments/${enrollmentId}/progress`)
       .set('Authorization', `Bearer ${token}`)
       .send({ progress: 100 });
 
@@ -630,7 +630,7 @@ describe('Integration Tests', () => {
 
     // 5. Complete enrollment
     const completeResponse = await request(app)
-      .post(`/api/enrollments/${enrollmentId}/complete`)
+      .post(`/api/v1/enrollments/${enrollmentId}/complete`)
       .set('Authorization', `Bearer ${token}`)
       .send({});
 
@@ -639,14 +639,14 @@ describe('Integration Tests', () => {
 
     // Cleanup
     await request(app)
-      .delete(`/api/courses/${courseId}`)
+      .delete(`/api/v1/courses/${courseId}`)
       .set('Authorization', `Bearer ${token}`);
   });
 
   test('should handle concurrent enrollments', async () => {
     // Test concurrent enrollment requests
     const loginResponse = await request(app)
-      .post('/api/auth/login')
+      .post('/api/v1/auth/login')
       .send({
         email: 'concurrent@example.com',
         password: 'testpassword'
@@ -656,7 +656,7 @@ describe('Integration Tests', () => {
 
     // Create a course with limited capacity
     const courseResponse = await request(app)
-      .post('/api/courses')
+      .post('/api/v1/courses')
       .set('Authorization', `Bearer ${token}`)
       .send({
         title: 'Concurrent Test Course',
@@ -675,7 +675,7 @@ describe('Integration Tests', () => {
     // Create multiple concurrent enrollment requests
     const concurrentRequests = Array(5).fill(null).map(() =>
       request(app)
-        .post('/api/enrollments')
+        .post('/api/v1/enrollments')
         .set('Authorization', `Bearer ${token}`)
         .send({
           courseId,
@@ -703,7 +703,7 @@ describe('Integration Tests', () => {
 
     // Cleanup
     await request(app)
-      .delete(`/api/courses/${courseId}`)
+      .delete(`/api/v1/courses/${courseId}`)
       .set('Authorization', `Bearer ${token}`);
   });
 });
@@ -711,7 +711,7 @@ describe('Integration Tests', () => {
 describe('Error Handling Tests', () => {
   test('should handle malformed requests gracefully', async () => {
     const response = await request(app)
-      .post('/api/enrollments')
+      .post('/api/v1/enrollments')
       .send({ invalid: 'data' })
       .expect(400);
 
@@ -723,7 +723,7 @@ describe('Error Handling Tests', () => {
     // This would require mocking database connections
     // For now, we'll test invalid endpoints
     const response = await request(app)
-      .get('/api/enrollments/invalid-endpoint')
+      .get('/api/v1/enrollments/invalid-endpoint')
       .expect(404);
   });
 
@@ -731,7 +731,7 @@ describe('Error Handling Tests', () => {
     // Make multiple rapid requests
     const requests = Array(20).fill(null).map(() =>
       request(app)
-        .post('/api/enrollments')
+        .post('/api/v1/enrollments')
         .send({
           courseId: 'test-course',
           paymentMethod: PaymentMethod.STELLAR,
@@ -757,7 +757,7 @@ describe('Performance Tests', () => {
     // Create multiple enrollments
     const requests = Array(100).fill(null).map((_, index) =>
       request(app)
-        .get('/api/enrollments')
+        .get('/api/v1/enrollments')
         .query({ page: 1, limit: 100 })
     );
 
@@ -775,7 +775,7 @@ describe('Performance Tests', () => {
 
     const paymentRequests = Array(50).fill(null).map(() =>
       request(app)
-        .post('/api/payments/validate')
+        .post('/api/v1/payments/validate')
         .send({
           amount: 99.99,
           currency: 'USD',

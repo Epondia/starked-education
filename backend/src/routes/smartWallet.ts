@@ -6,13 +6,13 @@
 import express from 'express';
 import Joi from 'joi';
 import * as smartWalletController from '../controllers/smartWalletController';
-import { authenticate } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
 import { validateRequestSchema } from '../middleware/validation';
 
 const router = express.Router();
 
 // Apply authentication middleware to all routes
-router.use(authenticate);
+router.use(authenticateToken);
 
 /**
  * @route   POST /api/smart-wallet/create
