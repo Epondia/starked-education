@@ -272,9 +272,7 @@ class PerformanceOptimizationService {
 
     return {
       totalSize: this.estimateTotalSize(resources),
-      requestCount: resources.length,
-      loadTime: navigation?.loadEventEnd - navigation?.navigationStart || 0,
-      renderTime: navigation?.domContentLoadedEventEnd - navigation?.navigationStart || 0,
+      requestCount: resources.length,        loadTime: navigation?.loadEventEnd - navigation?.activationStart || 0,        renderTime: navigation?.domContentLoadedEventEnd - navigation?.activationStart || 0,
     };
   }
 

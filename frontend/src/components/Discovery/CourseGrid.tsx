@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Course } from './types';
+import { DiscoveryCourse as Course } from './types';
 import SearchBar from './SearchBar';
 import FilterPanel from './FilterPanel';
 import CourseCard from './CourseCard';

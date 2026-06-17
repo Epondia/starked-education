@@ -3,7 +3,7 @@
  * Monitors biological safety, health metrics, containment status, and emergency protocols
  */
 
-import type { SafetyStatus, NanobotSwarm } from '../types/nanotech';
+import type { SafetyStatus, NanobotSwarm } from '../../types/nanotech';
 
 /**
  * Singleton instance
@@ -261,7 +261,7 @@ class SafetyMonitorService {
     } else if (
       status.neurotoxicity > SAFETY_THRESHOLDS.maxNeurotoxicity ||
       status.inflammationLevel > SAFETY_THRESHOLDS.maxInflammation ||
-      status.oversallSafetyScore < 70
+      status.overallSafetyScore < 70
     ) {
       newStatus = 'caution';
       this.emit('warningIssued', {

@@ -3,7 +3,7 @@
  * Manages user's personalized learning profiles, neural characteristics, and adaptive settings
  */
 
-import type { LearningProfile, NeuralPattern } from '../types/nanotech';
+import type { LearningProfile, NeuralPattern } from '../../types/nanotech';
 
 /**
  * Singleton instance
@@ -90,6 +90,7 @@ class LearningProfileService {
       preferredSwarmSize: 1000,
       preferredTransferSpeed: 'moderate',
       sessionDuration: 60, // minutes
+      estimatedTimeForMastery: {} as Record<string, number>,
       totalSkillsAcquired: 0,
       totalTransferTime: 0,
       successRate: 0.8,

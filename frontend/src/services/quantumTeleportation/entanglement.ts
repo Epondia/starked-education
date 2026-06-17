@@ -238,9 +238,9 @@ class EntanglementService {
    * Clear all connections
    */
   clearConnections(): void {
-    for (const [connectionId] of this.connections) {
+    this.connections.forEach((_conn: any, connectionId: string) => {
       this.notifyDisconnectionListeners(connectionId);
-    }
+    });
     this.connections.clear();
   }
 

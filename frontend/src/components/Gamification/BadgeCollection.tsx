@@ -585,9 +585,11 @@ export function BadgeCollection({
                     <div className={`px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r ${RARITY_CONFIG[selectedBadge.rarity].color} text-white`}>
                       {RARITY_CONFIG[selectedBadge.rarity].name}
                     </div>
-                    <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
-                      <CategoryIcon className="h-4 w-4" />
-                      <span>{selectedBadge.category}</span>
+                <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+                  {(CATEGORY_CONFIG[selectedBadge.category as keyof typeof CATEGORY_CONFIG]?.icon && 
+                    (() => { const IconComp = CATEGORY_CONFIG[selectedBadge.category as keyof typeof CATEGORY_CONFIG]!.icon; return <IconComp className="h-4 w-4" />; })()
+                  ) || <Star className="h-4 w-4" />}
+                  <span>{selectedBadge.category}</span>
                     </div>
                   </div>
 

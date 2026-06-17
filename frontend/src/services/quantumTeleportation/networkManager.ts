@@ -38,11 +38,11 @@ class NetworkManager {
       this.stopHeartbeat(locationId);
 
       // Remove connections to this location
-      for (const [connId, conn] of this.connections) {
-        if (conn.sourceLocationId === locationId || conn.targetLocationId === locationId) {
-          this.connections.delete(connId);
-        }
+    this.connections.forEach((conn: any, connId: string) => {
+      if (conn.sourceLocationId === locationId || conn.targetLocationId === locationId) {
+        this.connections.delete(connId);
       }
+    });
 
       // Keep location in registry but mark as offline
       this.notifyLocationUpdate();
@@ -254,9 +254,9 @@ class NetworkManager {
    * Clear all data
    */
   clearAll(): void {
-    for (const [locationId] of this.locations) {
+    this.locations.forEach((_loc: any, locationId: string) => {
       this.stopHeartbeat(locationId);
-    }
+    });
     this.locations.clear();
     this.connections.clear();
   }

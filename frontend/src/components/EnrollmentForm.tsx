@@ -81,10 +81,10 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
       
       switch (step.id) {
         case 'personal-info':
-          isCompleted = step.validation({ personalInfo });
+          isCompleted = step.validation?.({ personalInfo });
           break;
         case 'wallet-connection':
-          isCompleted = step.validation({ wallet });
+          isCompleted = step.validation?.({ wallet });
           break;
         case 'payment':
           isCompleted = !!transactionHash;
@@ -331,7 +331,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
 // Step Components
 const PersonalInfoStep: React.FC<any> = ({ personalInfo, onPersonalInfoChange }) => {
   const handleChange = (field: string, value: string) => {
-    onPersonalInfoChange(prev => ({ ...prev, [field]: value }));
+    onPersonalInfoChange((prev: any) => ({ ...prev, [field]: value }));
   };
 
   return (
