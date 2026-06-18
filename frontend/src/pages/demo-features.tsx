@@ -46,3 +46,12 @@ const FeaturesDemoPage = () => {
 };
 
 export default FeaturesDemoPage;
+
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations';
+import type { GetStaticProps } from 'next';
+
+export const getStaticProps: GetStaticProps = async ({ locale }) => ({
+  props: {
+    ...(await serverSideTranslations(locale ?? 'en', ['common', 'navigation', 'courses'])),
+  },
+});

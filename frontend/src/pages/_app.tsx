@@ -1,4 +1,6 @@
 import type { AppProps } from 'next/app';
+import { appWithTranslation } from 'next-i18next';
+import nextI18NextConfig from '../../next-i18next.config';
 import { WalletProvider } from '../context/WalletContext';
 import { Toaster } from 'react-hot-toast';
 import '../styles/globals.css';
@@ -12,4 +14,4 @@ function MyApp({ Component, pageProps }: AppProps) {
   );
 }
 
-export default MyApp;
+export default appWithTranslation(MyApp, nextI18NextConfig);
