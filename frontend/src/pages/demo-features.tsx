@@ -3,9 +3,11 @@ import AssessmentInterface from '../components/AssessmentInterface';
 import CredentialMarketplace from '../components/CredentialMarketplace';
 import StakingDashboard from '../components/StakingDashboard';
 import CredentialBridge from '../components/CredentialBridge';
+import { RouteErrorBoundary } from '../components/RouteErrorBoundary';
 
 const FeaturesDemoPage = () => {
   return (
+    <RouteErrorBoundary routeName="Features Demo">
     <div style={{ background: '#0a0a0c', minHeight: '100vh', padding: '4rem 2rem', color: '#fff', fontFamily: 'Inter, sans-serif' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         <header style={{ textAlign: 'center', marginBottom: '4rem' }}>
@@ -42,6 +44,7 @@ const FeaturesDemoPage = () => {
         </footer>
       </div>
     </div>
+    </RouteErrorBoundary>
   );
 };
 

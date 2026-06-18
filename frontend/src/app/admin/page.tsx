@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 import {
   Users,
   BookOpen,
@@ -126,6 +127,7 @@ export default function AdminDashboard() {
   }
 
   return (
+    <RouteErrorBoundary routeName="Admin Dashboard">
     <div className="space-y-6">
       {/* Welcome Section */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-6 text-white">
@@ -283,5 +285,6 @@ export default function AdminDashboard() {
         </div>
       </div>
     </div>
+    </RouteErrorBoundary>
   );
 }

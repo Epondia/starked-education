@@ -7,6 +7,7 @@ import { AdaptiveContent } from '../components/Bio/AdaptiveContent';
 import { HapticFeedback } from '../components/Bio/HapticFeedback';
 import { BioFeedbackModule } from '../components/Bio/BioFeedbackModule';
 import { useBiometrics } from '../hooks/useBiometrics';
+import { RouteErrorBoundary } from '../components/RouteErrorBoundary';
 import { Brain, Settings, Play, Info, AlertTriangle, ChevronRight } from 'lucide-react';
 
 const DemoContent: React.FC = () => {
@@ -153,12 +154,14 @@ const DemoContent: React.FC = () => {
 
 export default function BioLearningDemo() {
   return (
-    <BiometricProvider>
-      <Head>
-        <title>Bio-Integrated Learning | StarkEd</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </Head>
-      <DemoContent />
-    </BiometricProvider>
+    <RouteErrorBoundary routeName="Bio-Learning Demo">
+      <BiometricProvider>
+        <Head>
+          <title>Bio-Integrated Learning | StarkEd</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+        </Head>
+        <DemoContent />
+      </BiometricProvider>
+    </RouteErrorBoundary>
   );
 }
