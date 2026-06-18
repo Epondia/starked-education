@@ -1,7 +1,7 @@
 #![no_std]
 use crate::utils::storage::{PackedTimestamps, PackedUserFlags, StorageUtils};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec, U256,
+    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
 };
 
 /// Achievement tier with weight
@@ -32,7 +32,7 @@ pub struct UserProfile {
 
 /// Privacy levels packed into flags
 #[contracttype]
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum PrivacyLevel {
     Public = 0,
     Private = 1,
@@ -40,11 +40,11 @@ pub enum PrivacyLevel {
 }
 
 impl PrivacyLevel {
-    pub fn to_u8(&self) -> u8 {
-        *self as u8
+    pub fn to_u32(&self) -> u32 {
+        *self as u32
     }
 
-    pub fn from_u8(value: u8) -> Self {
+    pub fn from_u32(value: u32) -> Self {
         match value & 0x03 {
             0 => PrivacyLevel::Public,
             1 => PrivacyLevel::Private,
@@ -120,7 +120,7 @@ impl UserProfileContract {
 
         let now = env.ledger().timestamp();
         let timestamps = PackedTimestamps::new(now, now);
-        let flags = PackedUserFlags::new(privacy_level.to_u8(), false, true);
+        let flags = PackedUserFlags::new(privacy_level.to_u32(), false, true);
 
         let profile = if let Some(mut existing_profile) = env
             .storage()
@@ -132,28 +132,28 @@ impl UserProfileContract {
             existing_profile.timestamps =
                 PackedTimestamps::new(existing_profile.timestamps.created_at(), now);
             existing_profile.flags = PackedUserFlags::new(
-                privacy_level.to_u8(),
+                privacy_level.to_u32(),
                 existing_profile.flags.is_verified(),
                 existing_profile.flags.is_active(),
             );
 
             // Store optional data separately
             if let Some(email) = email {
-                let email_hash = Self::generate_string_hash(&email);
+                let email_hash = Self::generate_string_hash(&env, &email);
                 existing_profile.email_hash = email_hash;
                 env.storage()
                     .instance()
                     .set(&ProfileKey::UserEmail(owner.clone()), &email);
             }
-            if let Some(bio) = bio {
-                let bio_hash = Self::generate_string_hash(&bio);
+            if let Some(bio) = bio.clone() {
+                let bio_hash = Self::generate_string_hash(&env, &bio);
                 existing_profile.bio_hash = bio_hash;
                 env.storage()
                     .instance()
                     .set(&ProfileKey::UserBio(owner.clone()), &bio);
             }
-            if let Some(avatar) = avatar_url {
-                let avatar_hash = Self::generate_string_hash(&avatar);
+            if let Some(avatar) = avatar_url.clone() {
+                let avatar_hash = Self::generate_string_hash(&env, &avatar);
                 existing_profile.avatar_hash = avatar_hash;
                 env.storage()
                     .instance()
@@ -163,12 +163,20 @@ impl UserProfileContract {
             existing_profile
         } else {
             // Create new profile
-            let email_hash =
-                Self::generate_string_hash(&email.unwrap_or_else(|| String::from_str(&env, "")));
-            let bio_hash =
-                Self::generate_string_hash(&bio.unwrap_or_else(|| String::from_str(&env, "")));
+            let email_ref = email.as_ref();
+            let bio_ref = bio.as_ref();
+            let avatar_ref = avatar_url.as_ref();
+            let email_hash = Self::generate_string_hash(
+                &env,
+                &email_ref.map(|s| s.clone()).unwrap_or_else(|| String::from_str(&env, "")),
+            );
+            let bio_hash = Self::generate_string_hash(
+                &env,
+                &bio_ref.map(|s| s.clone()).unwrap_or_else(|| String::from_str(&env, "")),
+            );
             let avatar_hash = Self::generate_string_hash(
-                &avatar_url.unwrap_or_else(|| String::from_str(&env, "")),
+                &env,
+                &avatar_ref.map(|s| s.clone()).unwrap_or_else(|| String::from_str(&env, "")),
             );
 
             let new_profile = UserProfile {
@@ -318,8 +326,11 @@ impl UserProfileContract {
 
         // Pack timestamp and verification status
         let packed_timestamp = timestamp << 1; // Reserve bit 0 for verification status
-        let badge_hash =
-            Self::generate_string_hash(&badge_url.unwrap_or_else(|| String::from_str(&env, "")));
+        let badge_ref = badge_url.as_ref();
+        let badge_hash = Self::generate_string_hash(
+            &env,
+            &badge_ref.map(|s| s.clone()).unwrap_or_else(|| String::from_str(&env, "")),
+        );
 
         let weight = Self::get_achievement_tier_weight(tier);
 
@@ -479,7 +490,7 @@ impl UserProfileContract {
 
         let now = env.ledger().timestamp();
         profile.flags = PackedUserFlags::new(
-            privacy_level.to_u8(),
+            privacy_level.to_u32(),
             profile.flags.is_verified(),
             profile.flags.is_active(),
         );
@@ -503,7 +514,7 @@ impl UserProfileContract {
             .instance()
             .get::<_, UserProfile>(&ProfileKey::User(target_user.clone()))
         {
-            let privacy_level = PrivacyLevel::from_u8(profile.flags.privacy_level());
+            let privacy_level = PrivacyLevel::from_u32(profile.flags.privacy_level());
             match privacy_level {
                 PrivacyLevel::Public => Some(profile),
                 PrivacyLevel::Private => {
@@ -540,14 +551,14 @@ impl UserProfileContract {
                 UserProfile {
                     owner: user.clone(),
                     username: String::from_str(env, "unknown"),
-                    email_hash: Self::generate_string_hash(&String::from_str(env, "")),
-                    bio_hash: Self::generate_string_hash(&String::from_str(env, "")),
-                    avatar_hash: Self::generate_string_hash(&String::from_str(env, "")),
+                    email_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
+                    bio_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
+                    avatar_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
                     timestamps: PackedTimestamps::new(now, now),
                     achievement_count: 0,
                     credential_count: 0,
                     reputation: 0,
-                    flags: PackedUserFlags::new(PrivacyLevel::Public.to_u8(), false, true),
+                    flags: PackedUserFlags::new(PrivacyLevel::Public.to_u32(), false, true),
                 }
             });
 
@@ -582,11 +593,12 @@ impl UserProfileContract {
     }
 
     /// Generate hash for string data
-    fn generate_string_hash(string: &String) -> String {
-        let mut hash = 0u64;
-        for byte in string.clone().into_bytes() {
-            hash = hash.wrapping_mul(31).wrapping_add(byte as u64);
+    fn generate_string_hash(env: &Env, string: &String) -> String {
+        let mut hash: u64 = 0;
+        let n = string.len();
+        for i in 0..n {
+            hash = hash.wrapping_mul(31).wrapping_add(i as u64);
         }
-        format!("{:x}", hash)
+        crate::utils::format::hash_to_hex_string(env, hash)
     }
 }

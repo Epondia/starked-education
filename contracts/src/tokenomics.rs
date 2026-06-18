@@ -1,14 +1,14 @@
 #![no_std]
 use crate::user_profile::UserProfileContractClient;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec, U256,
+    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,
 };
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TokenomicsKey {
-    TokenBalance(Address, u8), // Address, TokenType (0: Reward, 1: Governance, 2: Utility)
-    TotalSupply(u8),
+    TokenBalance(Address, u32),
+    TotalSupply(u32),
     StakePool(Address),
     StakePoolTotal,
     Proposal(u64),
@@ -285,14 +285,14 @@ impl TokenomicsContract {
         multiplier_bps
     }
 
-    pub fn balance_of(env: Env, user: Address, token_type: u8) -> u64 {
+    pub fn balance_of(env: Env, user: Address, token_type: u32) -> u64 {
         env.storage()
             .persistent()
             .get(&TokenomicsKey::TokenBalance(user, token_type))
             .unwrap_or(0)
     }
 
-    pub fn total_supply(env: Env, token_type: u8) -> u64 {
+    pub fn total_supply(env: Env, token_type: u32) -> u64 {
         env.storage().instance().get(&TokenomicsKey::TotalSupply(token_type)).unwrap_or(0)
     }
 }
