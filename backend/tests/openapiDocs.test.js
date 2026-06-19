@@ -138,6 +138,25 @@ describe('OpenAPI / Swagger UI Docs Portal (Issue #28)', () => {
       expect(doc.paths['/courses']).toBeDefined();
       expect(doc.paths['/content/courses']).toBeDefined();
     });
+
+    test('validateRequestSchema is exported from both validation modules', () => {
+      const middleware = require('../src/middleware/validation');
+      const utils = require('../src/utils/validation');
+
+      expect(typeof middleware.validateRequestSchema).toBe('function');
+      expect(typeof utils.validateRequestSchema).toBe('function');
+
+      const factoryMw = utils.validateRequestSchema({
+        body: { validate: () => ({ error: null }) },
+      });
+      expect(typeof factoryMw).toBe('function');
+    });
+
+    test('smartWallet route module loads without throwing', () => {
+      // The real bound that crashed — `TypeError: (0 , validation_1.validateRequestSchema)
+      // is not a function` at smartWallet.ts:24 — must not return at this require.
+      expect(() => require('../src/routes/smartWallet')).not.toThrow();
+    });
   });
 
   describe('Swagger UI mounting', () => {

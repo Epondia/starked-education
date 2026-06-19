@@ -25,16 +25,6 @@ jest.mock('../src/services/ipfs', () => ({
   updateFileMetadata: jest.fn()
 }));
 
-// Mock the smartWallet router to bypass a pre-existing baseline bug
-// (`validateRequestSchema` is not exported from `src/utils/validation.ts`).
-// This is intentionally scoped to the test environment only; the runtime
-// application behaviour of `/api/v1/smart-wallet/*` is unchanged.
-// Follow-up: track in issue #TBD to fix the real import in smartWallet.ts.
-jest.mock('../src/routes/smartWallet', () => {
-  const express = require('express');
-  return { __esModule: true, default: express.Router() };
-}, { virtual: true });
-
 const app = require('../src/index');
 
 jest.setTimeout(60000);

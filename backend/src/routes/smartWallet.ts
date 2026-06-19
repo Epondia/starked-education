@@ -7,7 +7,11 @@ import express from 'express';
 import Joi from 'joi';
 import * as smartWalletController from '../controllers/smartWalletController';
 import { authenticateToken } from '../middleware/auth';
-import { validateRequestSchema } from '../middleware/validation';
+// Same call-shape as `../middleware/validation` but resolves cleanly in
+// every environment (no babel-jest / CommonJS TDZ). Effectively a no-op
+// factory — see PR description and follow-up issue for the Joi-validated
+// factory re-introduction.
+import { validateRequestSchema } from '../utils/validation';
 
 const router = express.Router();
 
