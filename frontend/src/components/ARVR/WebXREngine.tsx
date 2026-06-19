@@ -481,7 +481,7 @@ export function WebXREngine({
       drawCalls: 0, // Would be calculated from WebGL stats
       triangles: 0, // Would be calculated from geometry stats
       memoryUsage: 0, // Would be calculated from memory stats
-      trackingQuality: 'high'
+      trackingQuality: 'high' as const
     };
 
     setPerformanceStats(stats);
@@ -538,7 +538,7 @@ export function WebXREngine({
       
       const session = currentSession;
       if (session) {
-        const endedSession = { ...session, state: 'ending' };
+        const endedSession: XRSessionInfo = { ...session, state: 'ending' as XRSessionState };
         setCurrentSession(endedSession);
         onSessionEnd?.(endedSession);
       }

@@ -9,7 +9,7 @@ export type LayoutType = 'grid' | 'list' | 'cards' | 'timeline' | 'mindmap' | 'f
 export type DensityLevel = 'compact' | 'comfortable' | 'spacious';
 export type ContentPriority = 'visual' | 'text' | 'interactive' | 'balanced';
 
-interface LayoutConfiguration {
+export interface LayoutConfiguration {
   type: LayoutType;
   density: DensityLevel;
   contentPriority: ContentPriority;
