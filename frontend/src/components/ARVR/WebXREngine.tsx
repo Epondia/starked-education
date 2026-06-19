@@ -100,6 +100,13 @@ const DEFAULT_SETTINGS: XRSettings = {
   performanceMode: 'balanced'
 };
 
+// Module-level typed const for framer-motion Transition overload disambiguation
+const spinningGlobeTransition: { repeat: number; duration: number; ease: string } = {
+  repeat: Infinity,
+  duration: 20,
+  ease: "linear"
+};
+
 export function WebXREngine({
   onSessionStart,
   onSessionEnd,
@@ -322,7 +329,19 @@ export function WebXREngine({
         id: 'error',
         mode,
         state: 'error',
-        device: availableDevices[0] || { id: 'unknown', name: 'Unknown', type: mode, capabilities: {}, supported: false },
+        device: availableDevices[0] || {
+          id: 'unknown',
+          name: 'Unknown',
+          type: mode === 'ar' ? 'ar' as const : 'vr' as const,
+          capabilities: {
+            handTracking: false,
+            spatialTracking: false,
+            eyeTracking: false,
+            controllers: false,
+            passthrough: false
+          },
+          supported: false
+        },
         startTime: Date.now(),
         frameRate: 0,
         latency: 0,
@@ -443,7 +462,7 @@ export function WebXREngine({
       drawCalls: 0, // Would be calculated from WebGL stats
       triangles: 0, // Would be calculated from geometry stats
       memoryUsage: 0, // Would be calculated from memory stats
-      trackingQuality: frame.trackingQuality || 'high'
+      trackingQuality: 'high' as const
     };
 
     setPerformanceStats(stats);
@@ -500,7 +519,7 @@ export function WebXREngine({
       
       const session = currentSession;
       if (session) {
-        const endedSession = { ...session, state: 'ending' };
+        const endedSession: XRSessionInfo = { ...session, state: 'ending' as XRSessionState };
         setCurrentSession(endedSession);
         onSessionEnd?.(endedSession);
       }
@@ -790,7 +809,7 @@ export function WebXREngine({
             <>
               <motion.div
                 animate={{ rotate: 360 }}
-                transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                transition={spinningGlobeTransition}
                 className="mb-4"
               >
                 <Globe className="h-16 w-16 text-blue-400" />

@@ -70,6 +70,17 @@ pub struct RenewalRecord {
     pub renewed_by: Address,
 }
 
+/// Helper: linear scan for Vec<Address> containment.
+/// soroban-sdk 20.5.0 Vec has no portable contains across element types.
+fn contains_address(vec: &Vec<Address>, target: &Address) -> bool {
+    for item in vec.iter() {
+        if item == *target {
+            return true;
+        }
+    }
+    false
+}
+
 /// Events for credential operations
 #[contracttype]
 #[derive(Clone)]
@@ -567,7 +578,7 @@ pub fn add_multi_sig_signature(
         .get(&MultiSigRegistryKey::MultiSigSignerSet(credential_id))
         .unwrap_or_else(|| panic!("Signer set not found"));
 
-    if !signer_set.contains(&signer) {
+    if !contains_address(&signer_set, &signer) {
         panic!("Signer is not authorized for this credential");
     }
 
@@ -578,7 +589,7 @@ pub fn add_multi_sig_signature(
         .get(&MultiSigRegistryKey::MultiSigSignatures(credential_id))
         .unwrap_or_else(|| Vec::new(env));
 
-    if signatures.contains(&signer) {
+    if contains_address(&signatures, &signer) {
         panic!("Signer has already signed this credential");
     }
 

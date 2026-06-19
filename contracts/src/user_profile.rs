@@ -540,7 +540,7 @@ impl UserProfileContract {
     }
 
     /// Add a credential to user's profile with optimized storage
-    pub fn add_credential(env: &Env, user: Address, credential_id: u64) {
+    pub fn add_credential(env: Env, user: Address, credential_id: u64) {
         let mut profile = env
             .storage()
             .instance()
@@ -576,7 +576,7 @@ impl UserProfileContract {
             .instance()
             .get(&ProfileKey::UserCredentials(user.clone()))
             .unwrap_or_else(|| Vec::new(env));
-        if !user_creds.contains(&credential_id) {
+        if !Self::vec_contains_u64(&user_creds, credential_id) {
             user_creds.push_back(credential_id);
             env.storage()
                 .instance()
@@ -585,11 +585,23 @@ impl UserProfileContract {
     }
 
     /// Get all credential IDs for a user (fast path)
-    pub fn get_user_credential_ids(env: &Env, user: Address) -> Vec<u64> {
+    pub fn get_user_credential_ids(env: Env, user: Address) -> Vec<u64> {
         env.storage()
             .instance()
             .get(&ProfileKey::UserCredentials(user))
             .unwrap_or_else(|| Vec::new(env))
+    }
+
+    /// Check if a soroban-sdk Vec<u64> contains a given value.
+    /// soroban-sdk 20.5.0 Vec has no portable contains across element types,
+    /// so we provide an explicit linear scan.
+    fn vec_contains_u64(vec: &Vec<u64>, target: u64) -> bool {
+        for item in vec.iter() {
+            if item == target {
+                return true;
+            }
+        }
+        false
     }
 
     /// Generate hash for string data
