@@ -111,6 +111,10 @@ v1Router.use('/quizzes', quizRoutes);
 v1Router.use('/events', eventLoggerRoutes);
 v1Router.use('/sync', syncRoutes);
 v1Router.use('/content', contentRoutes);
+// Compatibility alias: `/api/v1/courses` resolves to the same content router
+// so that the OpenAPI/Swagger UI acceptance criteria ("try GET /api/v1/courses")
+// match the actual mounted route.
+v1Router.use('/courses', contentRoutes);
 v1Router.use('/rbac', rbacRoutes);
 v1Router.use('/transactions', transactionRoutes);
 v1Router.use('/notifications', notificationRoutes);
@@ -162,6 +166,10 @@ app.use('/api/v1', v1Router);
 // Mount v2 router (empty — ready for future endpoints)
 const v2Router = createVersionedRouter('v2');
 app.use('/api/v2', v2Router);
+
+// OpenAPI / Swagger UI documentation (Issue #28)
+const setupSwagger = require('./docs/swagger');
+setupSwagger(app);
 
 // Schemas helper for versioned responses
 const { createVersionedResponse } = require('./utils/schemas');
