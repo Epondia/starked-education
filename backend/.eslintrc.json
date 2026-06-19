@@ -5,10 +5,27 @@
   "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
   "env": {
     "node": true,
-    "es2020": true
+    "es2020": true,
+    "jest": true
   },
   "rules": {
     "@typescript-eslint/no-explicit-any": "off",
-    "@typescript-eslint/no-unused-vars": "warn"
-  }
-}
+    "@typescript-eslint/no-unused-vars": "warn",
+    "@typescript-eslint/no-require-imports": "off",
+    "@typescript-eslint/no-var-requires": "off"
+  },  "overrides": [
+    {
+      "files": ["**/__tests__/**/*.js", "**/__tests__/**/*.ts", "tests/**/*.js", "tests/**/*.ts"],
+      "rules": {
+        "@typescript-eslint/no-require-imports": "off",
+        "@typescript-eslint/no-var-requires": "off",
+        "@typescript-eslint/no-unused-vars": "off",
+        "no-console": "off"
+      },
+      "env": {
+        "node": true,
+        "es2020": true,
+        "jest": true
+      }
+    }
+  ]}

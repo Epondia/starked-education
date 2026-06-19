@@ -16,7 +16,7 @@ interface LayoutConfiguration {
   columns: number;
   sidebarPosition: 'left' | 'right' | 'none' | 'both';
   headerSize: 'small' | 'medium' | 'large';
-  navigationStyle: 'tabs' | 'sidebar' | 'topbar' | 'floating';
+  navigationStyle: 'tabs' | 'sidebar' | 'topbar' | 'floating' | 'minimal';
   animationSpeed: 'fast' | 'normal' | 'slow';
   colorScheme: 'light' | 'dark' | 'auto' | 'high-contrast';
 }
@@ -346,6 +346,16 @@ export function DynamicLayoutAdapter({
     onLayoutChange?.(defaultLayout);
   };
 
+  // Compute the framer-motion `transition.duration` once at the top of the
+  // render scope (binding it to a `number`) so the conditional resolves
+  // unambiguously against the motion component's overloaded `Transition`
+  // type — a nested-ternary `0.2 | 0.5 | 0.3` literal union was tripping the
+  // "No overload matches this call" error on the JSX usage below.
+  const layoutTransitionDuration: number =
+    currentLayout.animationSpeed === 'fast' ? 0.2 :
+    currentLayout.animationSpeed === 'slow' ? 0.5 :
+    0.3;
+
   return (
     <div className="relative">
       {/* Layout Controls */}
@@ -503,7 +513,7 @@ export function DynamicLayoutAdapter({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: currentLayout.animationSpeed === 'fast' ? 0.2 : currentLayout.animationSpeed === 'slow' ? 0.5 : 0.3 }}
+          transition={{ duration: layoutTransitionDuration }}
         >
           {children}
         </motion.div>

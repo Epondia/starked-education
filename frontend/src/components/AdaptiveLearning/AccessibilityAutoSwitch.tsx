@@ -42,7 +42,7 @@ interface DetectionEvent {
 interface AccessibilityMetrics {
   readingSpeed: number;
   clickAccuracy: number;
-  scrollBehavior: 'smooth' | 'jerky' | 'normal';
+  scrollBehavior: 'smooth' | 'jerky' | 'normal' | 'scattered';
   mouseMovement: 'precise' | 'tremor' | 'slow';
   keyboardUsage: number;
   voiceCommands: number;
@@ -354,7 +354,9 @@ export function AccessibilityAutoSwitch({
         });
       }
 
-      // Check for cognitive support needs
+      // Check for cognitive support needs. The 'scattered' reading/scroll
+      // signal flags focus issues and triggers the cognitive accommodation
+      // (reduced clutter, guided navigation, progress indicators, etc.).
       if (currentMetrics.scrollBehavior === 'scattered') {
         detections.push({
           timestamp: new Date().toISOString(),

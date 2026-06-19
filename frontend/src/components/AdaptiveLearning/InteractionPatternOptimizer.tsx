@@ -77,7 +77,7 @@ interface InteractionPatternOptimizerProps {
   learningStyle: LearningStyle;
   onPatternDetected?: (pattern: InteractionPattern) => void;
   onAdaptationApplied?: (adaptation: AdaptationRecord) => void;
-  onRecommendationGenerated?: (recommendation: InteractionRecommendation) => void;
+  onRecommendationGenerated?: (recommendations: InteractionRecommendation[]) => void;
   enableRealTimeOptimization?: boolean;
   optimizationSensitivity?: 'low' | 'medium' | 'high';
   trackPerformanceMetrics?: boolean;
@@ -247,38 +247,37 @@ export function InteractionPatternOptimizer({
       } as any);
     };
 
+    // Touch events for mobile — `handleTouchStart` is declared once at the
+    // outer scope (not inside the conditional) so the cleanup function below
+    // can reach it without falling out of scope at return time.
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      if (touch) {
+        trackInteraction({
+          type: 'gesture',
+          target: e.target,
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          timestamp: Date.now()
+        } as any);
+      }
+    };
+
     // Add event listeners
     document.addEventListener('click', handleClick);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('scroll', handleScroll);
     document.addEventListener('keydown', handleKeyDown);
-
-    // Touch events for mobile
-    if ('ontouchstart' in window) {
-      const handleTouchStart = (e: TouchEvent) => {
-        const touch = e.touches[0];
-        if (touch) {
-          trackInteraction({
-            type: 'gesture',
-            target: e.target,
-            clientX: touch.clientX,
-            clientY: touch.clientY,
-            timestamp: Date.now()
-          } as any);
-        }
-      };
-
-      document.addEventListener('touchstart', handleTouchStart);
-    }
+    // Always register / unregister touch so the cleanup is symmetrical. On
+    // non-touch devices this is a no-op listener.
+    document.addEventListener('touchstart', handleTouchStart);
 
     return () => {
       document.removeEventListener('click', handleClick);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('scroll', handleScroll);
       document.removeEventListener('keydown', handleKeyDown);
-      if ('ontouchstart' in window) {
-        document.removeEventListener('touchstart', handleTouchStart);
-      }
+      document.removeEventListener('touchstart', handleTouchStart);
     };
   }, [enableRealTimeOptimization, onPatternDetected]);
 
@@ -381,10 +380,14 @@ export function InteractionPatternOptimizer({
       return acc;
     }, {} as Record<InteractionType, number>);
 
-    const dominantPatterns = Object.entries(patternFrequency)
+    // `patternFrequency` is `Record<InteractionType, number>`, but
+    // `Object.entries` widens keys to `string`, so explicitly recast each
+    // top-3 entry back to `InteractionType` before assigning to a typed
+    // `dominantPatterns` field on `UserInteractionProfile`.
+    const dominantPatterns: InteractionType[] = Object.entries(patternFrequency)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 3)
-      .map(([type]) => type);
+      .map(([type]) => type as InteractionType);
 
     // Update performance metrics
     const newMetrics = {

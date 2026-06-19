@@ -318,11 +318,24 @@ export function WebXREngine({
     } catch (error) {
       console.error('Failed to start XR session:', error);
       
+      const fallbackDevice: XRDevice = {
+        id: 'unknown',
+        name: 'Unknown',
+        type: mode,
+        capabilities: {
+          handTracking: false,
+          spatialTracking: false,
+          eyeTracking: false,
+          controllers: false,
+          passthrough: false
+        },
+        supported: false
+      };
       const errorSession: XRSessionInfo = {
         id: 'error',
         mode,
         state: 'error',
-        device: availableDevices[0] || { id: 'unknown', name: 'Unknown', type: mode, capabilities: {}, supported: false },
+        device: availableDevices[0] || fallbackDevice,
         startTime: Date.now(),
         frameRate: 0,
         latency: 0,
@@ -436,14 +449,18 @@ export function WebXREngine({
   }, []);
 
   // Update performance stats
-  const updatePerformanceStats = (frame: XRFrame) => {
+  const updatePerformanceStats = (_frame: XRFrame) => {
+    // NOTE: `XRFrame` from the WebXR spec does not expose a `trackingQuality`
+    // property — that quality signal lives on the XRSession/inputSource
+    // objects, not on the loop frame. We accept `_frame` as a hook for future
+    // per-frame telemetry and report a static 'high' tracking quality here.
     const stats = {
       frameRate: 60, // Would be calculated from frame timing
       latency: 0, // Would be calculated from frame timestamp
       drawCalls: 0, // Would be calculated from WebGL stats
       triangles: 0, // Would be calculated from geometry stats
       memoryUsage: 0, // Would be calculated from memory stats
-      trackingQuality: frame.trackingQuality || 'high'
+      trackingQuality: 'high'
     };
 
     setPerformanceStats(stats);
