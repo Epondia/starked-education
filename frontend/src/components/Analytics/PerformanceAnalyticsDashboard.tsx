@@ -83,6 +83,19 @@ interface RevenueMetrics {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
+// Module-level helper for recharts `Pie.label`. Recharts v2.x narrows the
+// `label` prop to a `Formatter` over (value, name, item, index, payload) —
+// our inline (`{ name, percent }`) destructured lambda used to fail with
+// "Type '(value: number, name: string) => string' is not assignable to type
+// 'Formatter<ValueType, NameType> & ...'". Lifting the callback to a typed
+// module-level function resolves the union cleanly without resorting to `any`.
+const renderPiePercentLabel = (entry: { name?: string; percent?: number }) => {
+  const pct = ((entry.percent ?? 0) * 100).toFixed(0);
+  // Guard against leading whitespace when a Pie sector arrives without a
+  // `name` (helper is also called during Recharts' first render paint).
+  return entry.name ? `${entry.name} ${pct}%` : `${pct}%`;
+};
+
 export default function PerformanceAnalyticsDashboard() {
   const [selectedTimeframe, setSelectedTimeframe] = useState('month');
   const [selectedView, setSelectedView] = useState('overview');
@@ -355,7 +368,7 @@ export default function PerformanceAnalyticsDashboard() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                      label={renderPiePercentLabel}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
@@ -474,7 +487,7 @@ export default function PerformanceAnalyticsDashboard() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                      label={renderPiePercentLabel}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"

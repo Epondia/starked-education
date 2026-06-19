@@ -17,6 +17,15 @@ interface TimeAnalysisProps {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
+// Module-level helpers for recharts `Tooltip.formatter`. Recharts v2.x
+// narrows the prop to a `Formatter` over (value, name, item, index, payload),
+// which conflicts with the inline single-arg lambda shape and surfaces as
+// "Type '(value: number) => ...' is not assignable to 'Formatter<...>'".
+// Lifting these formatters to module-level `(value: number) => string`
+// functions gives TypeScript a stable callable to match against the union.
+const formatMinutesAsHours = (value: number) => `${Math.round(value / 60)}h ${value % 60}m`;
+const formatMinutesLabel = (value: number) => `${value} min`;
+
 export const TimeAnalysis: React.FC<TimeAnalysisProps> = ({ userId, onDataLoaded }) => {
   const [data, setData] = useState<TimeData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,7 +133,7 @@ export const TimeAnalysis: React.FC<TimeAnalysisProps> = ({ userId, onDataLoaded
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value: number) => `${Math.round(value / 60)}h ${value % 60}m`} />
+                <Tooltip formatter={formatMinutesAsHours} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -139,7 +148,7 @@ export const TimeAnalysis: React.FC<TimeAnalysisProps> = ({ userId, onDataLoaded
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="day" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(value: number) => `${value} min`} />
+                <Tooltip formatter={formatMinutesLabel} />
                 <Bar dataKey="minutes" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
