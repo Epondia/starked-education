@@ -50,6 +50,11 @@ interface AnalyticsData {
   metrics: any;
   insights: any[];
   recommendations: any[];
+  // The platform analytics endpoint returns a nested `analytics` object that
+  // holds user/engagement/progress/completion/risk/course/popularity/rating/
+  // enrollment/revenue/projections subsections — see `processMetrics` below.
+  // Declared loosely typed because the backend payload is open-ended.
+  analytics?: any;
 }
 
 interface StudentMetrics {
@@ -350,7 +355,7 @@ export default function PerformanceAnalyticsDashboard() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
@@ -469,7 +474,7 @@ export default function PerformanceAnalyticsDashboard() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"

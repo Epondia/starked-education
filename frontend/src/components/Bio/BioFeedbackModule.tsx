@@ -1,7 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useBiometrics } from '../../hooks/useBiometrics';
 import { motion } from 'framer-motion';
+import type { Transition } from 'framer-motion';
 import { Wind, ShieldCheck, Heart } from 'lucide-react';
+
+// Hoisted framer-motion `Transition` for the breathing-pulse halo. Storing
+// it as a typed module-level const (instead of inlining it on every render)
+// removes the "No overload matches this call" ambiguity that framer-motion's
+// overloaded `Transition | Tween | RepeatType` union produces under strict
+// TS when both `repeat: Infinity` and `ease: <string literal>` are infered.
+// Identical shape to the inline literal that previously failed CI run #42.
+const breathingPulseTransition: Transition = {
+  repeat: Infinity,
+  duration: 4,
+  ease: 'easeInOut',
+};
 
 export const BioFeedbackModule: React.FC = () => {
   const { biometrics, simulateEvent, triggerHaptic } = useBiometrics();
@@ -62,7 +75,7 @@ export const BioFeedbackModule: React.FC = () => {
           <div className="relative">
             <motion.div
               animate={{ scale: [1, 1.5, 1] }}
-              transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+              transition={breathingPulseTransition}
               className="w-32 h-32 bg-indigo-500/30 rounded-full flex items-center justify-center"
             />
             <div className="absolute inset-0 flex items-center justify-center">

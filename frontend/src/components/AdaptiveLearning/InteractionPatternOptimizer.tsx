@@ -664,14 +664,18 @@ export function InteractionPatternOptimizer({
             Optimization Recommendations
           </h4>
           <div className="space-y-2">
-            {recommendations.slice(0, 3).map((rec, index) => (
-              <motion.div
-                key={index}
-                className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
+            {recommendations.slice(0, 3).map((rec, index) => (                <motion.div
+                  key={index}
+                  className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  // Cast to `number` so framer-motion's `Transition` overload
+                  // resolution doesn't see the result as a literal-union
+                  // (0 | 0.1 | 0.2) and trip "No overload matches this call"
+                  // under strict TS — empirically the same shape that only
+                  // fixed DynamicLayoutAdapter's nested ternary elsewhere.
+                  transition={{ delay: (index * 0.1) as number }}
+                >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-yellow-600" />

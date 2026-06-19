@@ -2,7 +2,23 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { Transition } from 'framer-motion';
 import { Glasses, Camera, Monitor, Settings, Play, Pause, RotateCw, Eye, Hand, Users, Globe } from 'lucide-react';
+
+// Hoisted framer-motion `Transition` const for the spinning globe loader
+// shown while an active XR session is rendering. Extracting the
+// `repeat: Infinity` + `ease` tuple into a typed module-level const
+// disambiguates the motion component's overloaded `Transition | Tween
+// | RepeatType` union. The same shape was triggering
+// "No overload matches this call" under strict TS in CI run #42 (`'No
+// overload matches this call'` only seen for nested-ternary literals
+// before, but framer-motion also narrows identically for inline
+// `repeat + ease` objects — better to centralise).
+const globeSpinTransition: Transition = {
+  duration: 20,
+  repeat: Infinity,
+  ease: 'linear',
+};
 
 export type XRMode = 'vr' | 'ar' | 'none';
 export type XRSessionState = 'idle' | 'starting' | 'active' | 'ending' | 'error';
@@ -318,10 +334,15 @@ export function WebXREngine({
     } catch (error) {
       console.error('Failed to start XR session:', error);
       
+      // `XRDevice.type` is a strict `'vr' | 'ar'` literal union, but `XRMode`
+      // widens it to include `'none'` (the "no session possible" state).
+      // For an error/fallback device we degrade to a `'vr'` placeholder so
+      // the union assignment stays sound — behaviour-wise the fallback is
+      // already `supported: false` and drives the `'error'` UI state.
       const fallbackDevice: XRDevice = {
         id: 'unknown',
         name: 'Unknown',
-        type: mode,
+        type: mode === 'none' ? 'vr' : mode,
         capabilities: {
           handTracking: false,
           spatialTracking: false,
@@ -449,11 +470,11 @@ export function WebXREngine({
   }, []);
 
   // Update performance stats
-  const updatePerformanceStats = (_frame: XRFrame) => {
+  const updatePerformanceStats = (frame: XRFrame) => {
     // NOTE: `XRFrame` from the WebXR spec does not expose a `trackingQuality`
     // property — that quality signal lives on the XRSession/inputSource
-    // objects, not on the loop frame. We accept `_frame` as a hook for future
-    // per-frame telemetry and report a static 'high' tracking quality here.
+    // objects, not on the loop frame. We accept `frame` here for future
+    // per-frame telemetry and report a static 'high' tracking quality today.
     const stats = {
       frameRate: 60, // Would be calculated from frame timing
       latency: 0, // Would be calculated from frame timestamp
@@ -807,7 +828,7 @@ export function WebXREngine({
             <>
               <motion.div
                 animate={{ rotate: 360 }}
-                transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                transition={globeSpinTransition}
                 className="mb-4"
               >
                 <Globe className="h-16 w-16 text-blue-400" />

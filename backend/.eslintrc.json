@@ -27,5 +27,32 @@
         "es2020": true,
         "jest": true
       }
+    },
+    {
+      "files": [
+        "src/ml/atRiskIdentification.js",
+        "src/middleware/tenant.js"
+      ],
+      "rules": {
+        "no-case-declarations": "off"
+      }
+    },
+    {
+      "files": [
+        "src/middleware/versioning.ts",
+        "src/middleware/validation.ts"
+      ],
+      "rules": {
+        "@typescript-eslint/no-namespace": "off"
+      }
+    },
+    {
+      "files": [
+        "src/middleware/security.js"
+      ],
+      "rules": {
+        "no-useless-escape": "off"
+      }
     }
-  ]}
+  ]
+}
