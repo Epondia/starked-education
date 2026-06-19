@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec, U256};
+use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
 
 /// Bit-packed storage utilities for gas optimization
 #[contracttype]
@@ -8,11 +8,11 @@ pub struct PackedUserFlags {
     /// Bit 2: Verified status
     /// Bit 3: Active status
     /// Bits 4-7: Reserved for future use
-    pub flags: u8,
+    pub flags: u32,
 }
 
 impl PackedUserFlags {
-    pub fn new(privacy_level: u8, verified: bool, active: bool) -> Self {
+    pub fn new(privacy_level: u32, verified: bool, active: bool) -> Self {
         let mut flags = privacy_level & 0x03;
         if verified {
             flags |= 0x04;
@@ -23,7 +23,7 @@ impl PackedUserFlags {
         Self { flags }
     }
 
-    pub fn privacy_level(&self) -> u8 {
+    pub fn privacy_level(&self) -> u32 {
         self.flags & 0x03
     }
     pub fn is_verified(&self) -> bool {
@@ -34,27 +34,24 @@ impl PackedUserFlags {
     }
 }
 
-/// Packed timestamps and small integers
+/// Packed timestamps
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PackedTimestamps {
-    /// Combines creation and update timestamps (32 bits each)
-    pub packed: U256,
+    pub created_at: u64,
+    pub updated_at: u64,
 }
 
 impl PackedTimestamps {
     pub fn new(created_at: u64, updated_at: u64) -> Self {
-        let mut packed = U256::from_u32(created_at as u32);
-        packed = packed << 32;
-        packed |= U256::from_u32(updated_at as u32);
-        Self { packed }
+        Self { created_at, updated_at }
     }
 
     pub fn created_at(&self) -> u64 {
-        (self.packed >> 32).to_u32() as u64
+        self.created_at
     }
     pub fn updated_at(&self) -> u64 {
-        (self.packed & U256::from_u32(u32::MAX)).to_u32() as u64
+        self.updated_at
     }
 }
 
@@ -128,7 +125,7 @@ impl StorageUtils {
         email: Option<String>,
         bio: Option<String>,
         avatar_url: Option<String>,
-        privacy_level: u8,
+        privacy_level: u32,
         verified: bool,
         active: bool,
     ) {
@@ -136,15 +133,15 @@ impl StorageUtils {
         let core_data = (username, email, bio, avatar_url);
         env.storage()
             .instance()
-            .set(&StorageKey::User(user), &core_data);
+            .set(&StorageKey::User(user.clone()), &core_data);
 
         // Store flags in single byte
         let flags = PackedUserFlags::new(privacy_level, verified, active);
         env.storage()
             .instance()
-            .set(&StorageKey::UserFlags(user), &flags);
+            .set(&StorageKey::UserFlags(user.clone()), &flags);
 
-        // Store timestamps in single U256
+        // Store timestamps
         let now = env.ledger().timestamp();
         let timestamps = PackedTimestamps::new(now, now);
         env.storage()
@@ -167,7 +164,7 @@ impl StorageUtils {
         certificate_enabled: bool,
     ) {
         // Pack course flags
-        let mut flags = 0u8;
+        let mut flags = 0u32;
         if certificate_enabled {
             flags |= 0x01;
         }
