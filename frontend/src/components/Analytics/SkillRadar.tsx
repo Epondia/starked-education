@@ -3,6 +3,7 @@ import {ResponsiveContainer, Radar, RadarChart, PolarGrid, PolarAngleAxis, Polar
 
 type Skill = {name: string, level: number}
 
+// This component visualizes the user's skill proficiency across different areas using a radar chart. It receives an array of skills with their corresponding levels and renders an intuitive graphical representation of the user's strengths and areas for improvement.
 const SkillRadar: React.FC<{skills: Skill[]}> = ({skills}) => {
   const data = skills.length ? skills.map(s => ({subject: s.name, A: s.level, fullMark: 100})) : [
     {subject: 'No data', A: 0, fullMark: 100}
