@@ -214,7 +214,10 @@ impl StorageUtils {
             .get(&key)
             .unwrap_or_else(|| Vec::new(env));
 
-        if !list.contains(&id) {
+        // Linear scan — the soroban-sdk 20.5.0 `Vec` does not expose a portable
+        // `contains` method for `u64` elements, so we iterate explicitly.
+        let already_present = list.iter().any(|existing| existing == id);
+        if !already_present {
             list.push_back(id);
             env.storage().instance().set(&key, &list);
         }

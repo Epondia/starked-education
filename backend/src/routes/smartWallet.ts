@@ -7,11 +7,14 @@ import express from 'express';
 import Joi from 'joi';
 import * as smartWalletController from '../controllers/smartWalletController';
 import { authenticateToken } from '../middleware/auth';
-// Same call-shape as `../middleware/validation` but resolves cleanly in
-// every environment (no babel-jest / CommonJS TDZ). Effectively a no-op
-// factory — see PR description and follow-up issue for the Joi-validated
-// factory re-introduction.
-import { validateRequestSchema } from '../utils/validation';
+// Joi-validated factory from the central middleware module. The previous
+// re-route through `../utils/validation` (no-op factory) was a workaround
+// for a transitive CommonJS / ts-jest partial-load issue. The fix lives
+// in `backend/src/middleware/validation.ts`: `validateRequestSchema` is
+// now a hoisted `function` declaration and the federated exports it feeds
+// are evaluated lazily at request time, so this import is safe under both
+// Jest test loading and runtime routing.
+import { validateRequestSchema } from '../middleware/validation';
 
 const router = express.Router();
 

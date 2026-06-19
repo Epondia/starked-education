@@ -178,7 +178,14 @@ describe('OpenAPI / Swagger UI Docs Portal (Issue #28)', () => {
       const res = await request(app).get('/api/docs/');
       expect(res.status).toBeGreaterThanOrEqual(200);
       expect(res.status).toBeLessThan(400);
-      expect(res.text).toMatch(/Swagger UI/i);
+      // The page title is customised (`customSiteTitle: 'StarkEd Education API
+      // Docs'`), so the literal phrase "Swagger UI" never appears in the
+      // rendered HTML. Instead we assert on the kebab-case `swagger-ui`
+      // identifier that swagger-ui-express always injects via its
+      // stylesheet link (`swagger-ui.css`), bundle script
+      // (`swagger-ui-bundle.js`) and root container
+      // (`<div id="swagger-ui">`).
+      expect(res.text).toMatch(/swagger-ui/i);
     });
 
     test('GET /api/docs/ serves the Swagger UI HTML on any sub-path', async () => {

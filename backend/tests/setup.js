@@ -1,5 +1,18 @@
-const { MongoMemoryServer } = require('mongodb-memory-server');
 const mongoose = require('mongoose');
+
+// Mongo-memory is optional. Its binary depends on a download/cache chain
+// that may be unavailable in this environment (e.g. minimal dev containers,
+// CI runners without a populated `.cache/mongodb-binaries/` folder). Make
+// the lifecycle hooks no-ops with a warning if the package or the binary
+// cannot be loaded, so non-Mongo test suites (e.g. Issue #28 docs tests)
+// can still run end-to-end.
+let MongoMemoryServer;
+try {
+  ({ MongoMemoryServer } = require('mongodb-memory-server'));
+} catch (err) {
+  console.warn('[setup] mongodb-memory-server unavailable; skipping in-memory Mongo lifecycle:', err.message);
+  MongoMemoryServer = null;
+}
 
 // Set test environment variables immediately
 process.env.NODE_ENV = 'test';
@@ -9,6 +22,14 @@ process.env.STELLAR_NETWORK = 'testnet';
 console.log('Testing in environment:', process.env.NODE_ENV);
 
 const request = require('supertest');
+
+// `app` is intentionally NOT required at the top of the module — see
+// `global.testUtils.authenticatedRequest` below for the lazy load. Loading
+// `../src/index` here would force every test file to bootstrap the entire
+// backend (stellar SDK, IPFS, federated learning / paillier, secure
+// aggregation, ...). For documentation-only tests such as
+// `tests/openapiDocs.test.js` we never need the Express app, so we keep
+// the require inside the helper that actually uses it.
 
 // Mock IPFS service globally
 jest.mock('../src/services/ipfs', () => ({
@@ -25,7 +46,8 @@ jest.mock('../src/services/ipfs', () => ({
   updateFileMetadata: jest.fn()
 }));
 
-const app = require('../src/index');
+// (intentionally not loaded here — see comment above `const request = require('supertest');`)
+// const app = require('../src/index');
 
 jest.setTimeout(60000);
 
@@ -208,38 +230,62 @@ jest.mock('ioredis', () => {
   return { Redis: MockRedis, default: MockRedis };
 }, { virtual: true });
 
-let mongoServer;
+if (MongoMemoryServer) {
+  let mongoServer = null;
 
-// Global test setup
-beforeAll(async () => {
-  // Start in-memory MongoDB for testing
-  mongoServer = await MongoMemoryServer.create();
-  const mongoUri = mongoServer.getUri();
-  
-  await mongoose.connect(mongoUri);
-});
+  // Global test setup
+  beforeAll(async () => {
+    try {
+      // Start in-memory MongoDB for testing
+      mongoServer = await MongoMemoryServer.create();
+      const mongoUri = mongoServer.getUri();
 
-// Global test teardown
-afterAll(async () => {
-  await mongoose.disconnect();
-  if (mongoServer) {
-    await mongoServer.stop();
-  }
-});
+      await mongoose.connect(mongoUri);
+    } catch (err) {
+      console.warn('[setup:mongo] in-memory MongoDB failed to start; continuing without it:', err.message);
+    }
+  });
 
-// Database cleanup between tests
-beforeEach(async () => {
-  const collections = mongoose.connection.collections;
-  for (const key in collections) {
-    const collection = collections[key];
-    await collection.deleteMany({});
-  }
-});
+  // Global test teardown
+  afterAll(async () => {
+    try {
+      await mongoose.disconnect();
+    } catch (err) {
+      console.warn('[setup:mongo] mongoose.disconnect failed:', err.message);
+    }
+    if (mongoServer) {
+      try {
+        await mongoServer.stop();
+      } catch (err) {
+        console.warn('[setup:mongo] mongoServer.stop failed:', err.message);
+      }
+    }
+  });
+
+  // Database cleanup between tests
+  beforeEach(async () => {
+    try {
+      const collections = mongoose.connection.collections;
+      for (const key in collections) {
+        const collection = collections[key];
+        await collection.deleteMany({});
+      }
+    } catch (err) {
+      console.warn('[setup:mongo] beforeEach collection cleanup failed:', err.message);
+    }
+  });
+} else {
+  console.warn('[setup:mongo] mongodb-memory-server unavailable; skipping all mongo lifecycle hooks.');
+}
 
 // Global test utilities
 global.testUtils = {
   // Create authenticated request
   authenticatedRequest: (token) => {
+    // Lazy-load the Express app so we only pay the cost (and only risk
+    // any pre-existing baseline bugs in the bootstrap chain) when a test
+    // actually needs to issue an authenticated HTTP request.
+    const app = require('../src/index');
     return request(app)
       .set('Authorization', `Bearer ${token}`);
   },

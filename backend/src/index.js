@@ -1,5 +1,8 @@
 const { createServer } = require('http');
 const dotenv = require('dotenv');
+const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
 
 const { connectRedis } = require('./utils/redis');
 const { initWebsocketService } = require('./services/websocketService');
@@ -41,8 +44,8 @@ const quizRoutes = resolveRoute(require('./routes/quizRoutes'));
 const eventLoggerRoutes = resolveRoute(require('./routes/eventLoggerRoutes'));
 const syncRoutes = resolveRoute(require('./routes/syncRoutes'));
 const rbacRoutes = resolveRoute(require('./routes/rbacRoutes'));
-const contentRoutes = require('./routes/content');
-const transactionRoutes = require('./routes/transactions');
+const contentRoutes = resolveRoute(require('./routes/content'));
+const transactionRoutes = resolveRoute(require('./routes/transactions'));
 const notificationRoutes = resolveRoute(require('./routes/notificationRoutes'));
 
 // Your branch routes
@@ -53,21 +56,20 @@ try {
   secureCommRoutes = resolveRoute(require('./routes/secureCommRoutes'));
 } catch (err) {
   console.warn('Warning: Could not load secureCommRoutes:', err.message);
-  const express = require('express');
   secureCommRoutes = express.Router();
 }
 
 // Upstream routes
-const acoRoutes = require('./routes/aco');
-const federatedLearningRoutes = require('./routes/federatedLearning');
-const swarmLearningRoutes = require('./routes/swarmLearning');
+const acoRoutes = resolveRoute(require('./routes/aco'));
+const federatedLearningRoutes = resolveRoute(require('./routes/federatedLearning'));
+const swarmLearningRoutes = resolveRoute(require('./routes/swarmLearning'));
 const smartWalletRoutes = resolveRoute(require('./routes/smartWallet'));
 
 // AGI Tutor routes
-const agiTutorRoutes = require('./routes/agiTutorRoutes');
+const agiTutorRoutes = resolveRoute(require('./routes/agiTutorRoutes'));
 
 // Analytics routes
-const analyticsRoutes = require('./routes/analytics');
+const analyticsRoutes = resolveRoute(require('./routes/analytics'));
 
 // Initialize Express app
 const app = express();
@@ -129,35 +131,41 @@ v1Router.use('/agi-tutor', agiTutorRoutes);
 v1Router.use('/analytics', analyticsRoutes);
 
 // Autonomous Agents routes
-const autonomousAgentsRoutes = require('./routes/autonomousAgents');
+const autonomousAgentsRoutes = resolveRoute(require('./routes/autonomousAgents'));
 v1Router.use('/autonomous-agents', autonomousAgentsRoutes);
 
 // Gamification routes
-const gamificationRoutes = require('./routes/gamification');
+const gamificationRoutes = resolveRoute(require('./routes/gamification'));
 v1Router.use('/gamification', gamificationRoutes);
 
-// Bridge routes
-const bridgeRoutes = require('./routes/bridge');
+// Bridge routes (file may be absent in some branches; degrade gracefully)
+let bridgeRoutes;
+try {
+  bridgeRoutes = resolveRoute(require('./routes/bridge'));
+} catch (err) {
+  console.warn('Warning: Could not load bridgeRoutes:', err.message);
+  bridgeRoutes = express.Router();
+}
 v1Router.use('/bridge', bridgeRoutes);
 
 // Time-Locked Credential routes
-const timeLockCredentialsRoutes = require('./routes/timeLockCredentials');
+const timeLockCredentialsRoutes = resolveRoute(require('./routes/timeLockCredentials'));
 v1Router.use('/time-lock', timeLockCredentialsRoutes);
 
 // VRF (Verifiable Random Function) routes
-const vrfRoutes = require('./routes/vrf');
+const vrfRoutes = resolveRoute(require('./routes/vrf'));
 v1Router.use('/vrf', vrfRoutes);
 
 // Real-time Translation routes
-const translationRoutes = require('./routes/translation');
+const translationRoutes = resolveRoute(require('./routes/translation'));
 v1Router.use('/translate', translationRoutes);
 
 // Cross-Protocol Bridge routes
-const crossProtocolBridgeRoutes = require('./routes/crossProtocolBridge');
+const crossProtocolBridgeRoutes = resolveRoute(require('./routes/crossProtocolBridge'));
 v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
 
 // Admin dashboard routes
-const adminRoutes = require('./routes/admin');
+const adminRoutes = resolveRoute(require('./routes/admin'));
 v1Router.use('/admin', adminRoutes);
 
 // Mount v1 router at /api/v1

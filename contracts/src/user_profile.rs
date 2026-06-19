@@ -540,7 +540,14 @@ impl UserProfileContract {
     }
 
     /// Add a credential to user's profile with optimized storage
-    pub fn add_credential(env: &Env, user: Address, credential_id: u64) {
+    ///
+    /// NOTE: `#[contractimpl]` requires the `Env` argument to be taken **by
+    /// value** (not by reference). The previous `env: &Env` signature tripped
+    /// the soroban-sdk 20.5.0 macro expansion which exports the function as a
+    /// contract entry point and demands a fully-owned `Env` so it can be passed
+    /// to the host. Internally, every helper that needs `&Env` borrows it via
+    /// `&env`.
+    pub fn add_credential(env: Env, user: Address, credential_id: u64) {
         let mut profile = env
             .storage()
             .instance()
@@ -550,10 +557,10 @@ impl UserProfileContract {
                 let now = env.ledger().timestamp();
                 UserProfile {
                     owner: user.clone(),
-                    username: String::from_str(env, "unknown"),
-                    email_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
-                    bio_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
-                    avatar_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
+                    username: String::from_str(&env, "unknown"),
+                    email_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
+                    bio_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
+                    avatar_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
                     timestamps: PackedTimestamps::new(now, now),
                     achievement_count: 0,
                     credential_count: 0,
@@ -570,13 +577,18 @@ impl UserProfileContract {
             .instance()
             .set(&ProfileKey::User(user.clone()), &profile);
 
-        // Also maintain separate user credentials list for fast lookup
+        // Also maintain separate user credentials list for fast lookup. We use a
+        // plain linear scan here rather than `Vec::contains` because the
+        // soroban-sdk 20.5.0 `Vec` API does not expose a portable `contains`
+        // method that works uniformly across `u64`, `Address`, and `String`
+        // element types.
         let mut user_creds: Vec<u64> = env
             .storage()
             .instance()
             .get(&ProfileKey::UserCredentials(user.clone()))
-            .unwrap_or_else(|| Vec::new(env));
-        if !user_creds.contains(&credential_id) {
+            .unwrap_or_else(|| Vec::new(&env));
+        let already_present = user_creds.iter().any(|id| id == credential_id);
+        if !already_present {
             user_creds.push_back(credential_id);
             env.storage()
                 .instance()
@@ -585,11 +597,11 @@ impl UserProfileContract {
     }
 
     /// Get all credential IDs for a user (fast path)
-    pub fn get_user_credential_ids(env: &Env, user: Address) -> Vec<u64> {
+    pub fn get_user_credential_ids(env: Env, user: Address) -> Vec<u64> {
         env.storage()
             .instance()
             .get(&ProfileKey::UserCredentials(user))
-            .unwrap_or_else(|| Vec::new(env))
+            .unwrap_or_else(|| Vec::new(&env))
     }
 
     /// Generate hash for string data

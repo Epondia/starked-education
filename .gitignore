@@ -7,8 +7,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 bun.lockb
+# Commit backend/frontend package-lock.json files so `npm ci` works in CI,
+# but ignore the root-level lockfile that drifts per-machine.
 package-lock.json
+!backend/package-lock.json
+!frontend/package-lock.json
 pnpm-lock.yaml
+!backend/pnpm-lock.yaml
+!frontend/pnpm-lock.yaml
 .next/
 out/
 dist/

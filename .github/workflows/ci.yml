@@ -9,6 +9,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   NODE_VERSION: '18'
+  # Bump Node timeout budget; sharp / tfjs / pyodide native-fetch binaries in
+  # the frontend can take a few minutes on a cold cache.
+  NPM_CONFIG_FUND: 'false'
+  NPM_CONFIG_AUDIT: 'false'
 
 jobs:
   # ─── Smart Contracts ─────────────────────────────────────────────
@@ -66,15 +70,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          # Cache backend + frontend npm installs separately. Each cache key
+          # is scoped to the corresponding package-lock.json hash, so a change
+          # in either lockfile invalidates only its own cache.
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
 
+      # `backend/package-lock.json` is now tracked in the repo, so we use
+      # `npm ci` for reproducibility (and to benefit from the cache above).
+      # `--legacy-peer-deps` silences the peer-dep noise from this large
+      # dependency tree. We keep 3 retries @ 10 min as a safety net for
+      # genuinely flaky registry responses.
       - name: Install dependencies
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 5
-          max_attempts: 2
+          timeout_minutes: 10
+          max_attempts: 3
           retry_on: error
-          command: cd backend && npm ci
+          command: cd backend && npm ci --no-audit --no-fund --legacy-peer-deps
 
+      # Type check stays strict — silently passing a `tsc --noEmit` failure
+      # would re-introduce regressions instead of catching them. This is the
+      # original behaviour (no continue-on-error on typecheck).
       - name: Type check
         run: cd backend && npx tsc --noEmit
 
@@ -82,15 +99,22 @@ jobs:
         continue-on-error: true
         run: cd backend && npm run lint
 
+      # Tests run with Mongo / Redis / IPFS integration suites excluded — that
+      # surface area is exercised against the live docker-composed services in
+      # a separate workflow. Unit + middleware + openapi tests still run under
+      # `test:ci`. The setup.js fixture already degrades gracefully when
+      # mongodb-memory-server's binary is unavailable in a fresh runner.
       - name: Test
-        continue-on-error: true
-        timeout-minutes: 10
-        run: cd backend && npm run test:ci
+        continue-on-error: false
+        timeout-minutes: 15
+        run: cd backend && CI=true npx jest --ci --coverage=false --watchAll=false --testPathIgnorePatterns="tests/integration" --testPathIgnorePatterns="tests/performance" --testPathIgnorePatterns="tests/federatedLearning/.*performance"
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/starked_test
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: test_secret
+          CI: 'true'
 
+      # Build is strict — only `lint` and the optional test step tolerate noise.
       - name: Build
         run: cd backend && npm run build
 
@@ -106,32 +130,45 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          # `frontend/package-lock.json` was already tracked, so this cache
+          # key is stable. `backend` and `frontend` get separate caches
+          # because they're on different lockfiles.
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
+      # The frontend lockfile IS tracked but a couple of large native
+      # binaries (sharp, tfjs, pyodide, @react-three/*) occasionally time
+      # out in CI. We give 3 retries @ 10min and use `--prefer-offline`
+      # so we hit the GitHub Actions npm cache before reaching the public
+      # registry.
       - name: Install dependencies
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 5
-          max_attempts: 2
+          timeout_minutes: 10
+          max_attempts: 3
           retry_on: error
-          command: cd frontend && npm ci
+          command: cd frontend && npm ci --prefer-offline --no-audit --no-fund --legacy-peer-deps
 
+      # Type-check stays strict on the frontend as well.
       - name: Type check
-        continue-on-error: true
         run: cd frontend && npx tsc --noEmit
 
       - name: Lint
         continue-on-error: true
         run: cd frontend && npm run lint
 
+      # Tests run with `--passWithNoTests` because the frontend currently
+      # ships only smoke-level jest specs; missing specs shouldn't fail CI.
       - name: Test
-        continue-on-error: true
+        continue-on-error: false
         timeout-minutes: 10
-        run: cd frontend && npm run test:ci
+        run: cd frontend && CI=true npx jest --ci --coverage=false --watchAll=false --passWithNoTests
 
+      # Build is strict — a real next build failure should block the PR.
       - name: Build
-        continue-on-error: true
+        continue-on-error: false
         timeout-minutes: 15
-        run: cd frontend && NODE_OPTIONS="--max-old-space-size=4096" npm run build
+        run: cd frontend && NODE_OPTIONS="--max-old-space-size=4096" CI=true npm run build
 
   # ─── Security Scan ───────────────────────────────────────────────
   security-scan:
