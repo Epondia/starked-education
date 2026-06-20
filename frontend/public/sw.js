@@ -22,33 +22,36 @@ if (workbox) {
   const { routing, strategies, backgroundSync, expiration, cacheableResponse } =
     workbox;
 
-  // Bumped to v3 so previous caches get cleanly evicted on activation.
-  const STATIC_CACHE = 'starked-static-v3';
-  const COURSE_CACHE = 'starked-course-content-v3';
-  const API_CACHE = 'starked-api-v3';
-  const DYNAMIC_CACHE = 'starked-dynamic-v3';
-  const COURSE_QUEUE = 'starked-offline-course-queue';
+  const { routing, strategies, backgroundSync, expiration, cacheableResponse } = workbox;
 
-  // ---------------------------------------------------------------------------
-  // Background sync plugin for mutating requests (POST / PUT / DELETE / PATCH)
-  // ---------------------------------------------------------------------------
-  const bgSyncPlugin = new backgroundSync.BackgroundSyncPlugin(
-    'starked-offline-queue',
-    {
-      maxRetentionTime: 24 * 60, // Retry for up to 24 hours (specified in minutes)
-      onSync: async ({ queue }) => {
-        try {
-          await queue.replayRequests();
-          // Notify clients that the queue was drained so the UI can update.
-          const clients = await self.clients.matchAll({ includeUncontrolled: true });
-          for (const client of clients) {
-            client.postMessage({ type: 'OFFLINE_QUEUE_DRAINED' });
-          }
-        } catch (err) {
-          console.error('BackgroundSync replay failed:', err);
-        }
-      },
+  // Setup Background Sync for offline interactions (POST, PUT, DELETE)
+  const bgSyncPlugin = new backgroundSync.BackgroundSyncPlugin('starked-offline-queue', {
+    maxRetentionTime: 24 * 60, // Retry for up to 24 hours (specified in minutes)
+    onSync: async ({ queue }) => {
+      console.log('🔄 Replaying offline queued requests via Background Sync...');
+      try {
+        await queue.replayRequests();
+        // Notify all clients that sync completed
+        const clients = await self.clients.matchAll();
+        clients.forEach(client => {
+          client.postMessage({ type: 'SYNC_COMPLETED', timestamp: Date.now() });
+        });
+      } catch (error) {
+        console.error('❌ Background Sync replay failed:', error);
+        const clients = await self.clients.matchAll();
+        clients.forEach(client => {
+          client.postMessage({ type: 'SYNC_FAILED', error: error.message, timestamp: Date.now() });
+        });
+      }
     }
+  });
+
+  // Cache mutation requests (POST, PUT, DELETE) with background sync
+  routing.registerRoute(
+    ({ url, request }) => url.pathname.startsWith('/api/') && ['POST', 'PUT', 'DELETE'].includes(request.method),
+    new strategies.NetworkOnly({
+      plugins: [bgSyncPlugin]
+    })
   );
 
   routing.registerRoute(
@@ -85,19 +88,42 @@ if (workbox) {
   // Static assets – CacheFirst
   // ---------------------------------------------------------------------------
   routing.registerRoute(
-    ({ request }) =>
-      request.destination === 'image' ||
-      request.destination === 'script' ||
-      request.destination === 'style' ||
-      request.destination === 'font',
-    new strategies.CacheFirst({
-      cacheName: STATIC_CACHE,
+    ({ url, request }) => url.pathname.startsWith('/api/') && request.method === 'GET',
+    new strategies.NetworkFirst({
+      cacheName: 'starked-api-v2',
+      networkTimeoutSeconds: 3,
       plugins: [
-        new cacheableResponse.CacheableResponsePlugin({ statuses: [0, 200] }),
         new expiration.ExpirationPlugin({
           maxEntries: 200,
-          maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
-          purgeOnQuotaError: true,
+          maxAgeSeconds: 7 * 24 * 60 * 60, // 7 Days
+        }),
+      ],
+    })
+  );
+
+  // Cache-First for course content pages (HTML)
+  routing.registerRoute(
+    ({ url }) => url.pathname.startsWith('/courses/') && url.pathname.endsWith('.html'),
+    new strategies.CacheFirst({
+      cacheName: 'starked-course-content-v1',
+      plugins: [
+        new expiration.ExpirationPlugin({
+          maxEntries: 50,
+          maxAgeSeconds: 14 * 24 * 60 * 60, // 14 Days
+        }),
+      ],
+    })
+  );
+
+  // Cache-First for course assets (images, videos within courses)
+  routing.registerRoute(
+    ({ url, request }) => url.pathname.startsWith('/courses/') && (request.destination === 'image' || request.destination === 'video' || request.destination === 'font'),
+    new strategies.CacheFirst({
+      cacheName: 'starked-course-assets-v1',
+      plugins: [
+        new expiration.ExpirationPlugin({
+          maxEntries: 200,
+          maxAgeSeconds: 14 * 24 * 60 * 60, // 14 Days
         }),
       ],
     })
@@ -128,11 +154,25 @@ if (workbox) {
   routing.registerRoute(
     ({ request }) => request.destination === 'document',
     new strategies.StaleWhileRevalidate({
-      cacheName: DYNAMIC_CACHE,
+      cacheName: 'starked-dynamic-v2',
       plugins: [
         new expiration.ExpirationPlugin({
           maxEntries: 100,
-          maxAgeSeconds: 7 * 24 * 60 * 60,
+          maxAgeSeconds: 24 * 60 * 60, // 1 Day
+        }),
+      ],
+    })
+  );
+
+  // Cache course API data (list, details) with cache first
+  routing.registerRoute(
+    ({ url }) => url.pathname.match(/^\/api\/courses(\/|$)/) && url.searchParams.has('offline'),
+    new strategies.CacheFirst({
+      cacheName: 'starked-courses-offline-v1',
+      plugins: [
+        new expiration.ExpirationPlugin({
+          maxEntries: 100,
+          maxAgeSeconds: 14 * 24 * 60 * 60, // 14 Days
         }),
       ],
     })
@@ -177,21 +217,96 @@ if (workbox) {
   console.warn('Workbox failed to load – service worker running without it.');
 }
 
-// ---------------------------------------------------------------------------
-// Background sync for student progress (queue handled in IndexedDB by the app)
-// ---------------------------------------------------------------------------
+// Custom background sync for progress updates and quiz answers
 self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-progress' || event.tag === COURSE_QUEUE) {
-    // The app keeps its own progress queue in IndexedDB. Trigger an
-    // immediate flush via a message broadcast to all open clients.
-    event.waitUntil(
-      (async () => {
-        const clients = await self.clients.matchAll({ includeUncontrolled: true });
-        for (const client of clients) {
-          client.postMessage({ type: 'REQUEST_SYNC_PROGRESS' });
+  if (event.tag === 'sync-progress') {
+    console.log('🔄 Custom Background sync triggered:', event.tag);
+    event.waitUntil(processOfflineActions());
+  }
+});
+
+// Process offline actions from IndexedDB using the StarkEdOfflineDB
+async function processOfflineActions() {
+  try {
+    const dbRequest = indexedDB.open('StarkEdOfflineDB', 1);
+    const db = await new Promise((resolve, reject) => {
+      dbRequest.onsuccess = () => resolve(dbRequest.result);
+      dbRequest.onerror = () => reject(dbRequest.error);
+      dbRequest.onupgradeneeded = (event) => {
+        const db = dbRequest.result;
+        if (!db.objectStoreNames.contains('syncQueue')) {
+          db.createObjectStore('syncQueue', { keyPath: 'id', autoIncrement: true });
         }
-      })()
-    );
+        if (!db.objectStoreNames.contains('progress')) {
+          db.createObjectStore('progress', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('courses')) {
+          db.createObjectStore('courses', { keyPath: 'id' });
+        }
+      };
+    });
+
+    const transaction = db.transaction('syncQueue', 'readwrite');
+    const store = transaction.objectStore('syncQueue');
+    const items = await new Promise((resolve) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+
+    const remaining = [];
+
+    for (const item of items) {
+      try {
+        const action = item.payload || {};
+        const response = await fetch(action.endpoint || '/api/sync', {
+          method: action.method || 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: action.data ? JSON.stringify(action.data) : undefined,
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+      } catch (error) {
+        const retryCount = (item.retryCount || 0) + 1;
+        if (retryCount < 3) {
+          remaining.push({ ...item, retryCount });
+        }
+      }
+    }
+
+    // Clear and re-add remaining items
+    store.clear();
+    for (const item of remaining) {
+      store.add(item);
+    }
+
+    // Notify clients
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => {
+      client.postMessage({
+        type: 'OFFLINE_ACTIONS_PROCESSED',
+        synced: items.length - remaining.length,
+        failed: remaining.length,
+        timestamp: Date.now()
+      });
+    });
+
+    db.close();
+  } catch (error) {
+    console.error('Error processing offline actions:', error);
+  }
+}
+
+// Listen for messages from the client
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SYNC_NOW') {
+    console.log('📩 Client requested immediate sync');
+    if ('sync' in self.registration) {
+      event.waitUntil(self.registration.sync.register('sync-progress'));
+    } else {
+      event.waitUntil(processOfflineActions());
+    }
   }
 });
 
@@ -199,12 +314,7 @@ self.addEventListener('sync', (event) => {
 // Push notifications
 // ---------------------------------------------------------------------------
 self.addEventListener('push', (event) => {
-  let payload = {};
-  try {
-    payload = event.data ? event.data.json() : {};
-  } catch (_) {
-    payload = { title: 'StarkEd', body: event.data ? event.data.text() : '' };
-  }
+  console.log('📬 Push notification received:', event);
 
   const options = {
     body: payload.body || 'You have a new notification from StarkEd',
@@ -230,6 +340,40 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window' }).then((clients) => {
       if (clients.length > 0) return clients[0].focus();
       return self.clients.openWindow('/');
+    })
+  );
+});
+
+// Install event - pre-cache critical assets
+self.addEventListener('install', (event) => {
+  console.log('🔧 Service Worker installing...');
+  self.skipWaiting();
+});
+
+// Activate event - clean up old caches
+self.addEventListener('activate', (event) => {
+  console.log('🚀 Service Worker activated');
+  const cacheWhitelist = [
+    'starked-static-v2',
+    'starked-api-v2',
+    'starked-dynamic-v2',
+    'starked-course-content-v1',
+    'starked-course-assets-v1',
+    'starked-courses-offline-v1'
+  ];
+
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (!cacheWhitelist.includes(cacheName)) {
+            console.log('🧹 Removing old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => {
+      return self.clients.claim();
     })
   );
 });
