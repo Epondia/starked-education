@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /transactions:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const Joi = require('joi');
 const Transaction = require('../models/Transaction');
@@ -650,3 +659,4 @@ router.post('/validate', async (req, res) => {
 });
 
 module.exports = router;
+

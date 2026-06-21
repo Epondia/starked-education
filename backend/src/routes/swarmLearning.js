@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /swarmLearning:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const router = express.Router();
 const SwarmLearningController = require('../controllers/swarmLearningController');
@@ -121,3 +130,4 @@ router.use((error, req, res, next) => {
 });
 
 module.exports = router;
+

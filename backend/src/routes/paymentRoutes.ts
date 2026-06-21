@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /paymentRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * Payment Routes
  * API endpoints for payment processing and management
  */
@@ -222,3 +231,4 @@ router.post(
 );
 
 export default router;
+

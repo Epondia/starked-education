@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /notificationRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import express, { Router } from "express";
 import { notificationController } from "../controllers/notificationController";
 
@@ -20,3 +29,4 @@ router.put("/:userId/preferences", notificationController.updatePreferences);
 router.delete("/:notificationId", notificationController.deleteNotification);
 
 export default router;
+

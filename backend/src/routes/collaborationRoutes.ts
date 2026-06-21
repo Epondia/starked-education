@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /collaborationRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import express from 'express';
 import { CollaborationRoomController } from '../controllers/collaborationRoomController';
 
@@ -10,3 +19,4 @@ router.get('/rooms/:roomId', CollaborationRoomController.getRoomById);
 router.post('/rooms/:roomId/end', CollaborationRoomController.endRoom);
 
 export default router;
+

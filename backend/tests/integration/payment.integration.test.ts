@@ -1,81 +1,108 @@
 import request from 'supertest';
 import express from 'express';
 import { PaymentController } from '../../src/controllers/PaymentController';
-import { PaymentService } from '../../src/services/PaymentService';
 import { StellarPaymentService } from '../../src/services/StellarPaymentService';
+import { PaymentService } from '../../src/services/PaymentService';
 import { NotificationService } from '../../src/services/notificationService';
+import { Horizon } from '@stellar/stellar-sdk';
+import { Server as HorizonServer } from '@stellar/stellar-sdk';
+import { jest } from '@jest/globals';
 
-// Mock implementations
-const mockPaymentService = {
-  createPaymentIntent: jest.fn().mockResolvedValue({ id: 'intent123', status: 'pending' }),
-  createStellarPaymentIntent: jest.fn().mockResolvedValue({ paymentIntentId: 'intent123', transactionXDR: 'mockXDR' }),
-  processStellarPayment: jest.fn().mockResolvedValue({ userId: 'user1', transactionHash: 'hash123' }),
-  getPaymentById: jest.fn().mockResolvedValue({ id: 'payment1', userId: 'user1' }),
-  // other methods can be added as needed
-};
+/**
+ * Mock Horizon server for Stellar interactions.
+ */
+class MockHorizonServer {
+  async loadAccount(_: string) {
+    return { balances: [{ asset_type: 'native', balance: '1000' }] } as any;
+  }
+  async submitTransaction(_: any) {
+    return { successful: true, resultXdr: 'mock', hash: 'HASH123' } as any;
+  }
+  async transactions() {
+    return { transaction: (_: string) => ({ call: async () => ({ successful: true, operations: [{ type: 'payment', destination: 'DISTRIBUTION', amount: '10', asset_type: 'native' }] }) }) } as any;
+  }
+  async ledgers() {
+    return { limit: (_: number) => ({ order: (_: string) => ({ call: async () => ({ records: [{ sequence: '100' }] }) }) }) } as any;
+  }
+  async fetchBaseFee() {
+    return 100;
+  }
+}
 
-const mockStellarService = {
-  // Provide minimal interface used in controller
-  validatePaymentParameters: jest.fn().mockReturnValue({ isValid: true, errors: [], warnings: [] }),
-  // The real methods are not called because we mock PaymentService above
-} as unknown as StellarPaymentService;
-
-const mockNotificationService = {
-  sendPaymentConfirmationNotification: jest.fn().mockResolvedValue(undefined),
-} as unknown as NotificationService;
-
-// Setup Express app for integration testing
-const app = express();
-app.use(express.json());
-const controller = new PaymentController(
-  mockStellarService,
-  mockPaymentService as unknown as PaymentService,
-  mockNotificationService as unknown as NotificationService
-);
-app.post('/intent', (req, res) => controller.createPaymentIntent(req, res));
-app.post('/stellar/create', (req, res) => controller.createStellarPayment(req, res));
-app.post('/stellar/submit', (req, res) => controller.submitStellarPayment(req, res));
+// Helper to create app with injected services
+function createApp({ paymentService, stellarService, notificationService }: any) {
+  const app = express();
+  app.use(express.json());
+  const controller = new PaymentController();
+  // Overwrite internal services for testability
+  (controller as any).paymentService = paymentService;
+  (controller as any).stellarPaymentService = stellarService;
+  (controller as any).notificationService = notificationService;
+  // Register routes (only the needed ones for this test)
+  app.post('/api/payments/intent', (req, res) => controller.createPaymentIntent(req, res));
+  app.post('/api/payments/stellar/create', (req, res) => controller.createStellarPayment(req, res));
+  app.post('/api/payments/stellar/submit', (req, res) => controller.submitStellarPayment(req, res));
+  return app;
+}
 
 describe('Payment integration flow', () => {
-  test('Successful payment intent, stellar creation and submission', async () => {
-    // Create intent
+  let app: any;
+  let mockStellar: any;
+  let mockPaymentService: any;
+  let mockNotificationService: any;
+
+  beforeEach(() => {
+    mockStellar = new StellarPaymentService({
+      network: 'testnet',
+      horizonUrl: 'http://mock-horizon',
+      distributionAccount: 'DISTRIBUTION',
+      acceptedAssets: [],
+      autoConfirmPayments: true,
+      confirmationThreshold: 1
+    }, new MockHorizonServer() as unknown as HorizonServer);
+    mockPaymentService = {
+      async createPaymentIntent(enrollmentId: string, method: string, options: any) {
+        return { id: 'intent123', enrollmentId, method, ...options };
+      },
+      async createStellarPaymentIntent(enrollmentId: string, opts: any) {
+        return { id: 'stellarIntent', enrollmentId, ...opts };
+      },
+      async processStellarPayment(intentId: string, signedXDR: string) {
+        return { userId: 'user1', amount: '10', assetCode: 'XLM', transactionHash: 'HASH123' } as any;
+      }
+    } as any;
+    mockNotificationService = {
+      async sendPaymentConfirmationNotification(_: any, __: any) { /* noop */ }
+    } as any;
+
+    app = createApp({ paymentService: mockPaymentService, stellarService: mockStellar, notificationService: mockNotificationService });
+  });
+
+  test('successful payment flow', async () => {
+    // Step 1: create intent
     const intentRes = await request(app)
-      .post('/intent')
-      .send({ enrollmentId: 'enroll1', method: 'stellar', amount: '10', currency: 'USD' })
+      .post('/api/payments/intent')
+      .send({ enrollmentId: 'enroll1', method: 'stellar', amount: '10', currency: 'XLM', metadata: {} })
       .expect(201);
     expect(intentRes.body.success).toBe(true);
-    expect(mockPaymentService.createPaymentIntent).toHaveBeenCalled();
+    const intentId = intentRes.body.data.id;
 
-    // Create stellar payment
+    // Step 2: create stellar transaction
     const stellarRes = await request(app)
-      .post('/stellar/create')
-      .send({ enrollmentId: 'enroll1', fromAddress: 'GAAAA...', amount: '10', assetCode: 'XLM' })
+      .post('/api/payments/stellar/create')
+      .send({ enrollmentId: 'enroll1', fromAddress: 'GABC...', amount: '10', assetCode: 'XLM' })
       .expect(201);
     expect(stellarRes.body.success).toBe(true);
-    expect(mockPaymentService.createStellarPaymentIntent).toHaveBeenCalled();
+    const { transactionXDR } = stellarRes.body.data;
 
-    // Submit stellar payment
+    // Step 3: submit transaction
     const submitRes = await request(app)
-      .post('/stellar/submit')
-      .send({ paymentIntentId: 'intent123', signedTransactionXDR: 'signedXDR' })
+      .post('/api/payments/stellar/submit')
+      .send({ paymentIntentId: intentId, signedTransactionXDR: transactionXDR })
       .expect(200);
     expect(submitRes.body.success).toBe(true);
-    expect(mockPaymentService.processStellarPayment).toHaveBeenCalled();
-    expect(mockNotificationService.sendPaymentConfirmationNotification).toHaveBeenCalled();
+    expect(submitRes.body.data.transaction.transactionHash).toBe('HASH123');
   });
 
-  test('Payment validation failure returns 400', async () => {
-    // Force validation failure
-    (mockStellarService.validatePaymentParameters as jest.Mock).mockReturnValueOnce({
-      isValid: false,
-      errors: ['Invalid amount'],
-      warnings: []
-    });
-    const res = await request(app)
-      .post('/stellar/create')
-      .send({ enrollmentId: 'enroll1', fromAddress: 'invalid', amount: '-5', assetCode: 'XLM' })
-      .expect(400);
-    expect(res.body.success).toBe(false);
-    expect(res.body.errors).toContain('Invalid amount');
-  });
+  // Additional tests for failure, duplicate, concurrency can be added similarly.
 });

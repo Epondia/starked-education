@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /secureCommRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import express from 'express';
 import secureCommController from '../controllers/secureCommController';
 import { authenticateToken } from '../middleware/auth';
@@ -115,3 +124,4 @@ router.get(
 );
 
 export default router;
+

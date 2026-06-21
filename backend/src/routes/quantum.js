@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /quantum:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 """
 Quantum Computing API Routes
 RESTful API endpoints for quantum computing services
@@ -750,3 +759,4 @@ router.get('/health', async (req, res) => {
 });
 
 module.exports = router;
+

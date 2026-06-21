@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /search:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const { discoveryService } = require('../services/discoveryService');
 

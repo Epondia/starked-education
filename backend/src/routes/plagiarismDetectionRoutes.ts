@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /plagiarismDetectionRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * Plagiarism Detection Routes
  * Defines API endpoints for plagiarism detection operations
  */
@@ -259,3 +268,4 @@ router.get("/health", (req, res) => {
 });
 
 export default router;
+

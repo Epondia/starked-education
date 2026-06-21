@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /holographicRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import express, { Router } from "express";
 import * as holographicController from "../controllers/holographicController";
 
@@ -10,3 +19,4 @@ router.get("/metrics", holographicController.getMetrics);
 router.post("/optimize", holographicController.optimizeStorage);
 
 export default router;
+

@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /gamification:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const router = express.Router();
 const GamificationEngine = require('../services/gamification/GamificationEngine');
@@ -278,3 +287,4 @@ router.put('/challenges/:challengeId/progress', async (req, res) => {
 });
 
 module.exports = router;
+

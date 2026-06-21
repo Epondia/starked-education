@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /rbacRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const router = express.Router();
 const rbacController = require('../controllers/rbacController');
@@ -52,3 +61,4 @@ router.get('/permissions',
 );
 
 module.exports = router;
+

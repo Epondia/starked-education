@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /quantumEncryption:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * Quantum Encryption API Routes
  * RESTful endpoints for quantum-resistant encryption services
  */
@@ -852,3 +861,4 @@ router.get('/algorithms', (req, res) => {
 });
 
 module.exports = router;
+

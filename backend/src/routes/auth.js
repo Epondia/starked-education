@@ -32,6 +32,36 @@ function generateToken(user) {
  * Register new user
  * POST /api/auth/register
  */
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register new user
+ *     tags:
+ *       - Auth
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *       400:
+ *         description: Bad request
+ *       409:
+ *         description: Conflict - user already exists
+ */
 router.post('/register', authLimiter, async (req, res) => {
   try {
     const { username, email, password, role = UserRole.STUDENT } = req.body;
@@ -108,6 +138,32 @@ router.post('/register', authLimiter, async (req, res) => {
 /**
  * User login
  * POST /api/auth/login
+ */
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: User login
+ *     tags:
+ *       - Auth
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *       400:
+ *         description: Missing credentials
+ *       401:
+ *         description: Invalid credentials
  */
 router.post('/login', authLimiter, async (req, res) => {
   try {
