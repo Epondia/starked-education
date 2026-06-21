@@ -22,6 +22,9 @@
     "test:federated": "jest --testPathPattern=federatedLearning",
     "test:all": "npm run test:ci && npm run test:api && npm run test:federated",
     "typecheck": "tsc --noEmit",
+    "audit": "npm audit --audit-level=high",
+    "audit:fix": "npm audit fix",
+    "audit:ci": "npm audit --audit-level=high --omit=dev",
     "python:install": "pip install -r requirements.txt",
     "python:setup": "python -m spacy download en_core_web_sm"
   },
