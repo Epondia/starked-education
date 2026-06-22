@@ -37,6 +37,17 @@ function MyApp({ Component, pageProps }: AppProps) {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <ErrorBoundary key={router.asPath}>
         <WalletProvider>
+          {/*
+            NOTE for future contributors: the App Router and Pages Router
+            independently own their landmark / skip-link strategy. The App-Router
+            root layout (app/layout.tsx) renders:
+              - <a className="skip-link" href="#main-content">
+              - <RouteAnnouncer /> in components/accessibility/RouteAnnouncer.tsx
+              - <main id="main-content">  (canonical main landmark)
+            The Pages Router _app.tsx below continues to render its own
+            skip-link and aria-live announcer for /pages/*. Do NOT add a second
+            #main-content or merge these — each router owns its tree.
+          */}
           <a className="skip-link" href="#main-content">
             Skip to main content
           </a>
