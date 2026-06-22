@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /autonomousAgents:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const router = express.Router();
 const AutonomousAgentController = require('../services/autonomousAgents/AutonomousAgentController');
@@ -217,3 +226,4 @@ router.get('/agents/:type', async (req, res) => {
 });
 
 module.exports = router;
+

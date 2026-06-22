@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /enrollmentRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * Enrollment Routes
  * API endpoints for course enrollment management
  */
@@ -275,3 +284,4 @@ router.get(
 );
 
 export default router;
+

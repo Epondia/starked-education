@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /offline:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const router = express.Router();
 const OfflineContent = require('../models/OfflineContent');
@@ -207,3 +216,4 @@ router.get('/storage/:deviceId', auth, async (req, res) => {
 });
 
 module.exports = router;
+

@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /assignmentRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * Assignment Routes
  * Defines all assignment-related API endpoints
  */
@@ -128,3 +137,4 @@ export function createAssignmentRoutes(controller: AssignmentController): Router
 
   return router;
 }
+

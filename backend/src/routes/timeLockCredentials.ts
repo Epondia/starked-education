@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /timeLockCredentials:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import express, { Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { timeLockCredentialService } from '../services/timeLockCredentialService';
@@ -445,3 +454,4 @@ router.get(
 );
 
 export default router;
+

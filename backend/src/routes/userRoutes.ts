@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /userRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import { Router, Request, Response, NextFunction } from "express";
 import { body, param, validationResult } from "express-validator";
 import { userController } from "../controllers/userController";
@@ -68,3 +77,4 @@ router.get("/profile/:address/achievements", userController.getAchievements);
 router.get("/profile/:address/stats", userController.getStats);
 
 export default router;
+

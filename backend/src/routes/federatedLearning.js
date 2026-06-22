@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /federatedLearning:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const router = express.Router();
 const FederatedLearningController = require('../controllers/federatedLearningController');
@@ -115,3 +124,4 @@ router.use((error, req, res, next) => {
 });
 
 module.exports = router;
+

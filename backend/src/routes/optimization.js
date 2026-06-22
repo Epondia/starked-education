@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /optimization:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const router = express.Router();
 const OptimizationController = require('../controllers/optimizationController');
@@ -77,3 +86,4 @@ router.use((error, req, res, next) => {
 });
 
 module.exports = router;
+

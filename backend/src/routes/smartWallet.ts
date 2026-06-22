@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /smartWallet:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * Smart Wallet Routes
  * API endpoints for smart contract wallet operations
  *
@@ -422,3 +431,4 @@ router.post(
 );
 
 export default router;
+

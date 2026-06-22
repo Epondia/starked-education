@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /recommendations:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * Recommendation API Routes
  * RESTful endpoints for course recommendations and ML services
  */
@@ -743,3 +752,4 @@ router.get('/user/:userId/history', async (req, res) => {
 });
 
 module.exports = router;
+

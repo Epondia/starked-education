@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /content:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const multer = require('multer');
 const router = express.Router();
@@ -458,3 +467,4 @@ router.get('/health',
 );
 
 module.exports = router;
+

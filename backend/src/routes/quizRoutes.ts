@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /quizRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import { Router } from "express";
 import quizController from "../controllers/quizController";
 import { requirePermission } from "../middleware/rbac";
@@ -82,3 +91,4 @@ router.post(
 router.get("/health", quizController.healthCheck);
 
 export default router;
+
