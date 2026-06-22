@@ -19,6 +19,8 @@ const ResourceAllocationOptimizer = require('../services/aco/ResourceAllocationO
 const DynamicPathReplanner = require('../services/aco/DynamicPathReplanner');
 const SwarmIntelligenceCoordinator = require('../services/aco/SwarmIntelligenceCoordinator');
 const OptimizationAnalytics = require('../services/aco/OptimizationAnalytics');
+const Joi = require('joi');
+const { validateRequestSchema } = require('../middleware/validateRequestSchema');
 
 // Initialize services
 const learningOptimizer = new LearningPathOptimizer();
@@ -27,17 +29,85 @@ const pathReplanner = new DynamicPathReplanner();
 const swarmCoordinator = new SwarmIntelligenceCoordinator();
 const analytics = new OptimizationAnalytics();
 
-// Middleware for request validation
-const validateRequest = (req, res, next) => {
-  try {
-    // Basic validation
-    if (!req.body && req.method !== 'GET') {
-      return res.status(400).json({ error: 'Request body is required' });
-    }
-    next();
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
+const learningSetupSchema = {
+  body: Joi.object({
+    courses: Joi.array().items(Joi.string()).min(1).required(),
+    dependencies: Joi.object().optional(),
+  })
+};
+
+const learningOptimizeSchema = {
+  body: Joi.object({
+    startCourse: Joi.string().trim().min(1).required(),
+    endCourse: Joi.string().trim().min(1).required(),
+    preferences: Joi.object().optional(),
+  })
+};
+
+const learningAlternativesSchema = {
+  body: Joi.object({
+    startCourse: Joi.string().trim().min(1).required(),
+    endCourse: Joi.string().trim().min(1).required(),
+    numAlternatives: Joi.number().integer().min(1).max(20).optional(),
+  })
+};
+
+const learningAnalyticsSchema = {
+  body: Joi.object({
+    path: Joi.array().items(Joi.string()).min(1).required(),
+  })
+};
+
+const resourceSetupSchema = {
+  body: Joi.object({
+    resources: Joi.array().min(1).required(),
+    demands: Joi.array().optional(),
+    constraints: Joi.array().optional(),
+    objectives: Joi.array().optional(),
+  })
+};
+
+const replanningInitSchema = {
+  body: Joi.object({
+    userId: Joi.string().trim().min(1).required(),
+    startCourse: Joi.string().trim().min(1).required(),
+    endCourse: Joi.string().trim().min(1).required(),
+    preferences: Joi.object().optional(),
+  })
+};
+
+const replanningEventSchema = {
+  body: Joi.object({
+    type: Joi.string().trim().min(1).required(),
+    data: Joi.any().required(),
+  })
+};
+
+const swarmAddAgentSchema = {
+  body: Joi.object({
+    agentId: Joi.string().trim().min(1).required(),
+    agent: Joi.object().required(),
+    specialization: Joi.string().optional(),
+  })
+};
+
+const swarmExecuteSchema = {
+  body: Joi.object({
+    problemContext: Joi.object().required(),
+  })
+};
+
+const analyticsComparisonSchema = {
+  body: Joi.object({
+    optimizationIds: Joi.array().items(Joi.string()).min(1).required(),
+  })
+};
+
+const updateConfigSchema = {
+  body: Joi.object({
+    service: Joi.string().trim().min(1).required(),
+    config: Joi.object().required(),
+  })
 };
 
 /**
@@ -45,13 +115,9 @@ const validateRequest = (req, res, next) => {
  */
 
 // Setup learning environment
-router.post('/learning/setup', validateRequest, (req, res) => {
+router.post('/learning/setup', validateRequestSchema(learningSetupSchema), (req, res) => {
   try {
     const { courses, dependencies } = req.body;
-    
-    if (!courses || !Array.isArray(courses)) {
-      return res.status(400).json({ error: 'Courses array is required' });
-    }
     
     learningOptimizer.setupLearningEnvironment(courses, dependencies || {});
     
@@ -66,13 +132,9 @@ router.post('/learning/setup', validateRequest, (req, res) => {
 });
 
 // Optimize learning path
-router.post('/learning/optimize', validateRequest, (req, res) => {
+router.post('/learning/optimize', validateRequestSchema(learningOptimizeSchema), (req, res) => {
   try {
     const { startCourse, endCourse, preferences } = req.body;
-    
-    if (!startCourse || !endCourse) {
-      return res.status(400).json({ error: 'Start and end courses are required' });
-    }
     
     learningOptimizer.setUserPreferences(preferences || {});
     const result = learningOptimizer.optimizeLearningPath(startCourse, endCourse);
@@ -96,13 +158,9 @@ router.post('/learning/optimize', validateRequest, (req, res) => {
 });
 
 // Get alternative learning paths
-router.post('/learning/alternatives', validateRequest, (req, res) => {
+router.post('/learning/alternatives', validateRequestSchema(learningAlternativesSchema), (req, res) => {
   try {
     const { startCourse, endCourse, numAlternatives } = req.body;
-    
-    if (!startCourse || !endCourse) {
-      return res.status(400).json({ error: 'Start and end courses are required' });
-    }
     
     const alternatives = learningOptimizer.getAlternativePaths(
       startCourse, 
@@ -120,13 +178,9 @@ router.post('/learning/alternatives', validateRequest, (req, res) => {
 });
 
 // Get learning path analytics
-router.post('/learning/analytics', validateRequest, (req, res) => {
+router.post('/learning/analytics', validateRequestSchema(learningAnalyticsSchema), (req, res) => {
   try {
     const { path } = req.body;
-    
-    if (!path || !Array.isArray(path)) {
-      return res.status(400).json({ error: 'Path array is required' });
-    }
     
     const analytics = learningOptimizer.getPathAnalytics(path);
     
@@ -144,13 +198,9 @@ router.post('/learning/analytics', validateRequest, (req, res) => {
  */
 
 // Setup resource environment
-router.post('/resources/setup', validateRequest, (req, res) => {
+router.post('/resources/setup', validateRequestSchema(resourceSetupSchema), (req, res) => {
   try {
     const { resources, demands, constraints, objectives } = req.body;
-    
-    if (!resources || !Array.isArray(resources)) {
-      return res.status(400).json({ error: 'Resources array is required' });
-    }
     
     resourceOptimizer.setupResources(resources);
     
@@ -177,7 +227,7 @@ router.post('/resources/setup', validateRequest, (req, res) => {
 });
 
 // Optimize resource allocation
-router.post('/resources/optimize', validateRequest, (req, res) => {
+router.post('/resources/optimize', validateRequestSchema(resourceSetupSchema), (req, res) => {
   try {
     const result = resourceOptimizer.optimizeAllocation();
     
@@ -222,13 +272,9 @@ router.get('/resources/analytics/:allocationId', (req, res) => {
  */
 
 // Initialize user path
-router.post('/replanning/initialize', validateRequest, (req, res) => {
+router.post('/replanning/initialize', validateRequestSchema(replanningInitSchema), (req, res) => {
   try {
     const { userId, startCourse, endCourse, preferences } = req.body;
-    
-    if (!userId || !startCourse || !endCourse) {
-      return res.status(400).json({ error: 'UserId, startCourse, and endCourse are required' });
-    }
     
     const path = pathReplanner.initializePath(userId, startCourse, endCourse, preferences);
     
@@ -242,13 +288,9 @@ router.post('/replanning/initialize', validateRequest, (req, res) => {
 });
 
 // Record change event
-router.post('/replanning/events', validateRequest, (req, res) => {
+router.post('/replanning/events', validateRequestSchema(replanningEventSchema), (req, res) => {
   try {
     const event = req.body;
-    
-    if (!event.type || !event.data) {
-      return res.status(400).json({ error: 'Event type and data are required' });
-    }
     
     const eventId = pathReplanner.recordChangeEvent(event);
     
@@ -318,13 +360,9 @@ router.get('/replanning/statistics', (req, res) => {
  */
 
 // Add agent to swarm
-router.post('/swarm/agents', validateRequest, (req, res) => {
+router.post('/swarm/agents', validateRequestSchema(swarmAddAgentSchema), (req, res) => {
   try {
     const { agentId, agent, specialization } = req.body;
-    
-    if (!agentId || !agent) {
-      return res.status(400).json({ error: 'AgentId and agent are required' });
-    }
     
     const agentInfo = swarmCoordinator.addAgent(agentId, agent, specialization);
     
@@ -338,13 +376,9 @@ router.post('/swarm/agents', validateRequest, (req, res) => {
 });
 
 // Execute swarm iteration
-router.post('/swarm/execute', validateRequest, (req, res) => {
+router.post('/swarm/execute', validateRequestSchema(swarmExecuteSchema), (req, res) => {
   try {
     const { problemContext } = req.body;
-    
-    if (!problemContext) {
-      return res.status(400).json({ error: 'Problem context is required' });
-    }
     
     // Execute iteration asynchronously
     swarmCoordinator.executeIteration(problemContext).then(result => {
@@ -407,13 +441,9 @@ router.get('/analytics/visualization/:optimizationId', (req, res) => {
 });
 
 // Generate comparative analysis
-router.post('/analytics/comparison', validateRequest, (req, res) => {
+router.post('/analytics/comparison', validateRequestSchema(analyticsComparisonSchema), (req, res) => {
   try {
     const { optimizationIds } = req.body;
-    
-    if (!optimizationIds || !Array.isArray(optimizationIds)) {
-      return res.status(400).json({ error: 'Optimization IDs array is required' });
-    }
     
     const comparison = analytics.generateComparativeAnalysis(optimizationIds);
     
@@ -529,13 +559,9 @@ router.get('/config', (req, res) => {
 });
 
 // Update system configuration
-router.put('/config', validateRequest, (req, res) => {
+router.put('/config', validateRequestSchema(updateConfigSchema), (req, res) => {
   try {
     const { service, config } = req.body;
-    
-    if (!service || !config) {
-      return res.status(400).json({ error: 'Service and config are required' });
-    }
     
     switch (service) {
       case 'pathReplanner':

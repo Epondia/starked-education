@@ -10,19 +10,10 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { body, param, validationResult } from "express-validator";
 import { userController } from "../controllers/userController";
+import { validateRequestSchema } from "../middleware/validateRequestSchema";
+import { getProfileSchema, updateProfileSchema, getUserSettingsSchema, updateUserSettingsSchema } from "../middleware/validation";
 
 const router: Router = Router();
-
-/**
- * Validation middleware
- */
-const validateRequest = (req: Request, res: Response, next: NextFunction) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ success: false, errors: errors.array() });
-  }
-  next();
-};
 
 /**
  * @route GET /api/users/profile/:address
@@ -30,8 +21,7 @@ const validateRequest = (req: Request, res: Response, next: NextFunction) => {
  */
 router.get(
   "/profile/:address",
-  [param("address").isString().notEmpty().withMessage("Address is required")],
-  validateRequest,
+  validateRequestSchema(getProfileSchema),
   userController.getProfile,
 );
 
@@ -41,13 +31,7 @@ router.get(
  */
 router.put(
   "/profile/:address",
-  [
-    param("address").isString().notEmpty(),
-    body("username").optional().isString().trim().isLength({ min: 3 }),
-    body("email").optional().isEmail(),
-    body("bio").optional().isString().isLength({ max: 500 }),
-  ],
-  validateRequest,
+  validateRequestSchema(updateProfileSchema),
   userController.updateProfile,
 );
 
@@ -57,8 +41,7 @@ router.put(
  */
 router.get(
   "/settings/:userId",
-  [param("userId").isString().notEmpty()],
-  validateRequest,
+  validateRequestSchema(getUserSettingsSchema),
   userController.getSettings,
 );
 
@@ -68,8 +51,7 @@ router.get(
  */
 router.put(
   "/settings/:userId",
-  [param("userId").isString().notEmpty(), body().isObject()],
-  validateRequest,
+  validateRequestSchema(updateUserSettingsSchema),
   userController.updateSettings,
 );
 

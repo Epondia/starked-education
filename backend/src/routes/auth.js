@@ -3,9 +3,45 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { authenticateToken, requireAdmin, requirePermission } = require('../middleware/auth');
 const { UserRole, PERMISSIONS } = require('../utils/roles');
-const { authLimiter } = require('../middleware/rateLimiter');
+const { authLimiter, readLimiter, moderateLimiter } = require('../middleware/rateLimiter');
 const securityService = require('../services/securityService');
+const Joi = require('joi');
+const { validateRequestSchema } = require('../middleware/validateRequestSchema');
 const router = express.Router();
+
+const registerSchema = {
+  body: Joi.object({
+    username: Joi.string().trim().min(3).max(50).required(),
+    email: Joi.string().email().required(),
+    password: Joi.string().min(8).max(128).required(),
+    role: Joi.string().valid('student', 'educator', 'admin').optional(),
+  })
+};
+
+const loginSchema = {
+  body: Joi.object({
+    username: Joi.string().required(),
+    password: Joi.string().required(),
+  })
+};
+
+const updateProfileSchema = {
+  body: Joi.object({
+    username: Joi.string().trim().min(3).max(50).optional(),
+    email: Joi.string().email().optional(),
+    currentPassword: Joi.string().optional(),
+    newPassword: Joi.string().min(8).max(128).optional(),
+  }).min(1)
+};
+
+const assignRoleSchema = {
+  params: Joi.object({
+    userId: Joi.string().trim().min(1).required(),
+  }),
+  body: Joi.object({
+    role: Joi.string().valid('student', 'educator', 'admin').required(),
+  })
+};
 
 // Mock user database - replace with actual database implementation
 const users = new Map();
@@ -66,14 +102,6 @@ router.post('/register', authLimiter, async (req, res) => {
   try {
     const { username, email, password, role = UserRole.STUDENT } = req.body;
 
-    // Validate input
-    if (!username || !email || !password) {
-      return res.status(400).json({
-        error: 'Missing required fields',
-        message: 'Username, email, and password are required'
-      });
-    }
-
     // Check if user already exists
     const existingUser = Array.from(users.values()).find(
       user => user.username === username || user.email === email
@@ -85,14 +113,6 @@ router.post('/register', authLimiter, async (req, res) => {
         success: false,
         error: 'User already exists',
         message: 'A user with this username or email already exists'
-      });
-    }
-
-    // Validate role
-    if (!Object.values(UserRole).includes(role)) {
-      return res.status(400).json({
-        error: 'Invalid role',
-        message: 'Role must be one of: student, educator, admin'
       });
     }
 
@@ -169,13 +189,6 @@ router.post('/login', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    if (!username || !password) {
-      return res.status(400).json({
-        error: 'Missing credentials',
-        message: 'Username and password are required'
-      });
-    }
-
     // Find user by username or email
     const user = Array.from(users.values()).find(
       u => u.username === username || u.email === username
@@ -225,7 +238,7 @@ router.post('/login', authLimiter, async (req, res) => {
  * Get current user profile
  * GET /api/auth/profile
  */
-router.get('/profile', authenticateToken, (req, res) => {
+router.get('/profile', readLimiter, authenticateToken, (req, res) => {
   const user = users.get(req.user.id);
   
   if (!user) {
@@ -251,7 +264,7 @@ router.get('/profile', authenticateToken, (req, res) => {
  * Update user profile
  * PUT /api/auth/profile
  */
-router.put('/profile', authenticateToken, async (req, res) => {
+router.put('/profile', moderateLimiter, authenticateToken, validateRequestSchema(updateProfileSchema), async (req, res) => {
   try {
     const { username, email, currentPassword, newPassword } = req.body;
     const user = users.get(req.user.id);
@@ -342,21 +355,15 @@ router.put('/profile', authenticateToken, async (req, res) => {
  * PUT /api/auth/assign-role/:userId
  */
 router.put('/assign-role/:userId', 
+  moderateLimiter,
   authenticateToken, 
   requireAdmin, 
   requirePermission(PERMISSIONS.USER_ASSIGN_ROLE),
+  validateRequestSchema(assignRoleSchema),
   (req, res) => {
     try {
       const { role } = req.body;
       const { userId } = req.params;
-
-      // Validate role
-      if (!Object.values(UserRole).includes(role)) {
-        return res.status(400).json({
-          error: 'Invalid role',
-          message: 'Role must be one of: student, educator, admin'
-        });
-      }
 
       const user = users.get(userId);
       
@@ -397,6 +404,7 @@ router.put('/assign-role/:userId',
  * GET /api/auth/users
  */
 router.get('/users', 
+  readLimiter,
   authenticateToken, 
   requireAdmin, 
   requirePermission(PERMISSIONS.USER_READ),
@@ -449,6 +457,7 @@ router.get('/users',
  * DELETE /api/auth/users/:userId
  */
 router.delete('/users/:userId', 
+  moderateLimiter,
   authenticateToken, 
   requireAdmin, 
   requirePermission(PERMISSIONS.USER_DELETE),

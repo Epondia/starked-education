@@ -20,18 +20,103 @@ const HybridEncryption = require('../services/hybridEncryption');
 const QuantumThreatMonitoring = require('../services/quantumThreatMonitoring');
 const QuantumMigrationService = require('../services/quantumMigrationService');
 const QuantumSecurityAudit = require('../services/quantumSecurityAudit');
+const Joi = require('joi');
+const { validateRequestSchema } = require('../middleware/validateRequestSchema');
 
-// Middleware for request validation
-const validateRequest = (req, res, next) => {
-    try {
-        // Basic validation
-        if (!req.body && req.method !== 'GET') {
-            return res.status(400).json({ error: 'Request body is required' });
-        }
-        next();
-    } catch (error) {
-        res.status(400).json({ error: 'Invalid request format' });
-    }
+const keyGenSchema = {
+  body: Joi.object({
+    algorithm: Joi.string().valid('CRYSTALS_KYBER', 'CRYSTALS_DILITHIUM', 'FALCON', 'NTRU').optional(),
+    securityLevel: Joi.number().integer().valid(1, 2, 3, 4, 5).optional(),
+    metadata: Joi.object().optional(),
+  })
+};
+
+const encryptSchema = {
+  body: Joi.object({
+    data: Joi.string().required(),
+    keyId: Joi.string().trim().optional(),
+    algorithm: Joi.string().optional(),
+    compatibilityMode: Joi.string().valid('hybrid', 'quantum', 'classical').optional(),
+    sensitivity: Joi.string().valid('low', 'medium', 'high', 'critical').optional(),
+    metadata: Joi.object().optional(),
+  })
+};
+
+const decryptSchema = {
+  body: Joi.object({
+    encryptedPackage: Joi.object().required(),
+    keyId: Joi.string().trim().optional(),
+    autoDetect: Joi.boolean().optional(),
+  })
+};
+
+const signSchema = {
+  body: Joi.object({
+    data: Joi.string().required(),
+    keyId: Joi.string().trim().required(),
+    algorithm: Joi.string().valid('CRYSTALS_DILITHIUM', 'FALCON').optional(),
+  })
+};
+
+const verifySchema = {
+  body: Joi.object({
+    signedData: Joi.object().required(),
+    keyId: Joi.string().trim().required(),
+    algorithm: Joi.string().optional(),
+  })
+};
+
+const migrateSchema = {
+  body: Joi.object({
+    encryptedData: Joi.object().required(),
+    oldAlgorithm: Joi.string().optional(),
+    targetAlgorithm: Joi.string().optional(),
+    strategy: Joi.string().valid('gradual', 'immediate', 'hybrid').optional(),
+  })
+};
+
+const securityAnalysisSchema = {
+  body: Joi.object({
+    encryptedPackage: Joi.object().required(),
+  })
+};
+
+const agilityTestSchema = {
+  body: Joi.object({
+    data: Joi.any().optional(),
+  })
+};
+
+const compatibilityTestSchema = {
+  body: Joi.object({
+    testData: Joi.any().optional(),
+  })
+};
+
+const auditSchema = {
+  body: Joi.object({
+    framework: Joi.string().optional(),
+    categories: Joi.array().items(Joi.string()).optional(),
+    includeRecommendations: Joi.boolean().optional(),
+    generateReport: Joi.boolean().optional(),
+  })
+};
+
+const migrationPlanSchema = {
+  body: Joi.object({
+    strategy: Joi.string().valid('gradual', 'immediate', 'hybrid').optional(),
+    targetAlgorithm: Joi.string().optional(),
+    priority: Joi.string().valid('low', 'medium', 'high', 'critical').optional(),
+    scheduleTime: Joi.date().iso().allow(null).optional(),
+    dataFilters: Joi.object().optional(),
+    rollbackEnabled: Joi.boolean().optional(),
+  })
+};
+
+const keyIdParamSchema = {
+  params: Joi.object({
+    keyId: Joi.string().trim().min(1).required(),
+  })
 };
 
 /**
@@ -39,7 +124,7 @@ const validateRequest = (req, res, next) => {
  * @desc Generate quantum-resistant key pair
  * @access Private
  */
-router.post('/keys/generate', validateRequest, async (req, res) => {
+router.post('/keys/generate', validateRequestSchema(keyGenSchema), async (req, res) => {
     try {
         const { algorithm = 'CRYSTALS_KYBER', securityLevel = 4, metadata = {} } = req.body;
         
@@ -124,7 +209,7 @@ router.get('/keys', async (req, res) => {
  * @desc Encrypt data using quantum-resistant encryption
  * @access Private
  */
-router.post('/encrypt', validateRequest, async (req, res) => {
+router.post('/encrypt', validateRequestSchema(encryptSchema), async (req, res) => {
     try {
         const { 
             data, 
@@ -134,13 +219,6 @@ router.post('/encrypt', validateRequest, async (req, res) => {
             sensitivity = 'medium',
             metadata = {} 
         } = req.body;
-        
-        if (!data) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Data is required for encryption' 
-            });
-        }
         
         let encryptedPackage;
         
@@ -183,16 +261,9 @@ router.post('/encrypt', validateRequest, async (req, res) => {
  * @desc Decrypt data using quantum-resistant encryption
  * @access Private
  */
-router.post('/decrypt', validateRequest, async (req, res) => {
+router.post('/decrypt', validateRequestSchema(decryptSchema), async (req, res) => {
     try {
         const { encryptedPackage, keyId, autoDetect = true } = req.body;
-        
-        if (!encryptedPackage) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Encrypted package is required for decryption' 
-            });
-        }
         
         let decryptedData;
         
@@ -234,16 +305,9 @@ router.post('/decrypt', validateRequest, async (req, res) => {
  * @desc Sign data using quantum-resistant digital signature
  * @access Private
  */
-router.post('/sign', validateRequest, async (req, res) => {
+router.post('/sign', validateRequestSchema(signSchema), async (req, res) => {
     try {
         const { data, keyId, algorithm = 'CRYSTALS_DILITHIUM' } = req.body;
-        
-        if (!data) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Data is required for signing' 
-            });
-        }
         
         const privateKey = await QuantumKeyManagement.getPrivateKey(keyId, {
             operation: 'signing'
@@ -275,16 +339,9 @@ router.post('/sign', validateRequest, async (req, res) => {
  * @desc Verify quantum-resistant digital signature
  * @access Private
  */
-router.post('/verify', validateRequest, async (req, res) => {
+router.post('/verify', validateRequestSchema(verifySchema), async (req, res) => {
     try {
         const { signedData, keyId, algorithm = 'CRYSTALS_DILITHIUM' } = req.body;
-        
-        if (!signedData) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Signed data is required for verification' 
-            });
-        }
         
         const publicKey = await QuantumKeyManagement.getPublicKey(keyId);
         
@@ -314,7 +371,7 @@ router.post('/verify', validateRequest, async (req, res) => {
  * @desc Migrate encrypted data to quantum-resistant format
  * @access Private
  */
-router.post('/migrate', validateRequest, async (req, res) => {
+router.post('/migrate', validateRequestSchema(migrateSchema), async (req, res) => {
     try {
         const { 
             encryptedData, 
@@ -322,13 +379,6 @@ router.post('/migrate', validateRequest, async (req, res) => {
             targetAlgorithm = 'CRYSTALS_KYBER',
             strategy = 'gradual'
         } = req.body;
-        
-        if (!encryptedData) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Encrypted data is required for migration' 
-            });
-        }
         
         const migrationResult = await HybridEncryption.migrateToQuantum(
             encryptedData,
@@ -355,7 +405,7 @@ router.post('/migrate', validateRequest, async (req, res) => {
  * @desc Rotate cryptographic key
  * @access Private
  */
-router.post('/keys/:keyId/rotate', async (req, res) => {
+router.post('/keys/:keyId/rotate', validateRequestSchema(keyIdParamSchema), async (req, res) => {
     try {
         const { keyId } = req.params;
         const { newAlgorithm } = req.body;
@@ -385,7 +435,7 @@ router.post('/keys/:keyId/rotate', async (req, res) => {
  * @desc Revoke cryptographic key
  * @access Private
  */
-router.post('/keys/:keyId/revoke', async (req, res) => {
+router.post('/keys/:keyId/revoke', validateRequestSchema(keyIdParamSchema), async (req, res) => {
     try {
         const { keyId } = req.params;
         const { reason = 'manual' } = req.body;
@@ -434,7 +484,7 @@ router.get('/health', async (req, res) => {
  * @desc Perform cryptographic agility test
  * @access Private
  */
-router.post('/agility-test', validateRequest, async (req, res) => {
+router.post('/agility-test', validateRequestSchema(agilityTestSchema), async (req, res) => {
     try {
         const { data = { test: 'agility_test', timestamp: new Date().toISOString() } } = req.body;
         
@@ -460,7 +510,7 @@ router.post('/agility-test', validateRequest, async (req, res) => {
  * @desc Perform encryption compatibility test
  * @access Private
  */
-router.post('/compatibility-test', validateRequest, async (req, res) => {
+router.post('/compatibility-test', validateRequestSchema(compatibilityTestSchema), async (req, res) => {
     try {
         const { testData = { test: 'compatibility_test', timestamp: new Date().toISOString() } } = req.body;
         
@@ -486,16 +536,9 @@ router.post('/compatibility-test', validateRequest, async (req, res) => {
  * @desc Analyze encryption security level
  * @access Private
  */
-router.post('/security-analysis', validateRequest, async (req, res) => {
+router.post('/security-analysis', validateRequestSchema(securityAnalysisSchema), async (req, res) => {
     try {
         const { encryptedPackage } = req.body;
-        
-        if (!encryptedPackage) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Encrypted package is required for security analysis' 
-            });
-        }
         
         const analysis = HybridEncryption.analyzeSecurityLevel(encryptedPackage);
         
@@ -632,7 +675,7 @@ router.get('/migration/plans', async (req, res) => {
  * @desc Create migration plan
  * @access Private
  */
-router.post('/migration/plans', validateRequest, async (req, res) => {
+router.post('/migration/plans', validateRequestSchema(migrationPlanSchema), async (req, res) => {
     try {
         const { 
             strategy = 'gradual',
@@ -722,7 +765,7 @@ router.get('/migration/readiness', async (req, res) => {
  * @desc Perform security audit
  * @access Private
  */
-router.post('/audit', validateRequest, async (req, res) => {
+router.post('/audit', validateRequestSchema(auditSchema), async (req, res) => {
     try {
         const { 
             framework = 'nist_post_quantum_cryptography',

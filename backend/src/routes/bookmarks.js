@@ -13,6 +13,49 @@ const Bookmark = require('../models/Bookmark');
 const Note = require('../models/Note');
 const Content = require('../models/Content');
 const { authenticateToken: auth } = require('../middleware/auth');
+const Joi = require('joi');
+const { validateRequestSchema } = require('../middleware/validateRequestSchema');
+
+const createBookmarkSchema = {
+  body: Joi.object({
+    contentId: Joi.string().trim().min(1).required(),
+    timestamp: Joi.number().min(0).required(),
+    note: Joi.string().max(2000).optional(),
+  })
+};
+
+const deleteBookmarkSchema = {
+  params: Joi.object({
+    bookmarkId: Joi.string().trim().min(1).required(),
+  })
+};
+
+const createNoteSchema = {
+  body: Joi.object({
+    contentId: Joi.string().trim().min(1).required(),
+    timestamp: Joi.number().min(0).optional(),
+    text: Joi.string().trim().min(1).max(10000).required(),
+    isPrivate: Joi.boolean().optional(),
+    tags: Joi.array().items(Joi.string()).optional(),
+  })
+};
+
+const updateNoteSchema = {
+  params: Joi.object({
+    noteId: Joi.string().trim().min(1).required(),
+  }),
+  body: Joi.object({
+    text: Joi.string().trim().min(1).max(10000).optional(),
+    isPrivate: Joi.boolean().optional(),
+    tags: Joi.array().items(Joi.string()).optional(),
+  }).min(1)
+};
+
+const deleteNoteSchema = {
+  params: Joi.object({
+    noteId: Joi.string().trim().min(1).required(),
+  })
+};
 
 // Get all bookmarks for a user
 router.get('/', auth, async (req, res) => {
@@ -35,7 +78,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Create or update bookmark
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, validateRequestSchema(createBookmarkSchema), async (req, res) => {
   try {
     const { contentId, timestamp, note } = req.body;
     
@@ -73,7 +116,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Delete bookmark
-router.delete('/:bookmarkId', auth, async (req, res) => {
+router.delete('/:bookmarkId', auth, validateRequestSchema(deleteBookmarkSchema), async (req, res) => {
   try {
     const bookmark = await Bookmark.findOneAndDelete({
       _id: req.params.bookmarkId,
@@ -116,7 +159,7 @@ router.get('/notes', auth, async (req, res) => {
 });
 
 // Create note
-router.post('/notes', auth, async (req, res) => {
+router.post('/notes', auth, validateRequestSchema(createNoteSchema), async (req, res) => {
   try {
     const { contentId, timestamp, text, isPrivate, tags } = req.body;
     
@@ -150,7 +193,7 @@ router.post('/notes', auth, async (req, res) => {
 });
 
 // Update note
-router.put('/notes/:noteId', auth, async (req, res) => {
+router.put('/notes/:noteId', auth, validateRequestSchema(updateNoteSchema), async (req, res) => {
   try {
     const { text, isPrivate, tags } = req.body;
     
@@ -176,7 +219,7 @@ router.put('/notes/:noteId', auth, async (req, res) => {
 });
 
 // Delete note
-router.delete('/notes/:noteId', auth, async (req, res) => {
+router.delete('/notes/:noteId', auth, validateRequestSchema(deleteNoteSchema), async (req, res) => {
   try {
     const note = await Note.findOneAndDelete({
       _id: req.params.noteId,
