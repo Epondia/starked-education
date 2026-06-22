@@ -103,20 +103,33 @@ describe('Profile Components', () => {
   describe('ProfileEditor', () => {
     it('renders form fields correctly', () => {
       render(<ProfileEditor />)
-      
-      expect(screen.getByLabelText('Name')).toBeInTheDocument()
-      expect(screen.getByLabelText('Email')).toBeInTheDocument()
-      expect(screen.getByLabelText('Bio')).toBeInTheDocument()
+
+      // Labels render as "Name *" / "Email *" / "Bio" (the * marks required
+      // fields). Use regexes so the assertions stay robust.
+      expect(screen.getByLabelText(/Name/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/Email/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/Bio/i)).toBeInTheDocument()
     })
 
     it('validates form inputs', async () => {
       render(<ProfileEditor />)
-      
+
+      // The form is pre-filled from the mock useProfile (testProfile). The
+      // submit button is `disabled={!isDirty}`, so we must mutate the
+      // name field (to empty) to flip it dirty. Only then does clicking
+      // submit run the Zod resolver (`zodResolver(profileSchema)`).
+      const nameInput = screen.getByLabelText(/Name/i) as HTMLInputElement
+      fireEvent.change(nameInput, { target: { value: '' } })
       const submitButton = screen.getByText('Save Changes')
       fireEvent.click(submitButton)
-      
+
+      // The schema chains `.min(1,'Name is required')` and
+      // `.min(2,'Name must be at least 2 characters')`, so either of
+      // Zod's messages for the `name` field could surface. Match a
+      // regex so both are accepted.
       await waitFor(() => {
-        expect(screen.getByText('Name is required')).toBeInTheDocument()
+        const matches = screen.queryAllByText(/Name is required|Name must be at least/i)
+        expect(matches.length).toBeGreaterThan(0)
       })
     })
   })
