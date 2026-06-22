@@ -84,6 +84,8 @@ temp/
 # Testing / coverage
 coverage/
 test-results/
+playwright-report/
+.playwright/
 prof/
 
 # Deployment / CI artifacts

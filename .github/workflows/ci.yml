@@ -156,3 +156,60 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results.sarif'
+
+  # ─── Accessibility (WCAG 2.1 AA) ─────────────────────────────────────────────
+  # Runs @axe-core/playwright against the public routes and fails the build on
+  # any critical/serious violations. Closes DoD item #7 of issue #70 by
+  # enforcing "axe DevTools audit shows 0 critical/serious violations" per PR.
+  accessibility-ci:
+    name: Accessibility (WCAG 2.1 AA)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 2
+          retry_on: error
+          command: cd frontend && npm ci
+
+      # Cache Playwright browsers across runs - saves ~40s/PR on warm cache.
+      # Key invalidates whenever @playwright/test version or OS changes.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Build production bundle
+        timeout-minutes: 15
+        run: cd frontend && NODE_OPTIONS="--max-old-space-size=4096" npm run build
+
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install --with-deps chromium
+
+      - name: Run WCAG 2.1 A & AA axe-core audit
+        # Soft-fail at first to surface - but never fail open: continue-on-error
+        # is OFF intentionally, so PRs that introduce blocking a11y issues
+        # fail loudly. Flip the flag to `true` only during a temporary
+        # baseline-fix campaign.
+        run: cd frontend && npm run test:a11y
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-a11y-report
+          path: frontend/playwright-report/
+          retention-days: 7
