@@ -24,10 +24,22 @@ export default function AdminLayout({
             <div className="flex">
               <AdminSidebar />
               <div className="flex-1">
+                {/*
+                  Previously the admin layout declared its own <main>. With the
+                  canonical <main> now owned by app/layout.tsx, declaring another
+                  here trips axe-core's landmark-unique rule on every admin
+                  route. Wrap the admin content in a labelled <section> instead
+                  so screen readers still announce the region without violating
+                  uniqueness.
+                */}
                 <AdminHeader />
-                <main className="p-6">
+                <section
+                  aria-label="Admin content"
+                  className="p-6"
+                  data-testid="admin-content-section"
+                >
                   {children}
-                </main>
+                </section>
               </div>
             </div>
           </div>

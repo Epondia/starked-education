@@ -62,6 +62,18 @@ body {
   outline-offset: 3px !important;
 }
 
+/*
+ * Stronger yellow focus ring used when the user opts into high-visibility focus
+ * via .focus-visible-enabled (toggled by AccessibilityProvider when the user
+ * enables the visual-indicators accessibility setting). The yellow ring is
+ * applied to all focus-visible elements, including in RTL where outline-offset
+ * is direction-agnostic.
+ */
+:where(.focus-visible-enabled) :where(a, button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline-color: #facc15 !important;
+  outline-width: 4px !important;
+}
+
 :where(button, input, select, textarea):disabled {
   cursor: not-allowed;
 }
@@ -76,6 +88,51 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Companion opt-in override. AccessibilityProvider toggles the .reduce-motion
+ * class on <html> when the user enables "Reduced motion" preference, regardless
+ * of the OS-level prefers-reduced-motion media query. Keeping the same effect as
+ * the media query ensures consistent behavior across platforms.
+ */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/*
+ * High-contrast opt-in. SCOPED to main landmarks so global dialogs, badges,
+ * and intentionally-colored chips are not repainted. The DOF marker
+ * (.high-contrast) lives on <html> when the user enables the AccessibilityProvider
+ * high-contrast toggle.
+ *
+ * Targets every element inside main/[role="main"] so users get consistent
+ * helpers regardless of nesting depth.
+ */
+.high-contrast :where(main, [role="main"]) :is(a, button, h1, h2, h3, h4, h5, h6, p, span, li, dt, dd, label, td, th) {
+  color: #000 !important;
+}
+
+.high-contrast :where(main, [role="main"]) :is(a) {
+  text-decoration: underline !important;
+}
+
+.high-contrast :where(main, [role="main"]) :is(button, [role="button"]) {
+  background: #fff !important;
+  border: 2px solid #000 !important;
+  color: #000 !important;
+}
+
+/*
+ * Skip-link is now duplicated by both routers' layouts, so its target needs to
+ * be the same canonical id. The skip-link itself is rendered by the matching
+ * layout (app/layout.tsx for App Router, pages/_app.tsx for Pages Router).
+ */
+
 
 .dark body,
 body.dark {
