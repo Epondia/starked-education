@@ -4,7 +4,7 @@ import { ThemeProvider } from 'next-themes';
 import './globals.css';
 import { performanceMonitor } from '@/lib/performance-monitor';
 import { GlobalShell } from '@/components/PWA/GlobalShell';
-import { ToastProvider } from '@/components/ui/toast';
+import { CommandPalette } from '@/components/ui/command-palette';
 
 const inter = Inter({ subsets: ['latin'] });
 
