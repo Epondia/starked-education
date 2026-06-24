@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { performanceMonitor } from '@/lib/performance-monitor';
 import { GlobalShell } from '@/components/PWA/GlobalShell';
+import { CommandPalette } from '@/components/ui/command-palette';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -28,6 +29,7 @@ export default function RootLayout({
     <html lang={locale} dir={dir}>
       <body className={inter.className}>
         <GlobalShell />
+        <CommandPalette />
         {children}
       </body>
     </html>
