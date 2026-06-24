@@ -16,9 +16,10 @@ import {
   Save,
   Send,
   X,
-  File
+  File,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { useToast } from '@/hooks/useToast';
 import {
   assignmentTextSchema,
   assignmentCodeSchema,
@@ -30,7 +31,14 @@ interface Assignment {
   title: string;
   description: string;
   instructions: string;
-  type: 'quiz' | 'essay' | 'code' | 'project' | 'video' | 'file_upload' | 'text_submission';
+  type:
+    | 'quiz'
+    | 'essay'
+    | 'code'
+    | 'project'
+    | 'video'
+    | 'file_upload'
+    | 'text_submission';
   submissionTypes: string[];
   maxPoints: number;
   dueDate: Date;
@@ -58,23 +66,29 @@ interface AssignmentSubmissionProps {
   onSaveDraft: (submissionData: any) => Promise<void>;
 }
 
-export default function AssignmentSubmission({ 
-  assignment, 
-  existingSubmission, 
-  onSubmit, 
-  onSaveDraft 
+export default function AssignmentSubmission({
+  assignment,
+  existingSubmission,
+  onSubmit,
+  onSaveDraft,
 }: AssignmentSubmissionProps) {
+  const toast = useToast();
   const [submissionData, setSubmissionData] = useState({
     textContent: existingSubmission?.textContent || '',
-    codeSubmission: existingSubmission?.codeSubmission || { language: '', code: '' },
+    codeSubmission: existingSubmission?.codeSubmission || {
+      language: '',
+      code: '',
+    },
     files: existingSubmission?.files || [],
     videoSubmission: existingSubmission?.videoSubmission || null,
-    audioSubmission: existingSubmission?.audioSubmission || null
+    audioSubmission: existingSubmission?.audioSubmission || null,
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>(existingSubmission?.files || []);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>(
+    existingSubmission?.files || []
+  );
   const [dragActive, setDragActive] = useState(false);
   // Inline form errors. Shape is keyed by submissionType + field when useful.
   const [formError, setFormError] = useState<string | null>(null);
@@ -85,76 +99,84 @@ export default function AssignmentSubmission({
   const canSubmit = assignment.allowLateSubmissions || !isLate;
 
   const handleTextChange = (content: string) => {
-    setSubmissionData(prev => ({ ...prev, textContent: content }));
+    setSubmissionData((prev) => ({ ...prev, textContent: content }));
   };
 
   const handleCodeChange = (field: 'language' | 'code', value: string) => {
-    setSubmissionData(prev => ({
+    setSubmissionData((prev) => ({
       ...prev,
-      codeSubmission: { ...prev.codeSubmission, [field]: value }
+      codeSubmission: { ...prev.codeSubmission, [field]: value },
     }));
   };
 
-  const handleFileUpload = useCallback((files: FileList | null) => {
-    if (!files) return;
+  const handleFileUpload = useCallback(
+    (files: FileList | null) => {
+      if (!files) return;
 
-    const newFiles: UploadedFile[] = [];
-    const nextFileErrors: Record<string, string> = { ...fileErrors };
-    const maxSize = assignment.maxFileSize ? assignment.maxFileSize * 1024 * 1024 : 100 * 1024 * 1024; // Default 100MB
-    const maxFiles = assignment.maxFiles || 10;
+      const newFiles: UploadedFile[] = [];
+      const nextFileErrors: Record<string, string> = { ...fileErrors };
+      const maxSize = assignment.maxFileSize
+        ? assignment.maxFileSize * 1024 * 1024
+        : 100 * 1024 * 1024; // Default 100MB
+      const maxFiles = assignment.maxFiles || 10;
 
-    Array.from(files).forEach((file) => {
-      if (uploadedFiles.length + newFiles.length >= maxFiles) {
-        const msg = `Maximum ${maxFiles} files allowed`;
-        toast.error(msg);
-        nextFileErrors[file.name] = msg;
-        return;
-      }
-
-      // Schema-level validation (size + mime type). We additionally enforce
-      // the caller's `maxSize` override and `allowedFileTypes` extension
-      // list because `fileMetaSchema` doesn't see component props.
-      const schemaResult = validateFileMeta(file);
-      if (!schemaResult.valid) {
-        toast.error(`${file.name}: ${schemaResult.error}`);
-        nextFileErrors[file.name] = schemaResult.error;
-        return;
-      }
-      if (file.size > maxSize) {
-        const msg = `File ${file.name} exceeds maximum size limit`;
-        toast.error(msg);
-        nextFileErrors[file.name] = msg;
-        return;
-      }
-
-      if (assignment.allowedFileTypes && assignment.allowedFileTypes.length > 0) {
-        const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-        if (!assignment.allowedFileTypes.includes(fileExtension)) {
-          const msg = `File type ${fileExtension} is not allowed`;
+      Array.from(files).forEach((file) => {
+        if (uploadedFiles.length + newFiles.length >= maxFiles) {
+          const msg = `Maximum ${maxFiles} files allowed`;
           toast.error(msg);
           nextFileErrors[file.name] = msg;
           return;
         }
-      }
 
-      newFiles.push({
-        id: Math.random().toString(36).substr(2, 9),
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        file
+        // Schema-level validation (size + mime type). We additionally enforce
+        // the caller's `maxSize` override and `allowedFileTypes` extension
+        // list because `fileMetaSchema` doesn't see component props.
+        const schemaResult = validateFileMeta(file);
+        if (!schemaResult.valid) {
+          toast.error(`${file.name}: ${schemaResult.error}`);
+          nextFileErrors[file.name] = schemaResult.error;
+          return;
+        }
+        if (file.size > maxSize) {
+          const msg = `File ${file.name} exceeds maximum size limit`;
+          toast.error(msg);
+          nextFileErrors[file.name] = msg;
+          return;
+        }
+
+        if (
+          assignment.allowedFileTypes &&
+          assignment.allowedFileTypes.length > 0
+        ) {
+          const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+          if (!assignment.allowedFileTypes.includes(fileExtension)) {
+            const msg = `File type ${fileExtension} is not allowed`;
+            toast.error(msg);
+            nextFileErrors[file.name] = msg;
+            return;
+          }
+        }
+
+        newFiles.push({
+          id: Math.random().toString(36).substr(2, 9),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          file,
+        });
       });
-    });
 
-    setUploadedFiles(prev => [...prev, ...newFiles]);
-    setFileErrors(nextFileErrors);
-  }, [
-    uploadedFiles,
-    fileErrors,
-    assignment.maxFileSize,
-    assignment.maxFiles,
-    assignment.allowedFileTypes,
-  ]);
+      setUploadedFiles((prev) => [...prev, ...newFiles]);
+      setFileErrors(nextFileErrors);
+    },
+    [
+      uploadedFiles,
+      fileErrors,
+      assignment.maxFileSize,
+      assignment.maxFiles,
+      assignment.allowedFileTypes,
+    ]
+  );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -166,18 +188,21 @@ export default function AssignmentSubmission({
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files);
-    }
-  }, [handleFileUpload]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragActive(false);
+
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleFileUpload(e.dataTransfer.files);
+      }
+    },
+    [handleFileUpload]
+  );
 
   const removeFile = (fileId: string) => {
-    setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+    setUploadedFiles((prev) => prev.filter((f) => f.id !== fileId));
   };
 
   const handleSubmit = async () => {
@@ -193,7 +218,8 @@ export default function AssignmentSubmission({
     if (assignment.submissionTypes.includes('text')) {
       const result = assignmentTextSchema.safeParse(submissionData);
       if (!result.success) {
-        const msg = result.error.issues[0]?.message ?? 'Text content is required';
+        const msg =
+          result.error.issues[0]?.message ?? 'Text content is required';
         setFormError(msg);
         toast.error(msg);
         return;
@@ -201,9 +227,12 @@ export default function AssignmentSubmission({
     }
 
     if (assignment.submissionTypes.includes('code')) {
-      const result = assignmentCodeSchema.safeParse(submissionData.codeSubmission);
+      const result = assignmentCodeSchema.safeParse(
+        submissionData.codeSubmission
+      );
       if (!result.success) {
-        const msg = result.error.issues[0]?.message ?? 'Code submission is required';
+        const msg =
+          result.error.issues[0]?.message ?? 'Code submission is required';
         setFormError(msg);
         toast.error(msg);
         return;
@@ -214,7 +243,10 @@ export default function AssignmentSubmission({
     // validates *each* file but doesn't know "at least one"). File-level
     // metadata errors already surfaced inline via `setFileErrors`
     // during upload; here we gate on the count.
-    if (assignment.submissionTypes.includes('file') && uploadedFiles.length === 0) {
+    if (
+      assignment.submissionTypes.includes('file') &&
+      uploadedFiles.length === 0
+    ) {
       const msg = 'At least one file must be uploaded';
       setFormError(msg);
       toast.error(msg);
@@ -226,11 +258,20 @@ export default function AssignmentSubmission({
     try {
       const submissionPayload = {
         ...submissionData,
-        files: uploadedFiles
+        files: uploadedFiles,
       };
 
       await onSubmit(submissionPayload);
-      toast.success('Assignment submitted successfully!');
+      toast.success('Assignment submitted successfully!', {
+        action: {
+          label: 'View submission',
+          onClick: () => {
+            if (typeof window !== 'undefined') {
+              window.location.hash = '#submission';
+            }
+          },
+        },
+      });
     } catch (error) {
       const msg = 'Failed to submit assignment';
       setFormError(msg);
@@ -246,7 +287,7 @@ export default function AssignmentSubmission({
     try {
       const draftPayload = {
         ...submissionData,
-        files: uploadedFiles
+        files: uploadedFiles,
       };
 
       await onSaveDraft(draftPayload);
@@ -268,11 +309,20 @@ export default function AssignmentSubmission({
   };
 
   const getFileIcon = (type: string) => {
-    if (type.startsWith('image/')) return <File className="w-4 h-4 text-green-500" />;
-    if (type.startsWith('video/')) return <Video className="w-4 h-4 text-blue-500" />;
-    if (type.startsWith('audio/')) return <Music className="w-4 h-4 text-purple-500" />;
-    if (type.includes('pdf') || type.includes('document')) return <FileText className="w-4 h-4 text-red-500" />;
-    if (type.includes('javascript') || type.includes('python') || type.includes('java')) return <Code className="w-4 h-4 text-orange-500" />;
+    if (type.startsWith('image/'))
+      return <File className="w-4 h-4 text-green-500" />;
+    if (type.startsWith('video/'))
+      return <Video className="w-4 h-4 text-blue-500" />;
+    if (type.startsWith('audio/'))
+      return <Music className="w-4 h-4 text-purple-500" />;
+    if (type.includes('pdf') || type.includes('document'))
+      return <FileText className="w-4 h-4 text-red-500" />;
+    if (
+      type.includes('javascript') ||
+      type.includes('python') ||
+      type.includes('java')
+    )
+      return <Code className="w-4 h-4 text-orange-500" />;
     return <File className="w-4 h-4 text-gray-500" />;
   };
 
@@ -280,27 +330,35 @@ export default function AssignmentSubmission({
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
       {/* Assignment Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">{assignment.title}</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          {assignment.title}
+        </h1>
         <p className="text-gray-600 mb-4">{assignment.description}</p>
-        
+
         {/* Assignment Info */}
         <div className="flex flex-wrap gap-4 mb-4">
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-500" />
-            <span className={`text-sm ${isLate ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+            <span
+              className={`text-sm ${isLate ? 'text-red-600 font-semibold' : 'text-gray-600'}`}
+            >
               Due: {new Date(assignment.dueDate).toLocaleString()}
               {isLate && ' (Late)'}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Max Points: {assignment.maxPoints}</span>
+            <span className="text-sm text-gray-600">
+              Max Points: {assignment.maxPoints}
+            </span>
           </div>
         </div>
 
         {/* Instructions */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h3 className="font-semibold text-blue-900 mb-2">Instructions</h3>
-          <div className="text-blue-800 whitespace-pre-wrap">{assignment.instructions}</div>
+          <div className="text-blue-800 whitespace-pre-wrap">
+            {assignment.instructions}
+          </div>
         </div>
       </div>
 
@@ -359,11 +417,13 @@ export default function AssignmentSubmission({
             <Upload className="w-5 h-5" />
             File Upload
           </h3>
-          
+
           {/* File Upload Area */}
           <div
             className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+              dragActive
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-300 hover:border-gray-400'
             }`}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -375,7 +435,8 @@ export default function AssignmentSubmission({
               Drag and drop files here, or click to select files
             </p>
             <p className="text-sm text-gray-500 mb-4">
-              Max file size: {assignment.maxFileSize || 100}MB, Max files: {assignment.maxFiles || 10}
+              Max file size: {assignment.maxFileSize || 100}MB, Max files:{' '}
+              {assignment.maxFiles || 10}
             </p>
             <input
               ref={fileInputRef}
@@ -407,7 +468,9 @@ export default function AssignmentSubmission({
                       {getFileIcon(file.type)}
                       <div>
                         <p className="font-medium text-gray-900">{file.name}</p>
-                        <p className="text-sm text-gray-500">{formatFileSize(file.size)}</p>
+                        <p className="text-sm text-gray-500">
+                          {formatFileSize(file.size)}
+                        </p>
                       </div>
                     </div>
                     <button
@@ -443,7 +506,8 @@ export default function AssignmentSubmission({
           <div>
             <p className="font-semibold text-yellow-900">Late Submission</p>
             <p className="text-yellow-700">
-              This assignment is late. {assignment.latePolicy && 'A late penalty may be applied.'}
+              This assignment is late.{' '}
+              {assignment.latePolicy && 'A late penalty may be applied.'}
             </p>
           </div>
         </div>
