@@ -63,8 +63,7 @@ pub enum CredentialRegistryKey {
 #[contracttype]
 #[derive(Clone)]
 pub struct RenewalRecord {
-    pub renewed_at: u64,
-    pub old_expires_at: u64,
+    pub timestamps: PackedTimestamps,
     pub new_expires_at: u64,
     pub renewed_by: Address,
 }
@@ -106,6 +105,7 @@ pub fn issue_credential_with_expiration(
     let credential_id = StorageUtils::get_next_id(env, EntityType::Credential);
     let current_time = env.ledger().timestamp();
 
+    let timestamps = PackedTimestamps::new(current_time, current_time + validity_duration);
     let credential = CredentialRegistry {
         id: credential_id,
         issuer: issuer.clone(),
@@ -113,8 +113,7 @@ pub fn issue_credential_with_expiration(
         title,
         description,
         course_id,
-        issued_at: current_time,
-        expires_at: current_time + validity_duration,
+        timestamps,
         status: CredentialStatus::Active,
         ipfs_hash,
         renewal_count: 0,
@@ -191,8 +190,7 @@ pub fn renew_credential(
     }
 
     let current_time = env.ledger().timestamp();
-    let old_expires_at = credential.expires_at;
-
+    let old_expires_at = credential.timestamps.updated_at;
     // Create renewal record
     let renewal_record = RenewalRecord {
         renewed_at: current_time,
@@ -200,7 +198,6 @@ pub fn renew_credential(
         new_expires_at: current_time + extension_duration,
         renewed_by: renewer.clone(),
     };
-
     // Store renewal history
     let mut renewal_history = env
         .storage()
@@ -212,9 +209,8 @@ pub fn renew_credential(
         &CredentialRegistryKey::RenewalHistory(credential_id),
         &renewal_history,
     );
-
-    // Update credential
-    credential.expires_at = current_time + extension_duration;
+    // Update credential timestamps
+    credential.timestamps.updated_at = current_time + extension_duration;
     credential.status = CredentialStatus::Active;
     credential.renewal_count += 1;
     credential.last_renewed_at = Some(current_time);
@@ -249,15 +245,13 @@ pub fn check_credential_expiration(env: &Env, credential_id: u64) -> CredentialS
     }
 
     // Check if credential has expired
-    if current_time >= credential.expires_at && credential.status == CredentialStatus::Active {
+    if current_time >= credential.timestamps.updated_at && credential.status == CredentialStatus::Active {
         credential.status = CredentialStatus::Expired;
-
         // Update stored credential
         env.storage().persistent().set(
             &CredentialRegistryKey::Credential(credential_id),
             &credential,
         );
-
         // Add to expired credentials list
         let mut expired_creds = env
             .storage()
@@ -268,7 +262,6 @@ pub fn check_credential_expiration(env: &Env, credential_id: u64) -> CredentialS
         env.storage()
             .instance()
             .set(&CredentialRegistryKey::ExpiredCredentials, &expired_creds);
-
         // Emit expiration event
         env.events().publish(
             (Symbol::new(env, "credential"), Symbol::new(env, "expired")),
@@ -392,9 +385,9 @@ pub fn get_credentials_expiring_soon(env: &Env, within_seconds: u64) -> Vec<u64>
             .persistent()
             .get::<_, CredentialRegistry>(&CredentialRegistryKey::Credential(i))
         {
-            if credential.expires_at <= threshold && credential.status == CredentialStatus::Active {
-                expiring_soon.push_back(i);
-            }
+            if credential.timestamps.updated_at <= threshold && credential.status == CredentialStatus::Active {
+            expiring_soon.push_back(i);
+        }
         }
     }
 
@@ -416,8 +409,7 @@ pub struct MultiSigCredentialRegistry {
     pub title: String,
     pub description: String,
     pub course_id: String,
-    pub issued_at: u64,
-    pub expires_at: u64,
+    pub timestamps: PackedTimestamps,
     pub status: CredentialStatus,
     pub ipfs_hash: String,
     pub signature_count: u32,
@@ -472,6 +464,7 @@ pub fn create_multi_sig_credential(
     let credential_id = StorageUtils::get_next_id(env, EntityType::Credential);
     let current_time = env.ledger().timestamp();
 
+    let timestamps = PackedTimestamps::new(current_time, current_time + validity_duration);
     let credential = MultiSigCredentialRegistry {
         id: credential_id,
         threshold,
@@ -480,8 +473,7 @@ pub fn create_multi_sig_credential(
         title,
         description,
         course_id,
-        issued_at: current_time,
-        expires_at: current_time + validity_duration,
+        timestamps,
         status: CredentialStatus::Pending,
         ipfs_hash,
         signature_count: 0,
