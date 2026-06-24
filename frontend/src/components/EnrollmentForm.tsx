@@ -1,19 +1,26 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { EnrollmentFormProps, EnrollmentStep, EnrollmentData, WalletInfo, TransactionReceipt } from '@/types/enrollment';
+import {
+  EnrollmentFormProps,
+  EnrollmentStep,
+  EnrollmentData,
+  WalletInfo,
+  TransactionReceipt,
+} from '@/types/enrollment';
 import WalletConnector from './WalletConnector';
 import PaymentProcessor from './PaymentProcessor';
-import { 
-  User, 
-  CreditCard, 
-  CheckCircle, 
-  ArrowRight, 
+import { useToast } from '@/hooks/useToast';
+import {
+  User,
+  CreditCard,
+  CheckCircle,
+  ArrowRight,
   ArrowLeft,
   BookOpen,
   FileCheck,
   AlertCircle,
-  Loader2
+  Loader2,
 } from 'lucide-react';
 import { enrollmentPersonalInfoSchema } from '@/lib/schemas';
 
@@ -21,10 +28,13 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
   course,
   wallet,
   onEnrollmentComplete,
-  onEnrollmentError
+  onEnrollmentError,
 }) => {
+  const toast = useToast();
   const [currentStep, setCurrentStep] = useState(0);
-  const [enrollmentData, setEnrollmentData] = useState<Partial<EnrollmentData>>({});
+  const [enrollmentData, setEnrollmentData] = useState<Partial<EnrollmentData>>(
+    {}
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
@@ -37,7 +47,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
     firstName: '',
     lastName: '',
     email: '',
-    phone: ''
+    phone: '',
   });
 
   const steps: EnrollmentStep[] = [
@@ -48,10 +58,15 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
       component: PersonalInfoStep,
       validation: (data) => {
         const info = data.personalInfo;
-        return info.firstName && info.lastName && info.email && 
-               info.email.includes('@') && info.email.includes('.');
+        return (
+          info.firstName &&
+          info.lastName &&
+          info.email &&
+          info.email.includes('@') &&
+          info.email.includes('.')
+        );
       },
-      isCompleted: false
+      isCompleted: false,
     },
     {
       id: 'wallet-connection',
@@ -59,7 +74,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
       description: 'Connect your Stellar wallet for payment',
       component: WalletStep,
       validation: (data) => data.wallet && data.wallet.connected,
-      isCompleted: false
+      isCompleted: false,
     },
     {
       id: 'payment',
@@ -67,7 +82,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
       description: 'Complete the course payment',
       component: PaymentStep,
       validation: (data) => data.transactionHash && data.wallet,
-      isCompleted: false
+      isCompleted: false,
     },
     {
       id: 'confirmation',
@@ -75,15 +90,15 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
       description: 'Review and confirm your enrollment',
       component: ConfirmationStep,
       validation: () => true,
-      isCompleted: false
-    }
+      isCompleted: false,
+    },
   ];
 
   useEffect(() => {
     // Update steps completion status
     const updatedSteps = steps.map((step, index) => {
       let isCompleted = false;
-      
+
       switch (step.id) {
         case 'personal-info':
           isCompleted = !!step.validation?.({ personalInfo });
@@ -98,10 +113,10 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
           isCompleted = index < currentStep;
           break;
       }
-      
+
       return { ...step, isCompleted };
     });
-    
+
     // Update the steps state if needed
   }, [personalInfo, wallet, transactionHash, currentStep]);
 
@@ -164,17 +179,18 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
 
   const handlePaymentSuccess = (txHash: string) => {
     setTransactionHash(txHash);
-    setEnrollmentData(prev => ({
+    setEnrollmentData((prev) => ({
       ...prev,
       paymentDetails: {
         courseId: course.id,
         amount: course.price,
         currency: course.currency,
-        recipientAddress: process.env.NEXT_PUBLIC_STELLAR_RECEIVER_ADDRESS || '',
+        recipientAddress:
+          process.env.NEXT_PUBLIC_STELLAR_RECEIVER_ADDRESS || '',
         transactionHash: txHash,
         status: 'completed',
-        timestamp: new Date().toISOString()
-      }
+        timestamp: new Date().toISOString(),
+      },
     }));
   };
 
@@ -200,14 +216,15 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
           courseId: course.id,
           amount: course.price,
           currency: course.currency,
-          recipientAddress: process.env.NEXT_PUBLIC_STELLAR_RECEIVER_ADDRESS || '',
+          recipientAddress:
+            process.env.NEXT_PUBLIC_STELLAR_RECEIVER_ADDRESS || '',
           transactionHash: transactionHash || '',
           status: 'completed',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         },
         enrollmentDate: new Date().toISOString(),
         status: 'confirmed',
-        personalInfo
+        personalInfo,
       };
 
       // Call API to save enrollment
@@ -224,17 +241,20 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
       }
 
       const result = await response.json();
-      
+
       if (result.success) {
+        toast.success(`Successfully enrolled in ${course.title}`, {
+          duration: 5000,
+        });
         onEnrollmentComplete(enrollment);
       } else {
         throw new Error(result.error?.message || 'Enrollment failed');
       }
-
     } catch (error: any) {
       console.error('Enrollment submission error:', error);
       const errorMessage = error.message || 'Failed to complete enrollment';
       setError(errorMessage);
+      toast.error(errorMessage);
       onEnrollmentError(errorMessage);
     } finally {
       setIsSubmitting(false);
@@ -259,12 +279,18 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
           {steps.map((step, index) => (
             <div key={step.id} className="flex items-center flex-1">
               <div className="flex items-center">
-                <div className={`
+                <div
+                  className={`
                   w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium
-                  ${index < currentStep ? 'bg-green-600 text-white' : 
-                    index === currentStep ? 'bg-blue-600 text-white' : 
-                    'bg-gray-200 text-gray-600'}
-                `}>
+                  ${
+                    index < currentStep
+                      ? 'bg-green-600 text-white'
+                      : index === currentStep
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-600'
+                  }
+                `}
+                >
                   {index < currentStep ? (
                     <CheckCircle className="w-5 h-5" />
                   ) : (
@@ -272,18 +298,22 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
                   )}
                 </div>
                 <div className="ml-3 hidden sm:block">
-                  <p className={`text-sm font-medium ${
-                    index <= currentStep ? 'text-gray-900' : 'text-gray-500'
-                  }`}>
+                  <p
+                    className={`text-sm font-medium ${
+                      index <= currentStep ? 'text-gray-900' : 'text-gray-500'
+                    }`}
+                  >
                     {step.title}
                   </p>
                   <p className="text-xs text-gray-500">{step.description}</p>
                 </div>
               </div>
               {index < steps.length - 1 && (
-                <div className={`flex-1 h-px mx-4 ${
-                  index < currentStep ? 'bg-green-600' : 'bg-gray-200'
-                }`} />
+                <div
+                  className={`flex-1 h-px mx-4 ${
+                    index < currentStep ? 'bg-green-600' : 'bg-gray-200'
+                  }`}
+                />
               )}
             </div>
           ))}
@@ -293,7 +323,10 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({
       {/* Step Content */}
       <div className="p-6">
         <div className="mb-6">
-          <h2 id="enrollment-step-title" className="text-2xl font-bold text-gray-900 mb-2">
+          <h2
+            id="enrollment-step-title"
+            className="text-2xl font-bold text-gray-900 mb-2"
+          >
             {steps[currentStep].title}
           </h2>
           <p className="text-gray-600">{steps[currentStep].description}</p>
@@ -382,7 +415,10 @@ const PersonalInfoStep: React.FC<any> = ({
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label htmlFor="enrollment-first-name" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="enrollment-first-name"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
             First Name *
           </label>
           <input
@@ -392,20 +428,29 @@ const PersonalInfoStep: React.FC<any> = ({
             autoComplete="given-name"
             required
             aria-invalid={Boolean(errors.firstName)}
-            aria-describedby={errors.firstName ? 'enrollment-first-name-error' : undefined}
+            aria-describedby={
+              errors.firstName ? 'enrollment-first-name-error' : undefined
+            }
             value={personalInfo.firstName}
             onChange={(e) => handleChange('firstName', e.target.value)}
             className={fieldClass('firstName')}
             placeholder="Enter your first name"
           />
           {errors.firstName && (
-            <p id="enrollment-first-name-error" role="alert" className="mt-1 text-sm text-red-600">
+            <p
+              id="enrollment-first-name-error"
+              role="alert"
+              className="mt-1 text-sm text-red-600"
+            >
               {errors.firstName}
             </p>
           )}
         </div>
         <div>
-          <label htmlFor="enrollment-last-name" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="enrollment-last-name"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
             Last Name *
           </label>
           <input
@@ -415,14 +460,20 @@ const PersonalInfoStep: React.FC<any> = ({
             autoComplete="family-name"
             required
             aria-invalid={Boolean(errors.lastName)}
-            aria-describedby={errors.lastName ? 'enrollment-last-name-error' : undefined}
+            aria-describedby={
+              errors.lastName ? 'enrollment-last-name-error' : undefined
+            }
             value={personalInfo.lastName}
             onChange={(e) => handleChange('lastName', e.target.value)}
             className={fieldClass('lastName')}
             placeholder="Enter your last name"
           />
           {errors.lastName && (
-            <p id="enrollment-last-name-error" role="alert" className="mt-1 text-sm text-red-600">
+            <p
+              id="enrollment-last-name-error"
+              role="alert"
+              className="mt-1 text-sm text-red-600"
+            >
               {errors.lastName}
             </p>
           )}
@@ -430,7 +481,10 @@ const PersonalInfoStep: React.FC<any> = ({
       </div>
 
       <div>
-        <label htmlFor="enrollment-email" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="enrollment-email"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Email Address *
         </label>
         <input
@@ -447,14 +501,21 @@ const PersonalInfoStep: React.FC<any> = ({
           placeholder="your.email@example.com"
         />
         {errors.email && (
-          <p id="enrollment-email-error" role="alert" className="mt-1 text-sm text-red-600">
+          <p
+            id="enrollment-email-error"
+            role="alert"
+            className="mt-1 text-sm text-red-600"
+          >
             {errors.email}
           </p>
         )}
       </div>
 
       <div>
-        <label htmlFor="enrollment-phone" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="enrollment-phone"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Phone Number (Optional)
         </label>
         <input
@@ -470,7 +531,11 @@ const PersonalInfoStep: React.FC<any> = ({
           placeholder="+1 (555) 123-4567"
         />
         {errors.phone && (
-          <p id="enrollment-phone-error" role="alert" className="mt-1 text-sm text-red-600">
+          <p
+            id="enrollment-phone-error"
+            role="alert"
+            className="mt-1 text-sm text-red-600"
+          >
             {errors.phone}
           </p>
         )}
@@ -479,13 +544,20 @@ const PersonalInfoStep: React.FC<any> = ({
   );
 };
 
-const WalletStep: React.FC<any> = ({ course, wallet, onWalletConnect, onWalletDisconnect }) => {
+const WalletStep: React.FC<any> = ({
+  course,
+  wallet,
+  onWalletConnect,
+  onWalletDisconnect,
+}) => {
   return (
     <div className="space-y-4">
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <div className="flex items-center space-x-2 mb-2">
           <BookOpen className="w-5 h-5 text-blue-600" />
-          <h4 className="font-medium text-blue-900">Why connect your wallet?</h4>
+          <h4 className="font-medium text-blue-900">
+            Why connect your wallet?
+          </h4>
         </div>
         <ul className="text-sm text-blue-800 space-y-1">
           <li>• Secure payment processing with Stellar blockchain</li>
@@ -503,13 +575,24 @@ const WalletStep: React.FC<any> = ({ course, wallet, onWalletConnect, onWalletDi
   );
 };
 
-const PaymentStep: React.FC<any> = ({ course, wallet, onPaymentSuccess, onPaymentError, onPaymentPending, transactionHash }) => {
+const PaymentStep: React.FC<any> = ({
+  course,
+  wallet,
+  onPaymentSuccess,
+  onPaymentError,
+  onPaymentPending,
+  transactionHash,
+}) => {
   if (transactionHash) {
     return (
       <div className="text-center py-8">
         <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Completed</h3>
-        <p className="text-gray-600">Your payment has been successfully processed.</p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          Payment Completed
+        </h3>
+        <p className="text-gray-600">
+          Your payment has been successfully processed.
+        </p>
       </div>
     );
   }
@@ -525,7 +608,12 @@ const PaymentStep: React.FC<any> = ({ course, wallet, onPaymentSuccess, onPaymen
   );
 };
 
-const ConfirmationStep: React.FC<any> = ({ course, wallet, personalInfo, transactionHash }) => {
+const ConfirmationStep: React.FC<any> = ({
+  course,
+  wallet,
+  personalInfo,
+  transactionHash,
+}) => {
   return (
     <div className="space-y-6">
       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -534,7 +622,9 @@ const ConfirmationStep: React.FC<any> = ({ course, wallet, personalInfo, transac
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-gray-600">Student Name:</span>
-              <p className="font-medium">{personalInfo.firstName} {personalInfo.lastName}</p>
+              <p className="font-medium">
+                {personalInfo.firstName} {personalInfo.lastName}
+              </p>
             </div>
             <div>
               <span className="text-gray-600">Email:</span>
@@ -550,11 +640,15 @@ const ConfirmationStep: React.FC<any> = ({ course, wallet, personalInfo, transac
             </div>
             <div>
               <span className="text-gray-600">Amount Paid:</span>
-              <p className="font-medium">{course.price} {course.currency}</p>
+              <p className="font-medium">
+                {course.price} {course.currency}
+              </p>
             </div>
             <div>
               <span className="text-gray-600">Transaction:</span>
-              <p className="font-mono text-xs">{transactionHash?.slice(0, 20)}...</p>
+              <p className="font-mono text-xs">
+                {transactionHash?.slice(0, 20)}...
+              </p>
             </div>
           </div>
         </div>
@@ -562,9 +656,12 @@ const ConfirmationStep: React.FC<any> = ({ course, wallet, personalInfo, transac
 
       <div className="text-center">
         <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Enroll!</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          Ready to Enroll!
+        </h3>
         <p className="text-gray-600">
-          Please review your information above and click "Complete Enrollment" to finalize your registration.
+          Please review your information above and click "Complete Enrollment"
+          to finalize your registration.
         </p>
       </div>
     </div>
