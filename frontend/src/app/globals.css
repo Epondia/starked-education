@@ -2,58 +2,88 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * app/globals.css  (App Router)
+ *
+ * Theme switching is handled by next-themes which toggles `.dark` on <html>
+ * (Tailwind darkMode: 'class').  We do NOT use prefers-color-scheme media
+ * queries here — next-themes does that automatically when defaultTheme="system".
+ *
+ * Full design tokens live in styles/globals.css (Pages Router entry).
+ * This file re-declares only what the App Router pages need directly.
+ */
+
+/* ─── Design tokens — light ──────────────────────────────────────── */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --foreground-rgb:       15, 23, 42;
+  --background-start-rgb: 248, 250, 252;
+  --background-end-rgb:   255, 255, 255;
+
+  /* HSL surface tokens (shadcn-compatible) */
+  --background:           0 0% 100%;
+  --foreground:           222.2 84% 4.9%;
+  --muted:                210 40% 96.1%;
+  --muted-foreground:     215.4 16.3% 46.9%;
+  --border:               214.3 31.8% 91.4%;
+  --ring:                 221.2 83.2% 53.3%;
+
+  /* Theme transition speed — zeroed by the reduced-motion rule below */
+  --theme-transition: 200ms;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+/* ─── Design tokens — dark ───────────────────────────────────────── */
+.dark {
+  --foreground-rgb:       248, 250, 252;
+  --background-start-rgb: 15, 23, 42;
+  --background-end-rgb:   15, 23, 42;
+
+  --background:           222.2 84% 4.9%;
+  --foreground:           210 40% 98%;
+  --muted:                217.2 32.6% 17.5%;
+  --muted-foreground:     215 20.2% 65.1%;
+  --border:               217.2 32.6% 17.5%;
+  --ring:                 224.3 76.3% 48%;
 }
 
+/* ─── Base ───────────────────────────────────────────────────────── */
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  color:      rgb(var(--foreground-rgb));
+  background: rgb(var(--background-start-rgb));
+  transition:
+    background-color var(--theme-transition) ease,
+    color            var(--theme-transition) ease;
 }
 
-/* Custom animations */
+/* ─── Reduced-motion guard ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  :root { --theme-transition: 0.01ms; }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior:          auto !important;
+    animation-duration:       0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration:      0.01ms !important;
+  }
+}
+
+/* ─── Animations ─────────────────────────────────────────────────── */
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 .animate-spin {
   animation: spin 1s linear infinite;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
+/* ─── Scrollbar (theme-aware) ────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: hsl(var(--muted)); }
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background:    hsl(var(--muted-foreground) / 0.5);
   border-radius: 3px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: hsl(var(--muted-foreground) / 0.8);
 }

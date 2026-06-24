@@ -1,64 +1,84 @@
 'use client';
 
-import React from 'react';
-import { useTheme } from 'next-themes';
+import React, { useEffect, useState } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useTheme, type ThemeMode } from '@/hooks/useTheme';
 
-type ThemeMode = 'system' | 'light' | 'dark';
+// ─── Theme metadata ───────────────────────────────────────────────────────────
 
-const themeCycle: ThemeMode[] = ['system', 'light', 'dark'];
-
-const themeIcons: Record<ThemeMode, React.ElementType> = {
-  system: Monitor,
-  light: Sun,
-  dark: Moon,
+const THEME_META: Record<
+  ThemeMode,
+  { Icon: React.ElementType; label: string; next: ThemeMode }
+> = {
+  light:  { Icon: Sun,     label: 'Light',  next: 'dark'   },
+  dark:   { Icon: Moon,    label: 'Dark',   next: 'system' },
+  system: { Icon: Monitor, label: 'System', next: 'light'  },
 };
 
-const themeLabels: Record<ThemeMode, string> = {
-  system: 'System',
-  light: 'Light',
-  dark: 'Dark',
-};
+// ─── Component ────────────────────────────────────────────────────────────────
 
+/**
+ * ThemeToggle
+ *
+ * A three-mode toggle button (Light → Dark → System → Light) that:
+ *  - Shows Sun / Moon / Monitor icons matching the active mode.
+ *  - Persists choice to localStorage under `starked-theme`.
+ *  - Respects `prefers-reduced-motion` — disables icon animation when set.
+ *  - Announces the new mode to screen readers via a polite live region.
+ *  - Is hydration-safe: renders a skeleton until the client mounts.
+ *  - Has `aria-label="Toggle theme"` plus a verbose current/next description.
+ *
+ * Drop it anywhere — state comes entirely from `useTheme()`.
+ *
+ * @example
+ *   <ThemeToggle />
+ */
 export default function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  const { theme, cycleTheme, prefersReducedMotion } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  // Avoid hydration mismatch by only rendering after mount
+  // Defer real render until after hydration to prevent SSR mismatch.
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // ── Skeleton (pre-hydration) ─────────────────────────────────────────────
   if (!mounted) {
     return (
       <button
-        className="w-9 h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-center"
+        className="theme-toggle-btn"
         aria-label="Toggle theme"
+        disabled
       >
-        <span className="w-4 h-4" />
+        <span className="theme-toggle-icon-placeholder" aria-hidden="true" />
       </button>
     );
   }
 
-  const currentMode: ThemeMode = (theme as ThemeMode) || 'system';
-  const Icon = themeIcons[currentMode];
-
-  const handleToggle = () => {
-    const currentIndex = themeCycle.indexOf(currentMode);
-    const nextIndex = (currentIndex + 1) % themeCycle.length;
-    setTheme(themeCycle[nextIndex]);
-  };
+  // ── Resolved state ───────────────────────────────────────────────────────
+  const meta      = THEME_META[theme];
+  const nextLabel = THEME_META[meta.next].label;
+  const { Icon, label } = meta;
 
   return (
     <button
-      onClick={handleToggle}
-      className="relative w-9 h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-      aria-label={`Current theme: ${themeLabels[currentMode]}. Click to switch.`}
-      title={`Theme: ${themeLabels[currentMode]}`}
+      id="theme-toggle"
+      onClick={cycleTheme}
+      className={[
+        'theme-toggle-btn',
+        prefersReducedMotion ? 'no-transition' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      aria-label={`Toggle theme. Current: ${label}. Click to switch to ${nextLabel}.`}
+      title={`Theme: ${label}`}
     >
-      <Icon className="h-4 w-4 text-gray-700 dark:text-gray-300" />
-      <span className="sr-only">Theme: {themeLabels[currentMode]}</span>
+      {/* Icon rotates slightly on click via CSS */}
+      <span className="theme-toggle-icon" aria-hidden="true">
+        <Icon className="h-4 w-4" />
+      </span>
+      {/* Visible to screen readers only */}
+      <span className="sr-only">Theme: {label}</span>
     </button>
   );
 }

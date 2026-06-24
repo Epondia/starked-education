@@ -35,20 +35,27 @@ function MyApp({ Component, pageProps }: AppProps) {
   }, [router.asPath]);
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="starked-theme">
       <ErrorBoundary key={router.asPath}>
         <WalletProvider>
           <a className="skip-link" href="#main-content">
             Skip to main content
           </a>
-          <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          <div
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
             {`Navigated to ${router.asPath}`}
           </div>
           <GlobalShell />
           <Component {...pageProps} />
           <Toaster
             position="bottom-right"
-            toastOptions={{ ariaProps: { role: 'status', 'aria-live': 'polite' } }}
+            toastOptions={{
+              ariaProps: { role: 'status', 'aria-live': 'polite' },
+            }}
           />
         </WalletProvider>
       </ErrorBoundary>
