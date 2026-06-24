@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /admin:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const Joi = require('joi');
 const {
@@ -352,3 +361,4 @@ router.post(
 );
 
 module.exports = router;
+

@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /eventLoggerRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import { Router } from "express";
 import { eventLoggerController } from "../controllers/eventLoggerController";
 import { validateRequestSchema } from "../middleware/validateRequestSchema";
@@ -32,3 +41,4 @@ router.get(
 );
 
 export default router;
+

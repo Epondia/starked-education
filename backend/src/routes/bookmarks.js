@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /bookmarks:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const router = express.Router();
 const Bookmark = require('../models/Bookmark');
@@ -228,3 +237,4 @@ router.delete('/notes/:noteId', auth, validateRequestSchema(deleteNoteSchema), a
 });
 
 module.exports = router;
+

@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /tenants:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const tenantService = require('../services/tenantService');
 const { tenantMiddleware, checkResourceLimits, requireTenantPermission } = require('../middleware/tenant');
@@ -444,3 +453,4 @@ router.delete('/:tenantId',
 );
 
 module.exports = router;
+

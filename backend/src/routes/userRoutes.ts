@@ -1,4 +1,14 @@
-import { Router } from "express";
+/**
+ * @swagger
+ * /userRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+import { Router, Request, Response, NextFunction } from "express";
+import { body, param, validationResult } from "express-validator";
 import { userController } from "../controllers/userController";
 import { validateRequestSchema } from "../middleware/validateRequestSchema";
 import { getProfileSchema, updateProfileSchema, getUserSettingsSchema, updateUserSettingsSchema } from "../middleware/validation";
@@ -49,3 +59,4 @@ router.get("/profile/:address/achievements", userController.getAchievements);
 router.get("/profile/:address/stats", userController.getStats);
 
 export default router;
+

@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /transactionRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const { TransactionQueue } = require('./services/transactionQueue');
 const { StellarService } = require('./services/stellarService');
@@ -360,3 +369,4 @@ router.post('/webhook/stellar', async (req, res) => {
 });
 
 module.exports = router;
+

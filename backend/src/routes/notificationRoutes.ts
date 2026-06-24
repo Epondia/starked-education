@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /notificationRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import express, { Router } from "express";
 import { notificationController } from "../controllers/notificationController";
 import { validateRequestSchema } from "../middleware/validateRequestSchema";
@@ -22,3 +31,4 @@ router.put("/:userId/preferences", validateRequestSchema(updatePreferencesSchema
 router.delete("/:notificationId", validateRequestSchema(deleteNotificationSchema), notificationController.deleteNotification);
 
 export default router;
+

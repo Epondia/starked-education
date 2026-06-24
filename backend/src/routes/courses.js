@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /courses:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * Courses Route
  * Handles course content and version management endpoints
  */
@@ -607,3 +616,4 @@ router.get('/:contentId/versions/statistics',
 );
 
 module.exports = router;
+

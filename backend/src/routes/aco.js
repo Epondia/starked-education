@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /aco:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * ACO Optimization API Routes
  * Provides REST endpoints for ant colony optimization functionality
  */
@@ -587,3 +596,4 @@ router.use((error, req, res, next) => {
 });
 
 module.exports = router;
+

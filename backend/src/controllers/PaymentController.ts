@@ -22,9 +22,13 @@ export class PaymentController {
   private stellarPaymentService: StellarPaymentService;
   private notificationService: any;
 
-  constructor() {
-    this.paymentService = new PaymentService();
-    this.stellarPaymentService = new StellarPaymentService({
+  constructor(
+    stellarPaymentService?: StellarPaymentService,
+    paymentService?: PaymentService,
+    notificationService?: NotificationService
+  ) {
+    this.paymentService = paymentService ?? new PaymentService();
+    this.stellarPaymentService = stellarPaymentService ?? new StellarPaymentService({
       network: 'testnet',
       horizonUrl: 'https://horizon-testnet.stellar.org',
       distributionAccount: process.env.STELLAR_DISTRIBUTION_ACCOUNT || '',
@@ -32,7 +36,7 @@ export class PaymentController {
       autoConfirmPayments: true,
       confirmationThreshold: 1
     });
-    this.notificationService = new NotificationService();
+    this.notificationService = notificationService ?? new NotificationService();
   }
 
   /**

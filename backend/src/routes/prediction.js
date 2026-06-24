@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /prediction:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const router = express.Router();
 const PredictionController = require('../controllers/predictionController');
@@ -131,3 +140,4 @@ router.use((error, req, res, next) => {
 });
 
 module.exports = router;
+

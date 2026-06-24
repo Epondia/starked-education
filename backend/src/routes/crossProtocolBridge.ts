@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /crossProtocolBridge:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import express, { Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { crossProtocolBridgeService } from '../services/crossProtocolBridgeService';
@@ -313,3 +322,4 @@ router.get(
 );
 
 export default router;
+

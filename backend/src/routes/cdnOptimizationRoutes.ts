@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /cdnOptimizationRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * CDN Optimization Routes
  * API endpoints for content delivery optimization
  */
@@ -282,3 +291,4 @@ router.delete("/history", controller.clearHistory.bind(controller));
 router.get("/health", controller.healthCheck.bind(controller));
 
 export default router;
+

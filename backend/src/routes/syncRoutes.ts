@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /syncRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import { Router } from "express";
 import * as syncController from "../controllers/syncController";
 import { validateRequestSchema } from "../middleware/validateRequestSchema";
@@ -23,3 +32,4 @@ router.post("/queue/process", validateRequestSchema(processQueueSchema), syncCon
 router.get("/queue/status", syncController.getQueueStatus);
 
 export default router;
+

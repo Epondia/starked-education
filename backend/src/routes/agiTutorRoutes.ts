@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /agiTutorRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import { Router } from 'express';
 import { AGITutorController } from '../controllers/agiTutorController';
 import { validateRequestSchema } from '../middleware/validateRequestSchema';
@@ -52,3 +61,4 @@ router.post('/emotional-support', validateRequestSchema(emotionalSupportSchema),
 });
 
 export default router;
+

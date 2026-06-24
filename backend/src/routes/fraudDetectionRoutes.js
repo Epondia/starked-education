@@ -1,4 +1,13 @@
 /**
+ * @swagger
+ * /fraudDetectionRoutes:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+/**
  * Fraud Detection API Routes
  * RESTful endpoints for fraud detection and prevention system
  */
@@ -871,3 +880,4 @@ router.get('/metrics', async (req, res) => {
 });
 
 module.exports = router;
+

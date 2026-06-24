@@ -173,6 +173,14 @@ v1Router.use('/admin', adminRoutes);
 // Mount v1 router at /api/v1
 app.use('/api/v1', v1Router);
 
+const swaggerSpec = require('./docs/swagger');
+// Swagger UI available at /api-docs (development only)
+if (process.env.NODE_ENV !== 'production') {
+  const swaggerUi = require('swagger-ui-express');
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  app.get('/api-docs.json', (req, res) => res.json(swaggerSpec));
+}
+
 // Mount v2 router (empty — ready for future endpoints)
 const v2Router = createVersionedRouter('v2');
 app.use('/api/v2', v2Router);

@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /vrf:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 import express, { Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { vrfService } from '../services/vrfService';
@@ -343,3 +352,4 @@ router.post(
 );
 
 export default router;
+

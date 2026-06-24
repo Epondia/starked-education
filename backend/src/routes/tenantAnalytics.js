@@ -1,3 +1,12 @@
+/**
+ * @swagger
+ * /tenantAnalytics:
+ *   get:
+ *     summary: Placeholder endpoint
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
 const express = require('express');
 const tenantAnalyticsService = require('../services/tenantAnalyticsService');
 const { tenantMiddleware, requireTenantPermission } = require('../middleware/tenant');
@@ -311,3 +320,4 @@ function getContentType(format) {
 }
 
 module.exports = router;
+

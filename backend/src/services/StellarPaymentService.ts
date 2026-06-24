@@ -13,11 +13,25 @@ export class StellarPaymentService {
   private distributionKeypair: Keypair;
   private settings: StellarPaymentSettings;
 
-  constructor(settings: StellarPaymentSettings) {
+  /**
+   * Allows injection of a custom Horizon.Server instance for testing.
+   */
+  setServer(server: Horizon.Server) {
+    this.server = server;
+  }
+
+  constructor(settings: StellarPaymentSettings, server?: Horizon.Server) {
     this.settings = settings;
-    this.server = new Horizon.Server(settings.horizonUrl);
+    this.server = server ?? new Horizon.Server(settings.horizonUrl);
     this.networkPassphrase = String(settings.network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET);
     this.distributionKeypair = Keypair.fromSecret(settings.distributionAccount || '');
+  }
+
+  /**
+   * Factory for creating a test instance with a mock server.
+   */
+  static createTestInstance(settings: StellarPaymentSettings, mockServer: Horizon.Server) {
+    return new StellarPaymentService(settings, mockServer);
   }
 
   /**
