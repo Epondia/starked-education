@@ -1,16 +1,25 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { PaymentProcessorProps, PaymentDetails, TransactionReceipt } from '@/types/enrollment';
-import { stellarService, createEnrollmentMemo, formatStellarBalance } from '@/lib/stellar';
-import { 
-  CreditCard, 
-  AlertCircle, 
-  CheckCircle, 
-  Clock, 
+import {
+  PaymentProcessorProps,
+  PaymentDetails,
+  TransactionReceipt,
+} from '@/types/enrollment';
+import {
+  stellarService,
+  createEnrollmentMemo,
+  formatStellarBalance,
+} from '@/lib/stellar';
+import { useToast } from '@/hooks/useToast';
+import {
+  CreditCard,
+  AlertCircle,
+  CheckCircle,
+  Clock,
   ExternalLink,
   RefreshCw,
-  Loader2
+  Loader2,
 } from 'lucide-react';
 
 const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
@@ -18,15 +27,21 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
   wallet,
   onPaymentSuccess,
   onPaymentError,
-  onPaymentPending
+  onPaymentPending,
 }) => {
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'success' | 'failed' | 'pending'>('idle');
-  const [transactionReceipt, setTransactionReceipt] = useState<TransactionReceipt | null>(null);
+  const toast = useToast();
+  const [paymentStatus, setPaymentStatus] = useState<
+    'idle' | 'processing' | 'success' | 'failed' | 'pending'
+  >('idle');
+  const [transactionReceipt, setTransactionReceipt] =
+    useState<TransactionReceipt | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [walletsKit, setWalletsKit] = useState<any | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<number>(0);
   const [isCheckingBalance, setIsCheckingBalance] = useState(false);
-  const [sufficientBalance, setSufficientBalance] = useState<boolean | null>(null);
+  const [sufficientBalance, setSufficientBalance] = useState<boolean | null>(
+    null
+  );
 
   useEffect(() => {
     if (wallet) {
@@ -80,9 +95,10 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
       // Generate unique memo for this enrollment
       const studentId = wallet.publicKey.slice(-8); // Last 8 characters as student ID
       const memo = createEnrollmentMemo(course.id, studentId);
-      
+
       // Platform's recipient address (this should come from environment/config)
-      const recipientAddress = process.env.NEXT_PUBLIC_STELLAR_RECEIVER_ADDRESS || 
+      const recipientAddress =
+        process.env.NEXT_PUBLIC_STELLAR_RECEIVER_ADDRESS ||
         'GDUKMG4GD6VQY66JWH2D7SRPE2A4F4FJKM3KODD37MPEXGLB5JDO3M2M';
 
       // Create transaction
@@ -94,28 +110,51 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
       );
 
       // Sign and submit transaction through wallet
-      const signedTransaction = await walletsKit.signTransaction(transactionXDR, {
-        networkPassphrase: wallet.network === 'mainnet' ? 'Public Global Stellar Network ; September 2015' : 'Test SDF Network ; September 2015',
-      });
+      const signedTransaction = await walletsKit.signTransaction(
+        transactionXDR,
+        {
+          networkPassphrase:
+            wallet.network === 'mainnet'
+              ? 'Public Global Stellar Network ; September 2015'
+              : 'Test SDF Network ; September 2015',
+        }
+      );
 
       // Submit transaction
       const receipt = await stellarService.submitTransaction(signedTransaction);
-      
+
       setTransactionReceipt(receipt);
-      
+
       if (receipt.status === 'success') {
         setPaymentStatus('success');
+        toast.success(`Payment successful for ${course.title}`, {
+          action: {
+            label: 'View transaction',
+            onClick: () => {
+              const explorerUrl =
+                wallet?.network === 'testnet'
+                  ? `https://stellar.expert/explorer/testnet/tx/${receipt.transactionHash}`
+                  : `https://stellar.expert/explorer/public/tx/${receipt.transactionHash}`;
+              window.open(explorerUrl, '_blank');
+            },
+          },
+        });
         onPaymentSuccess(receipt.transactionHash);
       } else {
         setPaymentStatus('failed');
+        toast.error('Payment failed: Transaction failed', {
+          action: { label: 'Try again', onClick: retryPayment },
+        });
         onPaymentError('Transaction failed');
       }
-
     } catch (error: any) {
       console.error('Payment processing error:', error);
       const errorMessage = error.message || 'Payment processing failed';
       setError(errorMessage);
       setPaymentStatus('failed');
+      toast.error(`Payment failed: ${errorMessage}`, {
+        action: { label: 'Try again', onClick: retryPayment },
+      });
       onPaymentError(errorMessage);
     }
   };
@@ -128,9 +167,10 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
 
   const viewTransaction = () => {
     if (transactionReceipt?.transactionHash) {
-      const explorerUrl = wallet?.network === 'testnet'
-        ? `https://stellar.expert/explorer/testnet/tx/${transactionReceipt.transactionHash}`
-        : `https://stellar.expert/explorer/public/tx/${transactionReceipt.transactionHash}`;
+      const explorerUrl =
+        wallet?.network === 'testnet'
+          ? `https://stellar.expert/explorer/testnet/tx/${transactionReceipt.transactionHash}`
+          : `https://stellar.expert/explorer/public/tx/${transactionReceipt.transactionHash}`;
       window.open(explorerUrl, '_blank');
     }
   };
@@ -169,7 +209,9 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
       <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
         <div className="text-center">
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Successful!</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Payment Successful!
+          </h3>
           <p className="text-sm text-gray-600 mb-4">
             Your enrollment in {course.title} has been confirmed.
           </p>
@@ -178,11 +220,15 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
             <div className="text-left space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Transaction Hash:</span>
-                <span className="font-mono text-xs">{transactionReceipt.transactionHash.slice(0, 12)}...</span>
+                <span className="font-mono text-xs">
+                  {transactionReceipt.transactionHash.slice(0, 12)}...
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Amount Paid:</span>
-                <span className="font-medium">{formatStellarBalance(transactionReceipt.amount || 0)}</span>
+                <span className="font-medium">
+                  {formatStellarBalance(transactionReceipt.amount || 0)}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Status:</span>
@@ -209,7 +255,9 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
         <div className="flex items-center space-x-3">
           {getStatusIcon()}
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Payment Details</h3>
+            <h3 className="text-lg font-semibold text-gray-900">
+              Payment Details
+            </h3>
             <p className="text-sm text-gray-600">{getStatusText()}</p>
           </div>
         </div>
@@ -219,7 +267,9 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
             disabled={isCheckingBalance}
             className="p-2 text-gray-500 hover:text-gray-700"
           >
-            <RefreshCw className={`w-4 h-4 ${isCheckingBalance ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`w-4 h-4 ${isCheckingBalance ? 'animate-spin' : ''}`}
+            />
           </button>
         )}
       </div>
@@ -248,22 +298,30 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Course Price:</span>
-              <span className="font-medium">{formatStellarBalance(course.price)}</span>
+              <span className="font-medium">
+                {formatStellarBalance(course.price)}
+              </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Network Fee:</span>
-              <span className="font-medium">{formatStellarBalance(estimatedFee / 10000000)}</span>
+              <span className="font-medium">
+                {formatStellarBalance(estimatedFee / 10000000)}
+              </span>
             </div>
             <div className="border-t pt-2 flex justify-between font-medium">
               <span>Total:</span>
-              <span>{formatStellarBalance(course.price + (estimatedFee / 10000000))}</span>
+              <span>
+                {formatStellarBalance(course.price + estimatedFee / 10000000)}
+              </span>
             </div>
           </div>
         </div>
 
         {wallet && (
           <div className="bg-yellow-50 rounded-lg p-4">
-            <h4 className="font-medium text-gray-900 mb-3">Wallet Information</h4>
+            <h4 className="font-medium text-gray-900 mb-3">
+              Wallet Information
+            </h4>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Connected Wallet:</span>
@@ -275,7 +333,9 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Available Balance:</span>
-                <span className={`font-medium ${sufficientBalance === false ? 'text-red-600' : 'text-green-600'}`}>
+                <span
+                  className={`font-medium ${sufficientBalance === false ? 'text-red-600' : 'text-green-600'}`}
+                >
                   {formatStellarBalance(wallet.balance || 0)}
                 </span>
               </div>
@@ -295,7 +355,9 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
         <div className="mb-4 flex items-center space-x-2 text-yellow-600 bg-yellow-50 p-3 rounded-lg">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span className="text-sm">
-            Insufficient balance. Please add at least {formatStellarBalance(course.price - (wallet?.balance || 0))} to your wallet.
+            Insufficient balance. Please add at least{' '}
+            {formatStellarBalance(course.price - (wallet?.balance || 0))} to
+            your wallet.
           </span>
         </div>
       )}
@@ -309,11 +371,11 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
             Try Again
           </button>
         )}
-        
+
         <button
           onClick={processPayment}
           disabled={
-            paymentStatus === 'processing' || 
+            paymentStatus === 'processing' ||
             paymentStatus === 'pending' ||
             !wallet ||
             sufficientBalance === false ||

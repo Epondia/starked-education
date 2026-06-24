@@ -39,8 +39,9 @@ const ContentUploader: React.FC<ContentUploaderProps> = ({
   ],
   className = '',
   disabled = false,
-  authToken
+  authToken,
 }) => {
+  const toast = useToast();
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -90,7 +91,7 @@ const ContentUploader: React.FC<ContentUploaderProps> = ({
           file,
           id: Math.random().toString(36).substr(2, 9),
           status: 'error',
-          error
+          error,
         });
       } else {
         const preview = await generatePreview(file);
@@ -98,16 +99,16 @@ const ContentUploader: React.FC<ContentUploaderProps> = ({
           file,
           id: Math.random().toString(36).substr(2, 9),
           preview,
-          status: 'pending'
+          status: 'pending',
         });
       }
     }
 
-    setFiles(prev => [...prev, ...validFiles]);
+    setFiles((prev) => [...prev, ...validFiles]);
   };
 
   const removeFile = (id: string) => {
-    setFiles(prev => prev.filter(f => f.id !== id));
+    setFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   const cancelUpload = useCallback((id: string) => {
@@ -122,7 +123,7 @@ const ContentUploader: React.FC<ContentUploaderProps> = ({
   }, []);
 
   const uploadFiles = useCallback(async () => {
-    const pendingFiles = files.filter(f => f.status === 'pending');
+    const pendingFiles = files.filter((f) => f.status === 'pending');
     if (pendingFiles.length === 0) return;
 
     setIsUploading(true);
@@ -141,7 +142,7 @@ const ContentUploader: React.FC<ContentUploaderProps> = ({
             metadata: {
               originalName: fileItem.file.name,
               uploadedAt: new Date().toISOString(),
-              userAgent: navigator.userAgent
+              userAgent: navigator.userAgent,
             },
             signal: controller.signal,
             onProgress: (progress) => {
@@ -158,6 +159,14 @@ const ContentUploader: React.FC<ContentUploaderProps> = ({
           ));
 
           onUploadComplete?.(result);
+          toast.success(`${fileItem.file.name} uploaded successfully`, {
+            action: result.gatewayUrl
+              ? {
+                  label: 'View on IPFS',
+                  onClick: () => window.open(result.gatewayUrl, '_blank'),
+                }
+              : undefined,
+          });
         } catch (error) {
           if ((error as any)?.name === 'CanceledError' || (error as any)?.code === 'ERR_CANCELED') {
             return;
@@ -185,7 +194,7 @@ const ContentUploader: React.FC<ContentUploaderProps> = ({
   };
 
   const getOverallProgress = (): number => {
-    const uploadingFiles = files.filter(f => f.status === 'uploading');
+    const uploadingFiles = files.filter((f) => f.status === 'uploading');
     if (uploadingFiles.length === 0) return 0;
     const totalProgress = uploadingFiles.reduce((sum, f) => sum + (f.progress?.progress || 0), 0);
     return Math.round(totalProgress / uploadingFiles.length);
@@ -209,7 +218,11 @@ const ContentUploader: React.FC<ContentUploaderProps> = ({
             </h3>
             <button
               onClick={uploadFiles}
-              disabled={disabled || isUploading || files.filter(f => f.status === 'pending').length === 0}
+              disabled={
+                disabled ||
+                isUploading ||
+                files.filter((f) => f.status === 'pending').length === 0
+              }
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {isUploading ? (
