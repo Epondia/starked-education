@@ -1,21 +1,17 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import PreferencesPanel from '@/components/Notifications/PreferencesPanel';
 import { useNotifications } from '@/hooks/useNotifications';
-import { useToast } from '@/hooks/useToast';
-import { Bell, Shield, Info } from 'lucide-react';
+import { Bell, Shield, Info, Keyboard } from 'lucide-react';
+import { getShortcuts, getEnabledKeys, setEnabledKeys, type Shortcut } from '@/lib/shortcutRegistry';
 
 export default function NotificationSettingsPage() {
-  // Using a hardcoded userId for demo purposes.
-  // In a real app, this would come from an auth context.
-  const {
-    preferences,
-    updatePreferences,
-    isLoading,
-    subscribeToPushNotifications,
-  } = useNotifications('user-123');
-  const toast = useToast();
+    // Using a hardcoded userId for demo purposes. 
+    // In a real app, this would come from an auth context.
+    const { preferences, updatePreferences, isLoading, subscribeToPushNotifications } = useNotifications('user-123');
+    const [shortcutsEnabled, setShortcutsEnabled] = useState(getEnabledKeys());
+    const [shortcuts] = useState<Shortcut[]>(getShortcuts());
 
   const handleUpdatePreferences = async (
     prefs: Parameters<typeof updatePreferences>[0]
@@ -46,15 +42,60 @@ export default function NotificationSettingsPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Main Content */}
-        <div className="md:col-span-2 space-y-8">
-          <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <PreferencesPanel
-              preferences={preferences}
-              onUpdatePreferences={handleUpdatePreferences}
-            />
-          </section>
+                    {/* Device Settings */}
+                    <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <Shield size={22} className="text-blue-600" />
+                            <h2 className="text-xl font-semibold text-gray-900">Push Notifications</h2>
+                        </div>
+                        <p className="text-gray-600 mb-6">
+                            Enable push notifications to stay updated even when you're not on the site.
+                        </p>
+                        <button
+                            onClick={handlePushSubscription}
+                            className="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                        >
+                            <Bell size={18} />
+                            Enable Browser Push
+                        </button>
+                    </section>
+
+                    {/* Keyboard Shortcuts */}
+                    <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <Keyboard size={22} className="text-blue-600" />
+                            <h2 className="text-xl font-semibold text-gray-900">Keyboard Shortcuts</h2>
+                        </div>
+                        <div className="flex items-center justify-between mb-6">
+                            <div>
+                                <p className="text-gray-600">Enable keyboard shortcuts</p>
+                                <p className="text-sm text-gray-400">
+                                    Press <kbd className="px-1 py-0.5 bg-gray-100 rounded text-xs font-mono">Ctrl+K</kbd> to open the command palette
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    const next = !shortcutsEnabled;
+                                    setShortcutsEnabled(next);
+                                    setEnabledKeys(next);
+                                }}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${shortcutsEnabled ? 'bg-blue-600' : 'bg-gray-300'}`}
+                            >
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${shortcutsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                        </div>
+                        <div className="space-y-2">
+                            {shortcuts.map((s) => (
+                                <div key={s.keys} className="flex items-center justify-between py-1.5">
+                                    <span className="text-sm text-gray-700">{s.description}</span>
+                                    <kbd className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                        {s.keys}
+                                    </kbd>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+                </div>
 
           {/* Device Settings */}
           <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
