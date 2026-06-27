@@ -6,6 +6,7 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 pub enum EventType {
     CourseCompletion,
     CredentialIssuance,
+    CredentialRenewed,
     UserAchievement,
     ProfileUpdate,
     CourseEnrollment,
