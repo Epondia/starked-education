@@ -133,6 +133,46 @@ jobs:
         timeout-minutes: 15
         run: cd frontend && NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
+  # ─── Dependency Audit ────────────────────────────────────────────
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Audit backend dependencies (high/critical)
+        continue-on-error: true
+        run: cd backend && npm audit --audit-level=high
+
+      - name: Audit frontend dependencies (high/critical)
+        continue-on-error: true
+        run: cd frontend && npm audit --audit-level=high
+
+  # ─── Cargo Audit (contracts) ─────────────────────────────────────
+  cargo-audit:
+    name: Cargo Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit contract dependencies
+        continue-on-error: true
+        run: cd contracts && cargo audit
+
   # ─── Security Scan ───────────────────────────────────────────────
   security-scan:
     name: Security Scan
