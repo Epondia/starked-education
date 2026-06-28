@@ -18,6 +18,7 @@ import { FileUploadService } from '../services/fileUploadService';
 import { GradingService } from '../services/gradingService';
 import { PlagiarismService } from '../services/plagiarismService';
 import { NotificationService } from '../services/notificationService';
+import { getEmailService } from '../services/emailService';
 import { validateAssignment, validateSubmission } from '../utils/validation';
 import { logger } from '../utils/logger';
 
@@ -357,6 +358,34 @@ export class AssignmentController {
 
       // Notify student
       await (this.notificationService as any).notifyGradeCreated(req.user.id, grade);
+
+      // Send assignment graded email
+      try {
+        const emailService = getEmailService();
+        const gradeData: any = grade || {};
+        await emailService.sendEmail({
+          userId: submission.studentId,
+          userEmail: (req as any).user?.email || submission.studentId,
+          templateData: {
+            type: 'assignmentGraded',
+            data: {
+              studentName: (req as any).user?.username || 'Learner',
+              assignmentTitle: gradingData.assignmentTitle || assignment.title || 'Assignment',
+              courseName: gradingData.courseName || assignment.courseId || 'Course',
+              earnedPoints: gradingData.earnedPoints || 0,
+              totalPoints: gradingData.totalPoints || 100,
+              percentage: gradingData.percentage || Math.round(((gradingData.earnedPoints || 0) / (gradingData.totalPoints || 100)) * 100),
+              letterGrade: gradeData.letterGrade || 'N/A',
+              feedback: gradingData.feedback || undefined,
+              assignmentUrl: `${process.env.FRONTEND_URL || ''}/assignments/${submission.assignmentId}`,
+              unsubscribeUrl: `${process.env.FRONTEND_URL || ''}/settings/notifications`,
+              privacyUrl: `${process.env.FRONTEND_URL || ''}/privacy`,
+            },
+          },
+        });
+      } catch (emailError) {
+        logger.error('Failed to queue assignment graded email:', emailError);
+      }
 
       logger.info(`Submission graded: ${submissionId} by ${req.user.id}`);
       res.status(201).json(grade);

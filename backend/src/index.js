@@ -36,6 +36,15 @@ dotenv.config();
 // Connect to Redis
 connectRedis();
 
+// Register email queue handler for async email delivery
+try {
+  const { registerEmailQueueHandler } = require('./services/emailService');
+  registerEmailQueueHandler();
+  console.log('📧 Email queue handler registered');
+} catch (err) {
+  console.warn('Warning: Could not register email queue handler:', err.message);
+}
+
 // Helper for default-exported route modules
 const resolveRoute = (routeModule) => routeModule.default || routeModule;
 
