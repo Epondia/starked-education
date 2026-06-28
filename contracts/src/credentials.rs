@@ -11,7 +11,16 @@ pub enum CredentialKey {
     CredentialRevocations(u64), // Separate revocation tracking
 }
 
-/// Optimized credential with packed verification status
+/// Credential status enumeration
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CredentialStatus {
+    Active = 0,
+    Expired = 1,
+    Revoked = 2,
+}
+
+/// Optimized credential with packed verification status and expiration
 #[contracttype]
 pub struct Credential {
     pub id: u64,
@@ -22,9 +31,10 @@ pub struct Credential {
     pub course_id: String,
     pub timestamp: u64, // Packed completion_date and revocation status
     pub ipfs_hash: String,
+    pub expires_at: Option<u64>, // Optional expiration timestamp (None = never expires)
 }
 
-/// Issue a new credential with optimized storage
+/// Issue a new credential with optimized storage and optional expiration
 pub fn issue_credential(
     env: &Env,
     issuer: Address,
@@ -33,6 +43,7 @@ pub fn issue_credential(
     description: String,
     course_id: String,
     ipfs_hash: String,
+    validity_duration: Option<u64>, // Optional: duration in seconds; None = never expires
 ) -> u64 {
     issuer.require_auth();
 
@@ -51,6 +62,9 @@ pub fn issue_credential(
     // Generate hash for description to save storage space
     let description_hash = generate_string_hash(&description);
 
+    // Calculate expiration timestamp if validity_duration is provided
+    let expires_at = validity_duration.map(|duration| timestamp + duration);
+
     let credential = Credential {
         id: credential_id,
         issuer: issuer.clone(),
@@ -60,6 +74,7 @@ pub fn issue_credential(
         course_id,
         timestamp: packed_timestamp,
         ipfs_hash,
+        expires_at,
     };
 
     // Store credential in persistent storage
@@ -84,20 +99,96 @@ pub fn issue_credential(
     credential_id
 }
 
-/// Verify a credential using packed timestamp
-pub fn verify_credential(env: &Env, credential_id: u64) -> bool {
+/// Get credential status — checks revocation, expiration (lazy evaluation)
+/// Returns (CredentialStatus, Option<expires_at>)
+pub fn get_credential_status(env: &Env, credential_id: u64) -> CredentialStatus {
     let mut credential: Credential = env
         .storage()
         .persistent()
         .get(&CredentialKey::Credential(credential_id))
         .unwrap_or_else(|| panic!("Credential not found"));
 
-    // Check revocation bit (bit 0)
+    // Check revocation bit (bit 0 of timestamp)
     if (credential.timestamp & 1) != 0 {
-        return false; // Credential is revoked
+        return CredentialStatus::Revoked;
     }
 
-    // Here you can add more verification logic (e.g. check issuer signature, expiration)
+    // Check expiration (lazy evaluation — checked at read time for gas efficiency)
+    // Uses a dedicated expiration key to avoid corrupting the packed timestamp
+    if let Some(expires_at) = credential.expires_at {
+        let current_time = env.ledger().timestamp();
+        if current_time >= expires_at {
+            // Store expiration marker separately (avoids corrupting packed timestamp bits)
+            env.storage().instance().set(
+                &CredentialKey::CredentialRevocations(credential_id),
+                &current_time,
+            );
+            return CredentialStatus::Expired;
+        }
+    }
+
+    CredentialStatus::Active
+}
+
+/// Verify a credential using packed timestamp and expiration check
+pub fn verify_credential(env: &Env, credential_id: u64) -> bool {
+    let status = get_credential_status(env, credential_id);
+    status == CredentialStatus::Active
+}
+
+/// Renew a credential — extends expiration, callable by original issuer only
+/// Emits CredentialRenewed event. Revoked credentials cannot be renewed.
+pub fn renew_credential(
+    env: &Env,
+    credential_id: u64,
+    renewer: Address,
+    new_expires_at: u64,
+) -> bool {
+    renewer.require_auth();
+
+    let mut credential: Credential = env
+        .storage()
+        .persistent()
+        .get(&CredentialKey::Credential(credential_id))
+        .unwrap_or_else(|| panic!("Credential not found"));
+
+    // Only the original issuer (admin) can renew
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not set"));
+
+    if renewer != credential.issuer && renewer != admin {
+        panic!("Only original issuer or admin can renew credentials");
+    }
+
+    // Check if revoked — revoked credentials cannot be renewed
+    if (credential.timestamp & 1) != 0 {
+        panic!("Cannot renew revoked credential");
+    }
+
+    let old_expires_at = credential.expires_at;
+    credential.expires_at = Some(new_expires_at);
+
+    // Clear any stored expiration marker
+    env.storage()
+        .instance()
+        .remove(&CredentialKey::CredentialRevocations(credential_id));
+
+    env.storage()
+        .persistent()
+        .set(&CredentialKey::Credential(credential_id), &credential);
+
+    // Emit CredentialRenewed event
+    env.events().publish(
+        (
+            Symbol::new(env, "credential"),
+            Symbol::new(env, "renewed"),
+        ),
+        (credential_id, old_expires_at, new_expires_at, renewer),
+    );
+
     true
 }
 

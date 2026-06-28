@@ -2,9 +2,9 @@
 
 use crate::credentials::{
     add_multi_sig_signature, create_multi_sig_credential, get_credential, get_credential_count,
-    get_multi_sig_credential, get_multi_sig_signatures, get_multi_sig_status,
-    get_user_credentials, is_multi_sig_threshold_met, issue_credential, revoke_credential,
-    verify_credential,
+    get_credential_status, get_multi_sig_credential, get_multi_sig_signatures, get_multi_sig_status,
+    get_user_credentials, is_multi_sig_threshold_met, issue_credential, renew_credential,
+    revoke_credential, verify_credential, CredentialStatus,
 };
 use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol, Vec};
 
@@ -32,6 +32,7 @@ fn test_issue_and_verify_credential() {
         String::from_str(&env, "Completed Soroban basics"),
         String::from_str(&env, "course-001"),
         String::from_str(&env, "ipfs://Qm..."),
+        None, // No expiration
     );
 
     assert_eq!(cred_id, 1);
@@ -78,6 +79,7 @@ fn test_unauthorized_issuer_rejected() {
             String::from_str(&env, "Desc"),
             String::from_str(&env, "course-001"),
             String::from_str(&env, "ipfs://Qm..."),
+            None,
         )
     }));
     assert!(result.is_err());
@@ -561,6 +563,294 @@ fn test_multi_sig_3_of_3_full_flow() {
 
     let sigs = get_multi_sig_signatures(&env, cred_id);
     assert_eq!(sigs.len(), 3);
+}
+
+/// ═══════════════════════════════════════════════════════════════════
+//  Credential Expiration and Renewal Tests
+// ═══════════════════════════════════════════════════════════════════
+
+/// Test: Issue credential with expiration, verify active within validity window
+#[test]
+fn test_credential_with_expiration_active_before_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let validity_seconds = 31_536_000u64; // 1 year
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Time-Limited Cert"),
+        String::from_str(&env, "Expires in 1 year"),
+        String::from_str(&env, "course-002"),
+        String::from_str(&env, "ipfs://QmExpires"),
+        Some(validity_seconds),
+    );
+
+    assert_eq!(cred_id, 1);
+
+    // Immediately after issuance: should be Active
+    let status = get_credential_status(&env, cred_id);
+    assert_eq!(status, CredentialStatus::Active);
+    assert!(verify_credential(&env, cred_id));
+
+    // Verify credential details
+    let cred = get_credential(&env, cred_id);
+    assert!(cred.expires_at.is_some());
+}
+
+/// Test: Credential shows Expired when verified after expiration time
+#[test]
+fn test_credential_expires_after_validity_period() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let validity_seconds = 3600u64; // 1 hour
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Short-Lived Cert"),
+        String::from_str(&env, "Expires in 1 hour"),
+        String::from_str(&env, "course-003"),
+        String::from_str(&env, "ipfs://QmShort"),
+        Some(validity_seconds),
+    );
+
+    // Advance ledger time past expiration
+    env.ledger().set_timestamp(env.ledger().timestamp() + validity_seconds + 1);
+
+    // After expiry: should be Expired
+    let status = get_credential_status(&env, cred_id);
+    assert_eq!(status, CredentialStatus::Expired);
+    assert!(!verify_credential(&env, cred_id));
+}
+
+/// Test: Credential without expiration stays Active indefinitely
+#[test]
+fn test_credential_without_expiration_never_expires() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Permanent Cert"),
+        String::from_str(&env, "Never expires"),
+        String::from_str(&env, "course-004"),
+        String::from_str(&env, "ipfs://QmPermanent"),
+        None, // No expiration
+    );
+
+    // Advance time far into the future
+    env.ledger().set_timestamp(env.ledger().timestamp() + 31_536_000 * 10); // 10 years
+
+    // Should still be Active
+    let status = get_credential_status(&env, cred_id);
+    assert_eq!(status, CredentialStatus::Active);
+    assert!(verify_credential(&env, cred_id));
+}
+
+/// Test: renew_credential extends expiration and credential is Active again
+#[test]
+fn test_renew_credential_extends_expiration() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let validity_seconds = 3600u64; // 1 hour
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Renewable Cert"),
+        String::from_str(&env, "Can be renewed"),
+        String::from_str(&env, "course-005"),
+        String::from_str(&env, "ipfs://QmRenew"),
+        Some(validity_seconds),
+    );
+
+    // Advance past expiration
+    env.ledger().set_timestamp(env.ledger().timestamp() + validity_seconds + 1);
+    assert_eq!(get_credential_status(&env, cred_id), CredentialStatus::Expired);
+
+    // Renew with new expiration (2 years from now)
+    let current_time = env.ledger().timestamp();
+    let new_expiry = current_time + 31_536_000 * 2;
+    let result = renew_credential(&env, cred_id, admin.clone(), new_expiry);
+    assert!(result);
+
+    // After renewal: should be Active again
+    let status = get_credential_status(&env, cred_id);
+    assert_eq!(status, CredentialStatus::Active);
+    assert!(verify_credential(&env, cred_id));
+
+    // Verify the new expiration was stored
+    let cred = get_credential(&env, cred_id);
+    assert_eq!(cred.expires_at, Some(new_expiry));
+}
+
+/// Test: Non-issuer cannot renew a credential
+#[test]
+fn test_unauthorized_renewal_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "No-Renew Cert"),
+        String::from_str(&env, "Cannot be renewed by others"),
+        String::from_str(&env, "course-006"),
+        String::from_str(&env, "ipfs://QmNoRenew"),
+        Some(3600),
+    );
+
+    let new_expiry = env.ledger().timestamp() + 31_536_000;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        renew_credential(&env, cred_id, unauthorized.clone(), new_expiry);
+    }));
+    assert!(result.is_err());
+}
+
+/// Test: Renewing a revoked credential fails
+#[test]
+fn test_cannot_renew_revoked_credential() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Revoked Cert"),
+        String::from_str(&env, "Should not be renewable after revoke"),
+        String::from_str(&env, "course-007"),
+        String::from_str(&env, "ipfs://QmRevoked"),
+        Some(3600),
+    );
+
+    // Revoke the credential
+    revoke_credential(&env, cred_id, admin.clone());
+
+    // Attempt to renew a revoked credential
+    let new_expiry = env.ledger().timestamp() + 31_536_000;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        renew_credential(&env, cred_id, admin.clone(), new_expiry);
+    }));
+    assert!(result.is_err());
+}
+
+/// Test: get_credential_status returns correct status for all states
+#[test]
+fn test_get_credential_status_all_states() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    // Active credential with expiration
+    let active_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Active Cert"),
+        String::from_str(&env, "Still active"),
+        String::from_str(&env, "course-008"),
+        String::from_str(&env, "ipfs://QmActive"),
+        Some(31_536_000),
+    );
+    assert_eq!(get_credential_status(&env, active_id), CredentialStatus::Active);
+
+    // Permanent credential (no expiration)
+    let perm_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Permanent Cert"),
+        String::from_str(&env, "No expiry"),
+        String::from_str(&env, "course-009"),
+        String::from_str(&env, "ipfs://QmPerm"),
+        None,
+    );
+    assert_eq!(get_credential_status(&env, perm_id), CredentialStatus::Active);
+
+    // Revoked credential
+    let revoked_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "To Revoke"),
+        String::from_str(&env, "Will be revoked"),
+        String::from_str(&env, "course-010"),
+        String::from_str(&env, "ipfs://QmRevoke"),
+        None,
+    );
+    revoke_credential(&env, revoked_id, admin.clone());
+    assert_eq!(get_credential_status(&env, revoked_id), CredentialStatus::Revoked);
+
+    // Expired credential
+    let expired_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "To Expire"),
+        String::from_str(&env, "Will expire"),
+        String::from_str(&env, "course-011"),
+        String::from_str(&env, "ipfs://QmExp"),
+        Some(1), // 1 second validity
+    );
+    env.ledger().set_timestamp(env.ledger().timestamp() + 2);
+    assert_eq!(get_credential_status(&env, expired_id), CredentialStatus::Expired);
 }
 
 /// Test: Non-admin cannot create multi-sig credential
