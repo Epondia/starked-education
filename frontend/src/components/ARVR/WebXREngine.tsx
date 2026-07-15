@@ -767,6 +767,10 @@ export function WebXREngine({
             Your browser or device doesn't support WebXR
           </p>
         </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full h-full bg-black rounded-lg overflow-hidden min-h-[500px]">
       {/* Interactive 3D Globe / Simulator Fallback View */}
