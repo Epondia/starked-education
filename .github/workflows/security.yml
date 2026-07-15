@@ -121,7 +121,7 @@ jobs:
           toolchain: 1.75.0
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+        run: cargo install cargo-audit --version 0.21.1 --locked
 
       - name: Audit contract dependencies
         continue-on-error: true
