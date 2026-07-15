@@ -69,7 +69,7 @@ The following are in scope for security reports:
 The following are generally **out of scope**:
 
 - Vulnerabilities in third-party dependencies that are already publicly disclosed (these
-  are tracked via Dependabot and `npm audit` / `cargo audit`).
+  are tracked via `npm audit` / `cargo audit`).
 - Issues requiring physical access to a user's device.
 - Social engineering of StarkEd staff or users.
 - Denial-of-service attacks.
@@ -83,7 +83,6 @@ This repository runs automated security checks on every push and pull request:
 - **Gitleaks** secret scanning to prevent committed credentials.
 - **Trivy** filesystem/dependency vulnerability scanning.
 - **Dependency Review** on pull requests.
-- **Dependabot** weekly automated dependency updates.
 
 See [.github/workflows/security.yml](workflows/security.yml) and
 [.github/workflows/ci.yml](workflows/ci.yml) for details.
