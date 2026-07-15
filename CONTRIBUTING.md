@@ -5,11 +5,17 @@ learning and credential verification platform built on the Stellar blockchain, a
 grows through community contributions of every size — from typo fixes to new smart
 contracts.
 
-This guide explains how to set up your environment, the standards we follow, and how to
-get a change merged.
+This guide is your **comprehensive onboarding resource** as a new contributor. It covers
+environment setup, the monorepo structure, coding conventions, the pull request workflow,
+and how to find your first issue to work on.
+
+> **Just landed here and want to get started fast?** Jump to the
+> [First-Time Contributor Checklist](#first-time-contributor-checklist).
 
 ## Table of Contents
 
+- [First-Time Contributor Checklist](#first-time-contributor-checklist)
+- [Finding and Claiming Good First Issues](#finding-and-claiming-good-first-issues)
 - [Code of Conduct](#code-of-conduct)
 - [Ways to Contribute](#ways-to-contribute)
 - [Project Layout](#project-layout)
@@ -20,8 +26,76 @@ get a change merged.
 - [Testing Requirements](#testing-requirements)
 - [Pull Request Process](#pull-request-process)
 - [Review Process](#review-process)
+- [Troubleshooting Common Setup Issues](#troubleshooting-common-setup-issues)
 - [Reporting Bugs & Requesting Features](#reporting-bugs--requesting-features)
 - [Security Issues](#security-issues)
+- [Additional Resources](#additional-resources)
+
+## First-Time Contributor Checklist
+
+If you are brand new to StarkEd, follow this checklist to get your first PR merged:
+
+- [ ] **1. Fork and clone the repository** — see [Getting Started](#getting-started).
+- [ ] **2. Install all prerequisites** — Node.js v18+, pnpm, Rust + Soroban CLI, PostgreSQL, Redis.
+      Full details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+- [ ] **3. Run `pnpm install:all` and verify your setup** — the backend, frontend, and contracts
+      should all build without errors. Use `pnpm build` from the root, then run a few tests
+      (`pnpm test` in each package).
+- [ ] **4. Read the [Architecture Overview](docs/ARCHITECTURE.md)** — understand how the three
+      packages (contracts, backend, frontend) fit together.
+- [ ] **5. Find a [good first issue](#finding-and-claiming-good-first-issues)** — look for issues
+      labeled `good first issue` on the [issues board](https://github.com/Epondia/starked-education/issues).
+- [ ] **6. Comment on the issue** — write a short comment like "I'd like to work on this" so a
+      maintainer can assign it to you.
+- [ ] **7. Create a topic branch** — follow the [branch naming convention](#development-workflow).
+- [ ] **8. Make focused changes and write tests** — see [Coding Standards](#coding-standards) and
+      [Testing Requirements](#testing-requirements).
+- [ ] **9. Run the existing test suite** — `pnpm test` (backend), `pnpm test` (frontend), or
+      `cargo test` (contracts) in each package you touched, to confirm nothing is broken.
+- [ ] **10. Run linters and type checks** — make sure `pnpm run lint` and `pnpm run typecheck`
+      (backend) or `pnpm run type-check` (frontend) pass for the packages you touched. For
+      contracts, run `cargo fmt` and `cargo clippy`.
+- [ ] **11. Open a pull request** — fill out the PR template completely and link the issue with
+       `Closes #<number>`.
+- [ ] **12. Respond to review feedback** — be patient and address all comments.
+
+If you hit a snag at any step, check the [Troubleshooting](#troubleshooting-common-setup-issues)
+section below or the one in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## Finding and Claiming Good First Issues
+
+We use the `good first issue` label to highlight tasks that are especially welcoming for
+new contributors. These issues are scoped to be approachable — they typically require
+little domain knowledge and have clear acceptance criteria.
+
+### How to find them
+
+1. **Browse the issues board** — visit
+   [github.com/Epondia/starked-education/issues](https://github.com/Epondia/starked-education/issues)
+   and filter by the `good first issue` label.
+2. **Look at the labels area** on each issue — the label tells you which part of the
+   stack the work touches (`area: frontend`, `area: backend`, `area: contracts`,
+   `documentation`, `area: devops`). Pick one that matches your skills or interests.
+3. **Read the priority** — `priority: low` or `priority: medium` issues are usually less
+   urgent and a better fit for learning the codebase.
+4. **Check the assignee** — if nobody is assigned, the issue is available.
+
+### How to claim an issue
+
+1. Comment on the issue with something like:
+   > I'd like to work on this! Can I be assigned?
+2. A maintainer (or the GrantFox bot) will assign you. The bot typically responds within
+   a few seconds.
+3. Once assigned, the bot will remind you to open a PR referencing the issue (e.g.,
+   `Closes #<number>`).
+
+### Tips for your first contribution
+
+- Start with **documentation** issues if you are new to the stack — they help you learn
+  the project while making an immediate impact.
+- If an issue looks too large, ask in the comments whether a smaller slice is available.
+- Don't be afraid to ask questions! Maintainers are happy to clarify requirements or
+  point you to relevant files.
 
 ## Code of Conduct
 
@@ -219,6 +293,76 @@ all three packages on every pull request. Please make sure these pass locally fi
 6. Respond to review feedback by pushing additional commits (avoid force-pushing during
    active review so reviewers can see incremental changes).
 
+## Troubleshooting Common Setup Issues
+
+Below are some of the most frequent problems new contributors encounter and how to
+resolve them. For a more complete list, see the Troubleshooting section in
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+### `wasm32-unknown-unknown` target missing
+
+```bash
+rustup target add wasm32-unknown-unknown
+```
+
+### Backend cannot connect to the database or Redis
+
+- Confirm PostgreSQL and Redis are running (`pg_isready`, `redis-cli ping`).
+- Double-check `DATABASE_URL` and `REDIS_URL` in `backend/.env`.
+- If using Docker, make sure the containers are up (`docker ps`).
+
+### Frontend build runs out of memory
+
+Increase the Node.js heap size:
+
+```bash
+NODE_OPTIONS="--max-old-space-size=4096" pnpm run build
+```
+
+This is the same setting CI uses.
+
+### Type errors after pulling new changes
+
+Reinstall dependencies in the affected workspace:
+
+```bash
+# In the affected package directory
+pnpm install
+```
+
+### `pnpm install:all` fails
+
+- Make sure you are using **pnpm** (not npm or yarn). Install it with `npm i -g pnpm`.
+- Ensure `cargo` is installed and on your `PATH` (run `cargo --version` to verify).
+- Try running the steps individually:
+  ```bash
+  pnpm install          # install JS dependencies
+  cd contracts && cargo build   # build Rust contracts
+  ```
+
+### Stellar CLI not found
+
+Install it via Cargo:
+
+```bash
+cargo install --locked stellar-cli
+```
+
+### Port conflicts (3000, 5000, or 5432 already in use)
+
+- Find and kill the process using the port:
+  ```bash
+  lsof -ti:3000 | xargs kill -9   # for frontend (Next.js default)
+  lsof -ti:5000 | xargs kill -9   # for backend (Express default)
+  ```
+- Alternatively, set custom ports in your `.env` files.
+
+### Tests fail with "Cannot find module" errors
+
+- Make sure you have run `pnpm install` in the package whose tests are failing.
+- For the backend, ensure `ts-jest` is configured correctly in `jest.config.js`.
+- For the frontend, make sure Jest has access to the correct `tsconfig`.
+
 ## Review Process
 
 - At least one maintainer review is required before merging.
@@ -241,6 +385,35 @@ all three packages on every pull request. Please make sure these pass locally fi
 Please **do not** open public issues for security vulnerabilities. Instead, email
 `security@starked-education.org` with details. See the security issue template for the
 information to include.
+
+---
+
+## Additional Resources
+
+These companion documents provide deeper context on specific topics:
+
+| Document | What it covers |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, component interactions, data flow diagrams, and the request lifecycle |
+| [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md) | Key architecture decision records (ADRs) explaining why we chose specific technologies and patterns |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Detailed local development environment setup for all three packages |
+| [docs/TESTING.md](docs/TESTING.md) | Testing conventions, tools, and coverage expectations for each package |
+| [README.md](README.md) | Project overview, feature list, technology stack, and quick-start instructions |
+| [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) | The PR checklist you must complete before submitting |
+
+### Architecture Diagrams
+
+A system-level architecture diagram showing how the three packages and external services
+connect is available in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). That document also
+walks through a typical request lifecycle (e.g., issuing a credential) to illustrate how
+each component participates.
+
+### Video Walkthrough
+
+A video walkthrough of first-time setup is planned. In the meantime, follow the
+step-by-step instructions in the [First-Time Contributor Checklist](#first-time-contributor-checklist)
+above and refer to [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed per-package
+setup commands.
 
 ---
 
