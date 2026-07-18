@@ -1,6 +1,7 @@
 import type { AppProps } from 'next/app';
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
+import Head from 'next/head';
 import { appWithTranslation } from 'next-i18next';
 import { ThemeProvider } from 'next-themes';
 import PlausibleProvider from 'next-plausible';
