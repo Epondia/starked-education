@@ -183,6 +183,11 @@ docs: add contribution and developer setup guides
 Keep the summary in the imperative mood and under ~72 characters. Reference the issue in
 the body or footer (e.g. `Closes #78`).
 
+> **Enforced automatically** — `commitlint` runs as a git hook (`commit-msg`) and also
+> as a CI check on every pull request. Non-conventional commit messages will be rejected.
+> Run `npm run release:dry-run` from the project root to preview what the next changelog
+> will look like before creating a release.
+
 ## Testing Requirements
 
 Every behavioral change should be covered by tests, and the full suite must pass before a
