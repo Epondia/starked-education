@@ -1,0 +1,4 @@
+# Pre-commit hook
+# Extend this hook to run lint-staged or other fast checks before committing.
+# Example (requires lint-staged setup):
+#   npx lint-staged
