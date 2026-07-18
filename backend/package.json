@@ -13,6 +13,7 @@
     "migrate:up": "ts-node src/utils/migrate.ts up",
     "migrate:down": "ts-node src/utils/migrate.ts down",
     "migrate:status": "ts-node src/utils/migrate.ts status",
+    "seed": "ts-node src/utils/seed.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
