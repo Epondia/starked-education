@@ -138,7 +138,19 @@ export function CredentialList({
   }, [credentials]);
 
   const handleVerifyCredential = async (credentialId: string) => {
-    await updateCredentialStatus(credentialId, 'pending');
+    try {
+      // Track credential verification
+      if (typeof window !== 'undefined' && (window as any).plausible) {
+        (window as any).plausible('Credential Verification', {
+          props: { credentialId }
+        });
+      }
+      
+      const credential = credentials.find(c => c.id === credentialId);
+      await updateCredentialStatus(credentialId, 'pending');
+    } catch (error) {
+      console.error('Error verifying credential:', error);
+    }
   };
 
   const handleDownloadCredential = (credential: Credential) => {

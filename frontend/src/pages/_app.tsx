@@ -4,13 +4,25 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { appWithTranslation } from 'next-i18next';
 import { ThemeProvider } from 'next-themes';
+import PlausibleProvider from 'next-plausible';
 import nextI18NextConfig from '../../next-i18next.config';
 import { WalletProvider } from '../context/WalletContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GlobalShell } from '../components/PWA/GlobalShell';
-import PWAInstallPrompt from '../components/PWAInstallPrompt';
+import { CookieConsentBanner } from '../components/CookieConsentBanner';
 import { Toaster } from 'react-hot-toast';
 import '../styles/globals.css';
+
+export function reportWebVitals(metric: any) {
+  if (typeof window !== 'undefined' && (window as any).plausible) {
+    (window as any).plausible('Web Vitals', {
+      props: {
+        metric: metric.name,
+        value: Math.round(metric.name === 'CLS' ? metric.value * 1000 : metric.value),
+      },
+    });
+  }
+}
 
 function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
@@ -37,13 +49,7 @@ function MyApp({ Component, pageProps }: AppProps) {
   }, [router.asPath]);
 
   return (
-    <>
-      <Head>
-        <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no" />
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#3b82f6" />
-        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
-      </Head>
+    <PlausibleProvider domain="starked-education.com" trackLocalhost={true}>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="starked-theme">
         <ErrorBoundary key={router.asPath}>
           <WalletProvider>
@@ -60,7 +66,7 @@ function MyApp({ Component, pageProps }: AppProps) {
             </div>
             <GlobalShell />
             <Component {...pageProps} />
-            <PWAInstallPrompt />
+            <CookieConsentBanner />
             <Toaster
               position="bottom-right"
               toastOptions={{
@@ -70,7 +76,7 @@ function MyApp({ Component, pageProps }: AppProps) {
           </WalletProvider>
         </ErrorBoundary>
       </ThemeProvider>
-    </>
+    </PlausibleProvider>
   );
 }
 
