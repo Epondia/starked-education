@@ -1,0 +1,27 @@
+{
+  "types": [
+    { "type": "feat",     "section": "✨ Features" },
+    { "type": "fix",      "section": "🐛 Bug Fixes" },
+    { "type": "perf",     "section": "⚡ Performance Improvements" },
+    { "type": "revert",   "section": "⏪ Reverts" },
+    { "type": "docs",     "section": "📚 Documentation" },
+    { "type": "style",    "section": "💅 Styles", "hidden": false },
+    { "type": "refactor", "section": "♻️  Code Refactoring", "hidden": false },
+    { "type": "test",     "section": "🧪 Tests", "hidden": false },
+    { "type": "build",    "section": "🏗️  Build System", "hidden": false },
+    { "type": "ci",       "section": "👷 CI/CD", "hidden": false },
+    { "type": "chore",    "section": "🔧 Chores", "hidden": true }
+  ],
+  "commitUrlFormat": "https://github.com/jobbykings/starked-education/commit/{{hash}}",
+  "compareUrlFormat": "https://github.com/jobbykings/starked-education/compare/{{previousTag}}...{{currentTag}}",
+  "issueUrlFormat": "https://github.com/jobbykings/starked-education/issues/{{id}}",
+  "userUrlFormat": "https://github.com/{{user}}",
+  "releaseCommitMessageFormat": "chore(release): v{{currentTag}}",
+  "skip": {
+    "bump": false,
+    "changelog": false,
+    "commit": false,
+    "tag": false
+  },
+  "tagPrefix": "v"
+}
