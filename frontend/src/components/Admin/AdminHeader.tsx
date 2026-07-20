@@ -17,6 +17,8 @@ export default function AdminHeader({ title = 'Dashboard' }: AdminHeaderProps) {
     { id: 3, title: 'Content flagged', message: '3 courses need moderation', time: '3h ago', type: 'alert' }
   ];
 
+  const unreadCount = notifications.length;
+
   const getNotificationColor = (type: string) => {
     switch (type) {
       case 'alert': return 'bg-red-100 text-red-800 border-red-200';
@@ -29,18 +31,29 @@ export default function AdminHeader({ title = 'Dashboard' }: AdminHeaderProps) {
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4" aria-label="Admin top bar">
       <div className="flex items-center justify-between">
-        {/* Page Title */}
+        {/* Page Title — displayed in header bar, not a structural heading (page provides its own h1) */}
         <div>
-          <h1 className="text-2xl font-semibold text-gray-800">{title}</h1>
+          <p className="text-2xl font-semibold text-gray-800">{title}</p>
           <p className="text-sm text-gray-600 mt-1">Manage your StarkEd platform</p>
         </div>
 
         {/* Search Bar */}
         <div className="flex-1 max-w-md mx-8">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Search
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5"
+              aria-hidden="true"
+            />
+            {/*
+             * Visually hidden label associates the input with an accessible name.
+             * WCAG 2.1 SC 1.3.1 (Info and Relationships) and SC 4.1.2 (Name, Role, Value)
+             */}
+            <label htmlFor="admin-search" className="sr-only">
+              Search users, courses, or content
+            </label>
             <input
-              type="text"
+              id="admin-search"
+              type="search"
               placeholder="Search users, courses, or content..."
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
@@ -52,33 +65,59 @@ export default function AdminHeader({ title = 'Dashboard' }: AdminHeaderProps) {
           {/* Notifications */}
           <div className="relative">
             <button
-              onClick={() => setShowNotifications(!showNotifications)}
+              type="button"
+              onClick={() => {
+                setShowNotifications(!showNotifications);
+                setShowUserMenu(false);
+              }}
               className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label={showNotifications
+                ? 'Close notifications'
+                : `Open notifications (${unreadCount} unread)`
+              }
+              aria-expanded={showNotifications}
+              aria-haspopup="true"
+              aria-controls="notifications-panel"
             >
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+              <Bell className="w-5 h-5" aria-hidden="true" />
+              {/* Unread badge — sr-only text makes it meaningful to screen readers */}
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" aria-hidden="true" />
+              <span className="sr-only">{unreadCount} unread notifications</span>
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+              <div
+                id="notifications-panel"
+                role="region"
+                aria-label="Notifications panel"
+                className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
+              >
                 <div className="p-4 border-b border-gray-200">
                   <h3 className="font-semibold text-gray-800">Notifications</h3>
                 </div>
-                <div className="max-h-96 overflow-y-auto">
+                <ul className="max-h-96 overflow-y-auto" aria-label="Notification list">
                   {notifications.map(notification => (
-                    <div key={notification.id} className={`p-4 border-b border-gray-100 ${getNotificationColor(notification.type)}`}>
+                    <li
+                      key={notification.id}
+                      className={`p-4 border-b border-gray-100 ${getNotificationColor(notification.type)}`}
+                    >
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <h4 className="font-medium text-sm">{notification.title}</h4>
+                          <p className="font-medium text-sm">{notification.title}</p>
                           <p className="text-xs mt-1 opacity-80">{notification.message}</p>
                         </div>
-                        <span className="text-xs opacity-60">{notification.time}</span>
+                        <time className="text-xs opacity-60 ml-2" dateTime={notification.time}>
+                          {notification.time}
+                        </time>
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
                 <div className="p-3 text-center">
-                  <button className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                  <button
+                    type="button"
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
                     View all notifications
                   </button>
                 </div>
@@ -89,28 +128,49 @@ export default function AdminHeader({ title = 'Dashboard' }: AdminHeaderProps) {
           {/* User Menu */}
           <div className="relative">
             <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
+              type="button"
+              onClick={() => {
+                setShowUserMenu(!showUserMenu);
+                setShowNotifications(false);
+              }}
               className="flex items-center gap-2 p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label={showUserMenu ? 'Close user menu' : 'Open user menu for Admin User'}
+              aria-expanded={showUserMenu}
+              aria-haspopup="true"
+              aria-controls="user-menu-panel"
             >
-              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                <User className="w-5 h-5 text-white" />
+              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center" aria-hidden="true">
+                <User className="w-5 h-5 text-white" aria-hidden="true" />
               </div>
               <span className="font-medium">Admin User</span>
             </button>
 
             {showUserMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                <div className="p-3 border-b border-gray-200">
+              <div
+                id="user-menu-panel"
+                role="menu"
+                aria-label="User menu"
+                className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
+              >
+                <div className="p-3 border-b border-gray-200" role="none">
                   <p className="font-medium text-gray-800">Admin User</p>
                   <p className="text-sm text-gray-600">admin@starked.com</p>
                 </div>
-                <div className="py-2">
-                  <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2">
-                    <Settings className="w-4 h-4" />
+                <div className="py-2" role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                  >
+                    <Settings className="w-4 h-4" aria-hidden="true" />
                     Settings
                   </button>
-                  <button className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
-                    <LogOut className="w-4 h-4" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                  >
+                    <LogOut className="w-4 h-4" aria-hidden="true" />
                     Logout
                   </button>
                 </div>

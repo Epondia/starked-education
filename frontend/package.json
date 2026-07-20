@@ -20,7 +20,9 @@
     "prepare": "husky install",
     "analyze": "ANALYZE=true next build",
     "lighthouse": "lighthouse http://localhost:3000 --output=json --output-path=./lighthouse-report.json",
-    "performance-test": "npm run build && npm run lighthouse"
+    "performance-test": "npm run build && npm run lighthouse",
+    "test:a11y": "jest src/test/accessibility.test.tsx",
+    "audit:a11y": "jest src/test/accessibility.test.tsx --ci --forceExit"
   },
   "dependencies": {
     "@creit.tech/stellar-wallets-kit": "^1.9.5",
@@ -68,6 +70,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@ducanh2912/next-pwa": "^10.2.9",
     "@next/bundle-analyzer": "^14.0.0",
     "@sentry/webpack-plugin": "^2.10.2",
     "@stellar/freighter-api": "^5.0.0",

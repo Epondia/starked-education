@@ -37,7 +37,10 @@ export const CourseCard: React.FC<{
                 {course.title}
               </h3>
             </div>
-            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+            <div
+              className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
+              aria-label={`Rating: ${course.rating.toFixed(1)} out of 5`}
+            >
               {course.rating.toFixed(1)}
             </div>
           </div>
@@ -85,22 +88,25 @@ export const CourseCard: React.FC<{
             <button
               className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
               onClick={onPreview}
+              aria-label={`Preview ${course.title}`}
             >
-              <Eye size={15} />
+              <Eye size={15} aria-hidden="true" />
               Preview
             </button>
             <button
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
               onClick={onSave}
+              aria-label={`Save ${course.title}`}
             >
-              <BookmarkPlus size={15} />
+              <BookmarkPlus size={15} aria-hidden="true" />
               Save
             </button>
             <button
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
               onClick={onFindSimilar}
+              aria-label={`Find courses similar to ${course.title}`}
             >
-              <Network size={15} />
+              <Network size={15} aria-hidden="true" />
               Similar
             </button>
           </div>

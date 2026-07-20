@@ -98,35 +98,79 @@ export default function AdminSidebar() {
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = expandedItems.includes(item.title);
     const active = isActive(item.href);
+    // Stable id for aria-controls / sub-menu id
+    const subMenuId = `sidebar-submenu-${item.title.toLowerCase().replace(/\s+/g, '-')}`;
+
+    const sharedClasses = `
+      flex items-center justify-between w-full px-3 py-2 text-sm rounded-lg transition-colors
+      ${active ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}
+      ${isCollapsed && level === 0 ? 'justify-center' : ''}
+    `;
 
     return (
       <div key={item.title} className="w-full">
-        <div
-          className={`
-            flex items-center justify-between w-full px-3 py-2 text-sm rounded-lg transition-colors
-            ${active ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}
-            ${isCollapsed && level === 0 ? 'justify-center' : ''}
-          `}
-          onClick={() => hasChildren && toggleExpanded(item.title)}
-        >
-          <div className="flex items-center gap-3">
-            <Icon className="w-5 h-5 flex-shrink-0" />
+        {hasChildren ? (
+          /*
+           * Expandable group: must be a <button> so keyboard users can
+           * activate it with Enter/Space. aria-expanded communicates state.
+           * WCAG 2.1 SC 4.1.2 (Name, Role, Value)
+           */
+          <button
+            type="button"
+            className={sharedClasses}
+            onClick={() => toggleExpanded(item.title)}
+            aria-expanded={isExpanded}
+            aria-controls={subMenuId}
+          >
+            <div className="flex items-center gap-3">
+              <Icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+              {!isCollapsed && (
+                <span className="font-medium">{item.title}</span>
+              )}
+            </div>
             {!isCollapsed && (
-              <span className="font-medium">{item.title}</span>
+              isExpanded
+                ? <ChevronDown className="w-4 h-4" aria-hidden="true" />
+                : <ChevronRight className="w-4 h-4" aria-hidden="true" />
             )}
-          </div>
-          {!isCollapsed && hasChildren && (
-            isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
-          )}
-          {!isCollapsed && item.badge && (
-            <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-              {item.badge}
-            </span>
-          )}
-        </div>
-        
+            {!isCollapsed && item.badge != null && (
+              <span
+                className="bg-red-500 text-white text-xs px-2 py-1 rounded-full"
+                aria-label={`${item.badge} pending`}
+              >
+                {item.badge}
+              </span>
+            )}
+          </button>
+        ) : (
+          /*
+           * Leaf item: render as a Next.js Link so it is a native <a>
+           * element, keyboard-accessible and announced as a link.
+           */
+          <Link
+            href={item.href}
+            aria-current={active ? 'page' : undefined}
+            className={sharedClasses}
+          >
+            <div className="flex items-center gap-3">
+              <Icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+              {!isCollapsed && (
+                <span className="font-medium">{item.title}</span>
+              )}
+            </div>
+            {!isCollapsed && item.badge != null && (
+              <span
+                className="bg-red-500 text-white text-xs px-2 py-1 rounded-full"
+                aria-label={`${item.badge} pending`}
+              >
+                {item.badge}
+              </span>
+            )}
+          </Link>
+        )}
+
         {hasChildren && !isCollapsed && isExpanded && (
-          <div className="ml-4 mt-1 space-y-1">
+          <div id={subMenuId} className="ml-4 mt-1 space-y-1" role="group" aria-label={`${item.title} sub-menu`}>
             {item.children!.map(child => renderSidebarItem(child, level + 1))}
           </div>
         )}
@@ -144,19 +188,30 @@ export default function AdminSidebar() {
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
           {!isCollapsed && (
-            <h1 className="text-xl font-bold text-gray-800">Admin Panel</h1>
+            <span className="text-xl font-bold text-gray-800">Admin Panel</span>
           )}
           <button
+            type="button"
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="p-1 rounded hover:bg-gray-100 transition-colors"
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!isCollapsed}
+            aria-controls="admin-sidebar-nav"
           >
-            {isCollapsed ? <Menu className="w-5 h-5" /> : <X className="w-5 h-5" />}
+            {isCollapsed
+              ? <Menu className="w-5 h-5" aria-hidden="true" />
+              : <X className="w-5 h-5" aria-hidden="true" />
+            }
           </button>
         </div>
       </div>
 
-      {/* Navigation landmark — aria-label disambiguates it from any other nav on the page. */}
-      <nav className="flex-1 p-4 space-y-2 overflow-y-auto" aria-label="Admin navigation">
+      {/* Navigation landmark */}
+      <nav
+        id="admin-sidebar-nav"
+        className="flex-1 p-4 space-y-2 overflow-y-auto"
+        aria-label="Admin navigation"
+      >
         {sidebarItems.map(item => renderSidebarItem(item))}
       </nav>
 
@@ -170,8 +225,9 @@ export default function AdminSidebar() {
             ${isCollapsed ? 'justify-center' : ''}
           `}
         >
-          <LogOut className="w-5 h-5 flex-shrink-0" />
+          <LogOut className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
           {!isCollapsed && <span className="font-medium">Exit Admin</span>}
+          {isCollapsed && <span className="sr-only">Exit Admin</span>}
         </Link>
       </div>
     </div>
