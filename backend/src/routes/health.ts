@@ -30,6 +30,7 @@ const { checkRedisConnectivity } = require('../config/redis');
 
 // Elasticsearch check
 import ElasticsearchService from '../services/search/ElasticsearchService';
+import { getIndexerStatus, IndexerStatus } from '../services/eventIndexer';
 
 // Package version
 const packageJson = require('../../../package.json');
@@ -130,7 +131,6 @@ async function checkAllDependencies() {
 
   return { postgres, redis, stellar, ipfs, elasticsearch };
 }
-
 /**
  * GET /health/live
  * Liveness probe - only checks if process is alive
@@ -195,6 +195,14 @@ router.get('/', async (req: Request, res: Response) => {
 
     const memory = process.memoryUsage();
 
+    // Safely read the event indexer status (may not be initialised yet)
+    let indexerStatus: Partial<IndexerStatus> = { status: 'stopped' };
+    try {
+      indexerStatus = getIndexerStatus();
+    } catch {
+      // Indexer not yet initialised – report as stopped
+    }
+
     res.status(200).json({
       status: allHealthy ? 'healthy' : 'degraded',
       version: packageJson.version,
@@ -204,6 +212,14 @@ router.get('/', async (req: Request, res: Response) => {
         heapUsed: memory.heapUsed,
         heapTotal: memory.heapTotal,
         rss: memory.rss
+      },
+      eventIndexer: {
+        status:          indexerStatus.status ?? 'stopped',
+        lastLedger:      indexerStatus.lastLedger ?? 0,
+        eventsProcessed: indexerStatus.eventsProcessed ?? 0,
+        lag:             indexerStatus.lag ?? 0,
+        ...(indexerStatus.errorMessage && { errorMessage: indexerStatus.errorMessage }),
+        ...(indexerStatus.startedAt && { startedAt: indexerStatus.startedAt }),
       },
       dependencies: Object.fromEntries(
         Object.entries(dependencies).map(([key, value]) => {
@@ -240,6 +256,7 @@ router.get('/', async (req: Request, res: Response) => {
         heapTotal: 0,
         rss: 0
       },
+      eventIndexer: { status: 'stopped', lastLedger: 0, eventsProcessed: 0, lag: 0 },
       dependencies: {
         postgres: { status: 'unhealthy', latencyMs: 0, error: 'Check failed' },
         redis: { status: 'unhealthy', latencyMs: 0, error: 'Check failed' },
