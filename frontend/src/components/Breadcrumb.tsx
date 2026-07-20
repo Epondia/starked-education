@@ -81,7 +81,7 @@ export function Breadcrumb({
   truncateMobile = true,
   homeLabel = 'Home',
 }: BreadcrumbProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '';
 
   const { displayItems, schemaData } = useMemo(() => {
     const segments = pathname.split('/').filter(Boolean);
