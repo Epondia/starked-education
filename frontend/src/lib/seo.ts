@@ -30,7 +30,7 @@ export interface SEOMetadataInput {
   absolute?: boolean;
   /** Keywords for the page */
   keywords?: string[];
-  /** Open Graph type */
+  /** Open Graph type (maps "course" to "website" for OG compatibility) */
   ogType?: 'website' | 'article' | 'course' | 'profile';
   /** Whether to noindex the page */
   noIndex?: boolean;
@@ -83,7 +83,7 @@ export function createMetadata(input: SEOMetadataInput): Metadata {
           alt: fullTitle,
         },
       ],
-      type: ogType,
+      type: ogType === 'course' ? 'website' : ogType,
       locale: 'en_US',
     },
 
