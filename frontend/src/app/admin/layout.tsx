@@ -3,13 +3,17 @@ import { Inter } from 'next/font/google';
 import AdminSidebar from '@/components/Admin/AdminSidebar';
 import AdminHeader from '@/components/Admin/AdminHeader';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { Breadcrumb } from '@/components/Breadcrumb';
+import { createMetadata } from '@/lib/seo';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata: Metadata = {
-  title: 'Admin Panel - StarkEd Education',
+export const metadata: Metadata = createMetadata({
+  title: 'Admin Panel',
   description: 'Administrative interface for StarkEd platform management',
-};
+  keywords: ['admin', 'platform', 'management'],
+  noIndex: true,
+});
 
 export default function AdminLayout({
   children,
@@ -31,6 +35,9 @@ export default function AdminLayout({
               <AdminSidebar />
               <div className="flex-1">
                 <AdminHeader />
+                <div className="mx-auto w-full max-w-7xl px-4 pt-2">
+                  <Breadcrumb />
+                </div>
                 <section
                   id="admin-content-region"
                   aria-label="Admin content"
