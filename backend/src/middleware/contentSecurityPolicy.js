@@ -41,6 +41,7 @@ function contentSecurityPolicy(options = {}) {
   return (_req, res, next) => {
     const nonce = crypto.randomBytes(16).toString('base64');
     res.locals.cspNonce = nonce;
+    if (reportOnly) res.removeHeader('Content-Security-Policy');
     res.setHeader(
       reportOnly ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy',
       buildPolicy(nonce, reportUri),

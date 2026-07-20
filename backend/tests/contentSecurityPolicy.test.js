@@ -27,6 +27,7 @@ describe('contentSecurityPolicy', () => {
       'Content-Security-Policy-Report-Only',
       expect.stringContaining(`'nonce-${responses[0].locals.cspNonce}'`),
     );
+    expect(responses[0].removeHeader).toHaveBeenCalledWith('Content-Security-Policy');
     expect(responses[0].locals.cspNonce).not.toBe(responses[1].locals.cspNonce);
   });
 
@@ -38,6 +39,7 @@ describe('contentSecurityPolicy', () => {
       'Content-Security-Policy',
       expect.any(String),
     );
+    expect(response.removeHeader).not.toHaveBeenCalled();
   });
 
   test('reports only bounded violation metadata', () => {
@@ -133,6 +135,7 @@ describe('contentSecurityPolicy', () => {
 function createResponse() {
   return {
     locals: {},
+    removeHeader: jest.fn(),
     setHeader: jest.fn(),
   };
 }

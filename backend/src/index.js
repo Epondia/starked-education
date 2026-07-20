@@ -108,7 +108,7 @@ setSyncWebsocketEmitter((userId, event, data) => {
 });
 
 // Middleware
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet());
 app.use(contentSecurityPolicy());
 app.use(cors());
 app.post(
