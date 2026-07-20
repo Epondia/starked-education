@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { userService } from '../services/userService';
 import { getEmailService } from '../services/emailService';
+import { webhookService } from '../services/webhookService';
+import { WebhookEventType } from '../models/Webhook';
 import logger from '../utils/logger';
 
 export const userController = {
@@ -28,6 +30,20 @@ export const userController = {
       // Note: In production, ensure the request is authenticated and signed by the address owner
       
       const updatedProfile = await userService.updateProfile(address, updateData);
+
+      // Emit user.registered webhook event on initial profile creation (best-effort)
+      try {
+        const isNewProfile = updateData.isNewRegistration === true;
+        if (isNewProfile) {
+          await webhookService.emitEvent(address, WebhookEventType.USER_REGISTERED, {
+            userId: address,
+            username: updateData.username || (updatedProfile as any)?.username,
+            email: updateData.email || (updatedProfile as any)?.email,
+            registeredAt: new Date().toISOString(),
+          });
+        }
+      } catch (_whErr) { /* non-blocking */ }
+
       res.json(updatedProfile);
     } catch (error) {
       logger.error('Error in updateProfile controller', error);

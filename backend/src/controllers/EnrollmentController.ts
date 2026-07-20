@@ -7,6 +7,8 @@ import { Request, Response } from 'express';
 import { EnrollmentService } from '../services/EnrollmentService';
 import { PaymentService } from '../services/PaymentService';
 import { NotificationService } from '../services/notificationService';
+import { webhookService } from '../services/webhookService';
+import { WebhookEventType } from '../models/Webhook';
 import { getEmailService } from '../services/emailService';
 import { 
   Enrollment, 
@@ -176,6 +178,17 @@ export class EnrollmentController {
         prerequisitesMet: false
       });
 
+      // Emit enrollment.created webhook event (best-effort, non-blocking)
+      try {
+        await webhookService.emitEvent(userId, WebhookEventType.ENROLLMENT_CREATED, {
+          enrollmentId: enrollment.id,
+          userId: enrollment.userId,
+          courseId: enrollment.courseId,
+          status: enrollment.status,
+          paymentMethod: enrollment.paymentMethod,
+        });
+      } catch (_whErr) { /* non-blocking */ }
+
       // Process payment
       if (paymentMethod === PaymentMethod.STELLAR) {
         const paymentIntent = await this.paymentService.createStellarPaymentIntent(
@@ -333,6 +346,17 @@ export class EnrollmentController {
 
       const enrollment = await this.enrollmentService.completeEnrollment(id);
 
+      // Emit enrollment.completed webhook event
+      try {
+        const tenantId = (req as any).user?.id || enrollment.userId;
+        await webhookService.emitEvent(tenantId, WebhookEventType.ENROLLMENT_COMPLETED, {
+          enrollmentId: enrollment.id,
+          userId: enrollment.userId,
+          courseId: enrollment.courseId,
+          completedAt: new Date().toISOString(),
+        });
+      } catch (_whErr) { /* non-blocking */ }
+
       if (issueCertificate && enrollment.progress === 100) {
         const certificate = await this.enrollmentService.issueCertificate(id);
         
@@ -341,6 +365,18 @@ export class EnrollmentController {
           enrollment.userId,
           certificate
         );
+
+        // Emit credential.issued webhook event
+        try {
+          const tenantId = (req as any).user?.id || enrollment.userId;
+          await webhookService.emitEvent(tenantId, WebhookEventType.CREDENTIAL_ISSUED, {
+            certificateId: (certificate as any)?.id || id,
+            enrollmentId: enrollment.id,
+            userId: enrollment.userId,
+            courseId: enrollment.courseId,
+            issuedAt: new Date().toISOString(),
+          });
+        } catch (_whErr) { /* non-blocking */ }
 
         // Send credential issued email
         try {
