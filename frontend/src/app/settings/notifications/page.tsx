@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import PreferencesPanel from '@/components/Notifications/PreferencesPanel';
 import { useNotifications } from '@/hooks/useNotifications';
-import { Bell, Shield, Info, Keyboard } from 'lucide-react';
+import { Bell, Shield, Info, Keyboard, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getShortcuts, getEnabledKeys, setEnabledKeys, type Shortcut } from '@/lib/shortcutRegistry';
 
@@ -95,6 +95,27 @@ export default function NotificationSettingsPage() {
                 </div>
               ))}
             </div>
+          </section>
+
+          {/* Onboarding Restart */}
+          <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <RotateCcw size={22} className="text-blue-600" />
+              <h2 className="text-xl font-semibold text-gray-900">Onboarding</h2>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Want to revisit the setup wizard? You can restart the onboarding
+              process to update your profile, wallet connection, and interests.
+            </p>
+            <button
+              onClick={() => {
+                window.dispatchEvent(new Event('starked:restart-onboarding'));
+              }}
+              className="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
+              <RotateCcw size={18} />
+              Restart Onboarding Wizard
+            </button>
           </section>
 
           {/* Sidebar */}

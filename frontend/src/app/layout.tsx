@@ -5,6 +5,7 @@ import './globals.css';
 import { performanceMonitor } from '@/lib/performance-monitor';
 import { GlobalShell } from '@/components/PWA/GlobalShell';
 import { CommandPalette } from '@/components/ui/command-palette';
+import { OnboardingGate } from '@/components/onboarding/OnboardingWizard';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -50,7 +51,7 @@ export default function RootLayout({
           disableTransitionOnChange={false}
         >
           <GlobalShell />
-          {children}
+          <OnboardingGate>{children}</OnboardingGate>
         </ThemeProvider>
       </body>
     </html>
