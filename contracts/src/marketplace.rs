@@ -319,7 +319,7 @@ impl MarketplaceContract {
 
     /// Resolve a dispute (Admin only).
     /// For escrow-linked disputes, also resolves the escrow (release if resolved,
-    /// refund if cancelled).
+    /// refund if cancelled). Uses checks-effects pattern: reads first, writes last.
     pub fn resolve_dispute(env: Env, admin: Address, dispute_id: u64, resolved: bool) {
         admin.require_auth();
 
@@ -333,72 +333,48 @@ impl MarketplaceContract {
             panic!("Unauthorized");
         }
 
+        // ── CHECKS: read everything before any writes ──
         let mut dispute: Dispute = env
             .storage()
             .instance()
             .get(&MarketplaceKey::Dispute(dispute_id))
             .unwrap_or_else(|| panic!("Dispute not found"));
 
-        dispute.status = if resolved { 1 } else { 2 };
-        env.storage()
-            .instance()
-            .set(&MarketplaceKey::Dispute(dispute_id), &dispute);
-
-        // If this dispute is linked to an escrow, resolve the escrow too
-        if dispute.escrow_id > 0 {
-            let mut escrow: Escrow = env
+        let escrow_opt: Option<Escrow> = if dispute.escrow_id > 0 {
+            let escrow: Escrow = env
                 .storage()
                 .instance()
                 .get(&MarketplaceKey::Escrow(dispute.escrow_id))
                 .unwrap_or_else(|| panic!("Linked escrow not found"));
+            Some(escrow)
+        } else {
+            None
+        };
 
+        // ── EFFECTS: perform all writes ──
+        let new_status = if resolved { 1 } else { 2 };
+
+        if let Some(mut escrow) = escrow_opt {
             if escrow.status == 3 {
-                // Only resolve if still in Disputed state
                 if resolved {
-                    // Resolved in favor of the claim → release funds to seller
-                    escrow.status = 1; // Released
+                    // Seller wins → release funds
+                    escrow.status = 1;
                     env.storage()
                         .instance()
-                        .set(&MarketplaceKey::Escrow(dispute.escrow_id), &escrow);
-
-                    // Update trade count
-                    let listing: Listing = env
-                        .storage()
-                        .instance()
-                        .get(&MarketplaceKey::Listing(escrow.listing_id))
-                        .unwrap_or_else(|| panic!("Listing not found for escrow"));
-                    let trade_count: u64 = env
-                        .storage()
-                        .instance()
-                        .get(&MarketplaceKey::TradeCount(listing.credential_id))
-                        .unwrap_or(0);
-                    env.storage().instance().set(
-                        &MarketplaceKey::TradeCount(listing.credential_id),
-                        &(trade_count + 1),
-                    );
-
+                        .set(&MarketplaceKey::Escrow(escrow.id), &escrow);
+                    let cred_id = Self::lookup_credential_id(&env, escrow.listing_id);
+                    Self::increment_trade_count(&env, cred_id);
                     env.events().publish(
                         (symbol_short!("market"), symbol_short!("escr_rel")),
                         (escrow.id, escrow.listing_id, escrow.seller, escrow.amount),
                     );
                 } else {
-                    // Cancelled → refund buyer and re-activate listing
-                    escrow.status = 2; // Refunded
+                    // Buyer wins → refund and re-list
+                    escrow.status = 2;
                     env.storage()
                         .instance()
-                        .set(&MarketplaceKey::Escrow(dispute.escrow_id), &escrow);
-
-                    // Re-activate listing
-                    let mut listing: Listing = env
-                        .storage()
-                        .instance()
-                        .get(&MarketplaceKey::Listing(escrow.listing_id))
-                        .unwrap_or_else(|| panic!("Listing not found for escrow"));
-                    listing.active = true;
-                    env.storage()
-                        .instance()
-                        .set(&MarketplaceKey::Listing(escrow.listing_id), &listing);
-
+                        .set(&MarketplaceKey::Escrow(escrow.id), &escrow);
+                    Self::reactivate_listing(&env, escrow.listing_id);
                     env.events().publish(
                         (symbol_short!("market"), symbol_short!("escr_ref")),
                         (escrow.id, escrow.listing_id, escrow.buyer, escrow.amount),
@@ -406,6 +382,12 @@ impl MarketplaceContract {
                 }
             }
         }
+
+        // Write dispute status last (true checks-effects)
+        dispute.status = new_status;
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::Dispute(dispute_id), &dispute);
 
         env.events().publish(
             (symbol_short!("market"), symbol_short!("d_resolve")),
@@ -510,21 +492,8 @@ impl MarketplaceContract {
             .instance()
             .set(&MarketplaceKey::Escrow(escrow_id), &escrow);
 
-        // Update trade count for bonding curve
-        let listing: Listing = env
-            .storage()
-            .instance()
-            .get(&MarketplaceKey::Listing(escrow.listing_id))
-            .unwrap_or_else(|| panic!("Listing not found for escrow"));
-        let trade_count: u64 = env
-            .storage()
-            .instance()
-            .get(&MarketplaceKey::TradeCount(listing.credential_id))
-            .unwrap_or(0);
-        env.storage().instance().set(
-            &MarketplaceKey::TradeCount(listing.credential_id),
-            &(trade_count + 1),
-        );
+        let credential_id = Self::lookup_credential_id(&env, escrow.listing_id);
+        Self::increment_trade_count(&env, credential_id);
 
         env.events().publish(
             (symbol_short!("market"), symbol_short!("escr_rel")),
@@ -557,15 +526,7 @@ impl MarketplaceContract {
             .set(&MarketplaceKey::Escrow(escrow_id), &escrow);
 
         // Re-activate the listing so it can be sold again
-        let mut listing: Listing = env
-            .storage()
-            .instance()
-            .get(&MarketplaceKey::Listing(escrow.listing_id))
-            .unwrap_or_else(|| panic!("Listing not found for escrow"));
-        listing.active = true;
-        env.storage()
-            .instance()
-            .set(&MarketplaceKey::Listing(escrow.listing_id), &listing);
+        Self::reactivate_listing(&env, escrow.listing_id);
 
         env.events().publish(
             (symbol_short!("market"), symbol_short!("escr_ref")),
@@ -642,5 +603,44 @@ impl MarketplaceContract {
         );
 
         dispute_id
+    }
+}
+
+// ── Private helpers (not exported in contract ABI) ──
+
+impl MarketplaceContract {
+    /// Increment the bonding curve trade count for a credential
+    fn increment_trade_count(env: &Env, credential_id: u64) {
+        let trade_count: u64 = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::TradeCount(credential_id))
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::TradeCount(credential_id), &(trade_count + 1));
+    }
+
+    /// Re-activate a listing (e.g., after refund or cancellation)
+    fn reactivate_listing(env: &Env, listing_id: u64) {
+        let mut listing: Listing = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::Listing(listing_id))
+            .unwrap_or_else(|| panic!("Listing not found"));
+        listing.active = true;
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::Listing(listing_id), &listing);
+    }
+
+    /// Look up the credential ID for a given listing
+    fn lookup_credential_id(env: &Env, listing_id: u64) -> u64 {
+        let listing: Listing = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::Listing(listing_id))
+            .unwrap_or_else(|| panic!("Listing not found"));
+        listing.credential_id
     }
 }
