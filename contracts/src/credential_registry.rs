@@ -42,7 +42,8 @@ pub struct CredentialRegistry {
     pub title: String,
     pub description: String,
     pub course_id: String,
-    pub timestamps: PackedTimestamps,
+    pub issued_at: u64,
+    pub expires_at: u64,
     pub status: CredentialStatus,
     pub ipfs_hash: String,
     pub renewal_count: u32,
@@ -363,6 +364,316 @@ pub fn revoke_credential(env: &Env, credential_id: u64, revoker: Address) -> boo
     true
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  Batch Credential Operations for Institutions
+// ═══════════════════════════════════════════════════════════════════
+
+/// Maximum number of credentials that can be processed in a single batch
+const MAX_BATCH_SIZE: u32 = 100;
+
+/// Result of a batch operation on a single credential
+#[contracttype]
+#[derive(Clone)]
+pub struct BatchOperationResult {
+    pub credential_id: u64,
+    pub success: bool,
+    pub error: String,
+}
+
+/// Batch issue credentials for institutions (up to MAX_BATCH_SIZE)
+/// Each credential is processed independently — partial success is allowed.
+/// Returns results for each credential in the batch.
+pub fn batch_issue_credentials(
+    env: &Env,
+    issuer: Address,
+    recipients: Vec<Address>,
+    titles: Vec<String>,
+    descriptions: Vec<String>,
+    course_id: String,
+    ipfs_hashes: Vec<String>,
+    validity_duration: u64,
+) -> Vec<BatchOperationResult> {
+    issuer.require_auth();
+
+    let batch_size = recipients.len() as u32;
+    if batch_size > MAX_BATCH_SIZE {
+        panic!("Batch size exceeds maximum of 100");
+    }
+
+    // Validate all input vectors have matching lengths
+    if titles.len() != recipients.len()
+        || descriptions.len() != recipients.len()
+        || ipfs_hashes.len() != recipients.len()
+    {
+        panic!("Input vectors must have matching lengths");
+    }
+
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not found"));
+
+    if issuer != admin {
+        panic!("Unauthorized issuer");
+    }
+
+    let current_time = env.ledger().timestamp();
+    let mut results = Vec::new(env);
+
+    for i in 0..recipients.len() {
+        // Validate individual inputs
+        let recipient = recipients.get(i).unwrap_or_else(|| panic!("Invalid recipient index"));
+        let title = titles.get(i).unwrap_or_else(|| String::from_str(env, ""));
+        let description = descriptions.get(i).unwrap_or_else(|| String::from_str(env, ""));
+        let ipfs_hash = ipfs_hashes.get(i).unwrap_or_else(|| String::from_str(env, ""));
+
+        // Skip invalid recipients
+        if ipfs_hash.is_empty() {
+            let result = BatchOperationResult {
+                credential_id: 0,
+                success: false,
+                error: String::from_str(env, "Empty IPFS hash"),
+            };
+            results.push_back(result);
+            continue;
+        }
+
+        let credential_id = StorageUtils::get_next_id(env, EntityType::Credential);
+
+        let credential = CredentialRegistry {
+            id: credential_id,
+            issuer: issuer.clone(),
+            recipient: recipient.clone(),
+            title,
+            description,
+            course_id: course_id.clone(),
+            issued_at: current_time,
+            expires_at: current_time + validity_duration,
+            status: CredentialStatus::Active,
+            ipfs_hash: ipfs_hash.clone(),
+            renewal_count: 0,
+            last_renewed_at: None,
+        };
+
+        env.storage().persistent().set(
+            &CredentialRegistryKey::Credential(credential_id),
+            &credential,
+        );
+
+        // Add to user's credential list
+        let mut user_creds = env
+            .storage()
+            .persistent()
+            .get(&CredentialRegistryKey::UserCredentials(recipient.clone()))
+            .unwrap_or_else(|| Vec::new(env));
+        user_creds.push_back(credential_id);
+        env.storage().persistent().set(
+            &CredentialRegistryKey::UserCredentials(recipient),
+            &user_creds,
+        );
+
+        // Update credential count
+        env.storage()
+            .instance()
+            .set(&CredentialRegistryKey::CredentialCount, &credential_id);
+
+        // Emit individual event per credential
+        env.events().publish(
+            (Symbol::new(env, "credential"), Symbol::new(env, "issued")),
+            (credential_id, issuer.clone()),
+        );
+
+        let result = BatchOperationResult {
+            credential_id,
+            success: true,
+            error: String::from_str(env, ""),
+        };
+        results.push_back(result);
+    }
+
+    results
+}
+
+/// Batch revoke credentials for institutions (up to MAX_BATCH_SIZE)
+/// Each credential revocation is independent — partial success is allowed.
+pub fn batch_revoke_credentials(
+    env: &Env,
+    revoker: Address,
+    credential_ids: Vec<u64>,
+) -> Vec<BatchOperationResult> {
+    revoker.require_auth();
+
+    let batch_size = credential_ids.len() as u32;
+    if batch_size > MAX_BATCH_SIZE {
+        panic!("Batch size exceeds maximum of 100");
+    }
+
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not found"));
+
+    if revoker != admin {
+        panic!("Only admin can revoke credentials");
+    }
+
+    let mut results = Vec::new(env);
+
+    for i in 0..credential_ids.len() {
+        let credential_id = credential_ids.get(i).unwrap_or(0);
+
+        // Attempt to load credential; skip if not found
+        if let Some(mut credential) = env
+            .storage()
+            .persistent()
+            .get::<_, CredentialRegistry>(&CredentialRegistryKey::Credential(credential_id))
+        {
+                credential.status = CredentialStatus::Revoked;
+                env.storage().persistent().set(
+                    &CredentialRegistryKey::Credential(credential_id),
+                    &credential,
+                );
+
+                env.events().publish(
+                    (Symbol::new(env, "credential"), Symbol::new(env, "revoked")),
+                    (credential_id, revoker.clone()),
+                );
+
+                let result = BatchOperationResult {
+                    credential_id,
+                    success: true,
+                    error: String::from_str(env, ""),
+                };
+                results.push_back(result);
+        } else {
+            let result = BatchOperationResult {
+                credential_id,
+                success: false,
+                error: String::from_str(env, "Credential not found"),
+            };
+            results.push_back(result);
+        }
+    }
+
+    results
+}
+
+/// Batch renew credentials for institutions (up to MAX_BATCH_SIZE)
+/// Each credential is renewed independently — partial success is allowed.
+pub fn batch_renew_credentials(
+    env: &Env,
+    renewer: Address,
+    credential_ids: Vec<u64>,
+    extension_duration: u64,
+) -> Vec<BatchOperationResult> {
+    renewer.require_auth();
+
+    let batch_size = credential_ids.len() as u32;
+    if batch_size > MAX_BATCH_SIZE {
+        panic!("Batch size exceeds maximum of 100");
+    }
+
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not found"));
+
+    let current_time = env.ledger().timestamp();
+    let mut results = Vec::new(env);
+
+    for i in 0..credential_ids.len() {
+        let credential_id = credential_ids.get(i).unwrap_or(0);
+
+        if let Some(mut credential) = env
+            .storage()
+            .persistent()
+            .get::<_, CredentialRegistry>(&CredentialRegistryKey::Credential(credential_id))
+        {
+                // Only admin or the credential recipient can renew
+                if renewer != admin && renewer != credential.recipient {
+                    let result = BatchOperationResult {
+                        credential_id,
+                        success: false,
+                        error: String::from_str(env, "Unauthorized to renew"),
+                    };
+                    results.push_back(result);
+                    continue;
+                }
+
+                // Cannot renew revoked credentials
+                if credential.status == CredentialStatus::Revoked {
+                    let result = BatchOperationResult {
+                        credential_id,
+                        success: false,
+                        error: String::from_str(env, "Cannot renew revoked credential"),
+                    };
+                    results.push_back(result);
+                    continue;
+                }
+
+                let old_expires_at = credential.expires_at;
+
+                // Create renewal record
+                let renewal_record = RenewalRecord {
+                    renewed_at: current_time,
+                    old_expires_at,
+                    new_expires_at: current_time + extension_duration,
+                    renewed_by: renewer.clone(),
+                };
+
+                let mut renewal_history = env
+                    .storage()
+                    .instance()
+                    .get(&CredentialRegistryKey::RenewalHistory(credential_id))
+                    .unwrap_or_else(|| Vec::new(env));
+                renewal_history.push_back(renewal_record);
+                env.storage().instance().set(
+                    &CredentialRegistryKey::RenewalHistory(credential_id),
+                    &renewal_history,
+                );
+
+                credential.expires_at = current_time + extension_duration;
+                credential.status = CredentialStatus::Active;
+                credential.renewal_count += 1;
+                credential.last_renewed_at = Some(current_time);
+
+                env.storage().persistent().set(
+                    &CredentialRegistryKey::Credential(credential_id),
+                    &credential,
+                );
+
+                env.events().publish(
+                    (Symbol::new(env, "credential"), Symbol::new(env, "renewed")),
+                    (credential_id, renewer.clone(), extension_duration),
+                );
+
+                let result = BatchOperationResult {
+                    credential_id,
+                    success: true,
+                    error: String::from_str(env, ""),
+                };
+                results.push_back(result);
+        } else {
+            let result = BatchOperationResult {
+                credential_id,
+                success: false,
+                error: String::from_str(env, "Credential not found"),
+            };
+            results.push_back(result);
+        }
+    }
+
+    results
+}
+
+/// Get the maximum batch size allowed
+pub fn get_max_batch_size() -> u32 {
+    MAX_BATCH_SIZE
+}
+
 /// Get credential count
 pub fn get_credential_count(env: &Env) -> u64 {
     env.storage()
@@ -387,7 +698,7 @@ pub fn get_credentials_expiring_soon(env: &Env, within_seconds: u64) -> Vec<u64>
     // an indexed storage structure for better performance
     let credential_count = get_credential_count(env);
     for i in 1..=credential_count {
-        if let Ok(credential) = env
+        if let Some(credential) = env
             .storage()
             .persistent()
             .get::<_, CredentialRegistry>(&CredentialRegistryKey::Credential(i))

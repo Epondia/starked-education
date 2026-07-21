@@ -1,6 +1,7 @@
 import {
   Notification,
   INotification,
+  NotificationType,
   NotificationPreference,
   INotificationPreference,
 } from "../models/Notification";
@@ -47,6 +48,7 @@ if (process.env.VAPID_PUBLIC_KEY) {
 
 interface NotificationFilter {
   userId?: string;
+  type?: NotificationType;
   category?: "course" | "message" | "system" | "achievement";
   isRead?: boolean;
   priority?: "low" | "medium" | "high";
@@ -74,6 +76,7 @@ class NotificationService {
     message: string,
     category: "course" | "message" | "system" | "achievement",
     options?: {
+      type?: NotificationType;
       priority?: "low" | "medium" | "high";
       deliveryMethods?: ("email" | "push" | "websocket")[];
       actionUrl?: string;
@@ -84,6 +87,7 @@ class NotificationService {
     try {
       const notification = new Notification({
         userId,
+        type: options?.type || "system_alert",
         title,
         message,
         category,
@@ -263,6 +267,7 @@ class NotificationService {
       const query: any = {};
 
       if (filter.userId) query.userId = filter.userId;
+      if (filter.type) query.type = filter.type;
       if (filter.category) query.category = filter.category;
       if (filter.isRead !== undefined) query.isRead = filter.isRead;
       if (filter.priority) query.priority = filter.priority;
@@ -483,7 +488,188 @@ class NotificationService {
   }
 
   public async notifyGradeCreated(userId: string, _grade: any): Promise<void> {
-    await this.createNotification(userId, 'Grade Posted', 'Your grade has been posted.', 'course');
+    await this.createNotification(userId, 'Grade Posted', 'Your grade has been posted.', 'course', { type: 'assignment_graded' });
+  }
+
+  /// Get unread notification count for a user
+  public async getUnreadCount(userId: string): Promise<number> {
+    try {
+      return await Notification.countDocuments({ userId, isRead: false });
+    } catch (error) {
+      logger.error(`Error getting unread count for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /// Create a notification and push it immediately via WebSocket (no duplicate delivery)
+  public async createAndPushNotification(
+    userId: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    category: "course" | "message" | "system" | "achievement",
+    options?: {
+      priority?: "low" | "medium" | "high";
+      actionUrl?: string;
+      metadata?: Record<string, any>;
+      deliveryMethods?: ("email" | "push" | "websocket")[];
+    },
+  ): Promise<INotification> {
+    // Create notification directly without auto-delivery to avoid duplicate push
+    const notification = new Notification({
+      userId,
+      type,
+      title,
+      message,
+      category,
+      priority: options?.priority || "medium",
+      deliveryMethods: options?.deliveryMethods || ["websocket"],
+      actionUrl: options?.actionUrl,
+      metadata: options?.metadata,
+    });
+
+    await notification.save();
+
+    // Push via WebSocket immediately (only delivery method)
+    try {
+      const websocketService = getWebsocketService();
+      websocketService.sendNotification(userId, notification);
+      notification.isDelivered = true;
+      notification.deliveredAt = new Date();
+      await notification.save();
+    } catch (wsError) {
+      logger.warn(
+        `WebSocket push failed for user ${userId}, notification persisted for later delivery`,
+      );
+    }
+
+    logger.info(`Notification pushed for user ${userId}: ${title}`);
+    return notification;
+  }
+
+  /// Admin announcement: persist and push to all connected users or targeted roles
+  public async sendAnnouncement(
+    title: string,
+    message: string,
+    targetRoles: string[],
+    options?: {
+      priority?: "low" | "medium" | "high";
+      actionUrl?: string;
+    },
+  ): Promise<{ persisted: number; pushed: number }> {
+    try {
+      const websocketService = getWebsocketService();
+
+      // Persist announcement notification for offline users
+      // If roles are targeted, only persist for users in connected rooms matching those roles
+      let persistedCount = 0;
+      if (targetRoles.length > 0) {
+        // For role-targeted announcements, broadcast to matching rooms (persist is best-effort for connected users)
+        // Note: We cannot easily determine which user has which role without user profile lookup,
+        // so we persist only when broadcasting to all users. Role-targeted announcements are primarily
+        // delivered via WebSocket in real-time.
+      } else {
+        // Persist for all connected users so offline users get it on reconnect
+        const connectedUsers = websocketService.getConnectedUsers();
+        for (const userId of connectedUsers) {
+          try {
+            const notification = new Notification({
+              userId,
+              type: "announcement",
+              title,
+              message,
+              category: "system",
+              priority: options?.priority || "high",
+              actionUrl: options?.actionUrl,
+              isDelivered: false,
+            });
+            await notification.save();
+            persistedCount++;
+          } catch (err) {
+            logger.warn(`Failed to persist announcement for user ${userId}`);
+          }
+        }
+      }
+
+      let pushedCount = 0;
+      // Push to connected users via WebSocket
+      if (targetRoles.length > 0) {
+        // Broadcast to connected users with matching roles
+        for (const role of targetRoles) {
+          const roomName = `role:${role}`;
+          websocketService.emitToRoom(roomName, "notification", {
+            type: "announcement",
+            title,
+            message,
+            priority: options?.priority || "high",
+            actionUrl: options?.actionUrl,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        pushedCount = websocketService.getConnectedCount();
+      } else {
+        // Broadcast to all connected users
+        websocketService.broadcast("notification", {
+          type: "announcement",
+          title,
+          message,
+          priority: options?.priority || "high",
+          actionUrl: options?.actionUrl,
+          timestamp: new Date().toISOString(),
+        });
+        pushedCount = websocketService.getConnectedCount();
+      }
+
+      return { persisted: persistedCount, pushed: pushedCount };
+    } catch (error) {
+      logger.error("Error sending announcement:", error);
+      throw error;
+    }
+  }
+
+  /// Deliver missed notifications to a user who just reconnected
+  public async deliverMissedNotifications(
+    userId: string,
+  ): Promise<number> {
+    try {
+      // Find all undelivered notifications for this user
+      const missedNotifications = await Notification.find({
+        userId,
+        isDelivered: false,
+      })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .exec();
+
+      if (missedNotifications.length === 0) {
+        return 0;
+      }
+
+      const websocketService = getWebsocketService();
+      let deliveredCount = 0;
+
+      for (const notification of missedNotifications) {
+        try {
+          websocketService.sendNotification(userId, notification);
+          notification.isDelivered = true;
+          notification.deliveredAt = new Date();
+          await notification.save();
+          deliveredCount++;
+        } catch (wsError) {
+          logger.warn(
+            `Failed to deliver missed notification ${notification._id} to user ${userId}`,
+          );
+        }
+      }
+
+      return deliveredCount;
+    } catch (error) {
+      logger.error(
+        `Error delivering missed notifications for user ${userId}:`,
+        error,
+      );
+      throw error;
+    }
   }
 }
 
