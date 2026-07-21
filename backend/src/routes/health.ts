@@ -30,7 +30,8 @@ const { checkRedisConnectivity } = require('../config/redis');
 
 // Elasticsearch check
 import ElasticsearchService from '../services/search/ElasticsearchService';
-import { getIndexerStatus, IndexerStatus } from '../services/eventIndexer';
+import { getIndexerStatus } from '../services/eventIndexer';
+import { IndexerStatus } from '../models/IndexedEvent';
 
 // Package version
 const packageJson = require('../../../package.json');

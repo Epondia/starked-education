@@ -18,7 +18,7 @@
  *   then the process exits.
  */
 
-import { SorobanRpc, xdr, scValToNative } from '@stellar/stellar-sdk';
+import { rpc, xdr, scValToNative } from '@stellar/stellar-sdk';
 import { Pool, PoolClient } from 'pg';
 import logger from '../utils/logger';
 import {
@@ -84,7 +84,7 @@ export function getIndexerStatus(): Readonly<IndexerStatus> {
 export class EventIndexer {
   private readonly config: EventIndexerConfig;
   private readonly pool: Pool;
-  private readonly rpc: SorobanRpc.Server;
+  private readonly rpc: rpc.Server;
 
   private timer: NodeJS.Timeout | null = null;
   private running = false;
@@ -94,7 +94,7 @@ export class EventIndexer {
   constructor(pool: Pool, config?: Partial<EventIndexerConfig>) {
     this.config = { ...resolveConfig(), ...config };
     this.pool = pool;
-    this.rpc = new SorobanRpc.Server(this.config.rpcUrl, { allowHttp: true });
+    this.rpc = new rpc.Server(this.config.rpcUrl, { allowHttp: true });
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -218,7 +218,7 @@ export class EventIndexer {
     let pagesFetched = 0;
 
     do {
-      let response: SorobanRpc.Api.GetEventsResponse;
+      let response: rpc.Api.GetEventsResponse;
 
       try {
         response = await this.rpc.getEvents({
@@ -267,7 +267,7 @@ export class EventIndexer {
 
   private async persistBatch(
     contractId: string,
-    events: SorobanRpc.Api.EventResponse[],
+    events: rpc.Api.EventResponse[],
   ): Promise<void> {
     if (events.length === 0) return;
 
@@ -303,7 +303,7 @@ export class EventIndexer {
   private async persistSingleEvent(
     client: PoolClient,
     contractId: string,
-    raw: SorobanRpc.Api.EventResponse,
+    raw: rpc.Api.EventResponse,
   ): Promise<void> {
     const ledger = parseInt(raw.ledger, 10);
 
