@@ -4,7 +4,7 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 
 /// Achievement tier with weight
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum AchievementTier {
     Bronze = 0,   // Course completion - weight 1
     Silver = 1,   // Multiple courses - weight 2

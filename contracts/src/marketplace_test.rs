@@ -168,7 +168,7 @@ fn test_escrow_create_and_confirm_delivery() {
     let listing_id = client.list_credential(&seller, &credential_id, &price, &500);
 
     // Create escrow
-    env.ledger().set_timestamp(1000);
+    env.ledger().with_mut(|li| li.timestamp = 1000);
     let timeout = 86400; // 1 day
     let escrow_id = client.create_escrow(&buyer, &listing_id, &timeout);
     assert_eq!(escrow_id, 1);
@@ -207,12 +207,12 @@ fn test_escrow_timeout_refund() {
 
     let listing_id = client.list_credential(&seller, &1, &1000, &500);
 
-    env.ledger().set_timestamp(1000);
+    env.ledger().with_mut(|li| li.timestamp = 1000);
     let timeout = 3600; // 1 hour
     let escrow_id = client.create_escrow(&buyer, &listing_id, &timeout);
 
     // Fast forward past timeout
-    env.ledger().set_timestamp(1000 + timeout + 1);
+    env.ledger().with_mut(|li| li.timestamp = 1000 + timeout + 1);
 
     // Claim refund
     client.refund_escrow(&buyer, &escrow_id);
@@ -241,7 +241,7 @@ fn test_escrow_refund_before_timeout_fails() {
 
     let listing_id = client.list_credential(&seller, &1, &1000, &500);
 
-    env.ledger().set_timestamp(1000);
+    env.ledger().with_mut(|li| li.timestamp = 1000);
     let escrow_id = client.create_escrow(&buyer, &listing_id, &3600);
 
     // Try to refund before timeout (at timestamp 1000, timeout is 4600)
