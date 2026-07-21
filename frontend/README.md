@@ -162,6 +162,14 @@ The main feature of this application is the comprehensive Profile Management Das
 - Global ranking and percentile
 - Performance scoring system
 
+## 🌍 Internationalization (i18n)
+
+To add support for a new language, follow these steps:
+1. **Update Configuration**: Add the ISO language code (e.g., `it` for Italian) to the `locales` array in `next-i18next.config.js`.
+2. **Add Translation Files**: Create a new directory for the language in `public/locales/` (e.g., `public/locales/it/`). Copy the JSON files from `public/locales/en/` and translate the values.
+3. **Update Language Switcher**: Add the language details to the `languages` array in `src/components/LanguageSwitcher.tsx`.
+4. **RTL Support**: If the language is Right-To-Left, ensure `rtl: true` is set in the `LanguageSwitcher` array and the language code is added to `RTL_LANGUAGES` in `src/lib/rtl.ts`.
+
 ## 🔧 Configuration
 
 ### Environment Variables
