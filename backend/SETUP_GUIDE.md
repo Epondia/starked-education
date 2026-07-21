@@ -101,10 +101,78 @@ MONITORING_PROCESSING_TIME_THRESHOLD=30000
 MONITORING_GAS_FEE_SPIKE_THRESHOLD=2.0
 MONITORING_NETWORK_CONGESTION_THRESHOLD=0.8
 
+# ─────────────────────────────────────────────────────────────────
+# Event Indexer Configuration (NEW)
+# ─────────────────────────────────────────────────────────────────
+# Master switch – set to "true" to enable the on-chain event indexer.
+# When disabled the service starts normally but no Soroban events are polled.
+EVENT_INDEXER_ENABLED=false
+
+# Soroban RPC endpoint the indexer uses to fetch events.
+# Defaults to the public Stellar testnet RPC if not set.
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+
+# Comma-separated list of Soroban contract addresses to watch.
+# Example: CAABC...XYZ,CBBDE...QRS
+# Leave empty to disable indexing even when EVENT_INDEXER_ENABLED=true.
+EVENT_INDEXER_CONTRACT_IDS=
+
+# How often (in milliseconds) the indexer polls for new events.
+# Default: 5000 (5 seconds). Minimum recommended: 2000.
+EVENT_INDEXER_POLL_INTERVAL=5000
+
+# Number of ledgers to process per poll batch.
+# Larger values reduce HTTP round-trips but increase per-batch latency.
+# Default: 100
+EVENT_INDEXER_BATCH_SIZE=100
+
+# Optional: override the starting ledger for back-fills or initial sync.
+# If not set the indexer resumes from the last saved checkpoint (or ledger 0).
+# EVENT_INDEXER_START_LEDGER=
+
 # Logging
 LOG_LEVEL=info
 LOG_FILE_PATH=./logs
 ```
+
+#### Event Indexer Quick Start
+
+1. Set `EVENT_INDEXER_ENABLED=true` in your `.env`
+2. Set `EVENT_INDEXER_CONTRACT_IDS` to your deployed Soroban contract address(es)
+3. Confirm `SOROBAN_RPC_URL` points to the right network (testnet or mainnet)
+4. Run the database migration to create the required tables:
+   ```bash
+   npm run migrate:up
+   ```
+5. Start the server – the indexer will boot automatically:
+   ```bash
+   npm run dev
+   ```
+6. Verify via the health endpoint:
+   ```bash
+   curl http://localhost:3001/health | jq '.eventIndexer'
+   # Expected: {"status":"running","lastLedger":12345,"eventsProcessed":42,"lag":3}
+   ```
+
+#### Admin API (requires admin JWT)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/indexer/status` | Current indexer status |
+| `POST` | `/api/v1/indexer/start`  | Start the indexer |
+| `POST` | `/api/v1/indexer/stop`   | Gracefully stop the indexer |
+
+#### Indexed Event Types
+
+| Event Type | Soroban topic key | Domain side-effect |
+|---|---|---|
+| `CredentialIssued`  | `cred:issued`    | Upserts row in `credentials` table |
+| `CredentialRevoked` | `cred:revoked`   | Sets `status='revoked'` in `credentials` |
+| `CourseCreated`     | `course:created` | Inserts row in `courses` table |
+| `EnrollmentCreated` | `enroll:created` | Inserts row in `enrollments` table |
+| `AchievementMinted` | `ach:minted`     | Logged only |
+| `PaymentReceived`   | `pay:received`   | Logged only |
+| `ProfileUpdated`    | `profile:update` | Logged only |
 
 ### 4. Redis Setup
 
