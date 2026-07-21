@@ -1,6 +1,7 @@
 #![cfg(test)]
+extern crate std;
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
 
 use crate::tokenomics::{TokenomicsContract, TokenomicsContractClient};
 use crate::user_profile::{UserProfileContract, UserProfileContractClient};
@@ -8,15 +9,9 @@ use crate::user_profile::{UserProfileContract, UserProfileContractClient};
 fn setup_with_achievements(
     env: &Env,
     achievement_tiers: &[u32],
-) -> (
-    TokenomicsContractClient,
-    UserProfileContractClient,
-    Address,
-    Address,
-    Address,
-) {
+) -> (Address, Address, Address) {
     let tokenomics_id = env.register_contract(None, TokenomicsContract);
-    let tokenomics = TokenomicsContractClient::new(env, &tokenomics_id);
+    let _tokenomics = TokenomicsContractClient::new(env, &tokenomics_id);
 
     let profile_id = env.register_contract(None, UserProfileContract);
     let profile = UserProfileContractClient::new(env, &profile_id);
@@ -27,7 +22,7 @@ fn setup_with_achievements(
     profile.initialize();
 
     let username = String::from_str(env, "staker");
-    tokenomics.initialize(&admin, &profile_id);
+    // Initialize tokenomics separately in each test
 
     env.mock_all_auths();
 
@@ -46,11 +41,10 @@ fn setup_with_achievements(
         profile.add_achievement(&staker, &title, &desc, &None, &tier);
     }
 
-    (tokenomics, profile, admin, staker, profile_id)
+    (admin, staker, profile_id)
 }
 
 fn verify_achievements(
-    env: &Env,
     profile: &UserProfileContractClient,
     admin: &Address,
     user: &Address,
@@ -66,7 +60,10 @@ fn verify_achievements(
 #[test]
 fn test_no_achievements_base_multiplier() {
     let env = Env::default();
-    let (tokenomics, _profile, _admin, staker, _profile_id) = setup_with_achievements(&env, &[]);
+    let (_admin, staker, profile_id) = setup_with_achievements(&env, &[]);
+    let tokenomics_id = env.register_contract(None, TokenomicsContract);
+    let tokenomics = TokenomicsContractClient::new(&env, &tokenomics_id);
+    tokenomics.initialize(&_admin, &profile_id);
 
     env.mock_all_auths();
 
@@ -78,11 +75,15 @@ fn test_no_achievements_base_multiplier() {
 #[test]
 fn test_bronze_achievements_partial_multiplier() {
     let env = Env::default();
-    let (tokenomics, profile, admin, staker, _profile_id) =
+    let (admin, staker, profile_id) =
         setup_with_achievements(&env, &[0u32, 0u32, 0u32, 0u32, 0u32]);
+    let tokenomics_id = env.register_contract(None, TokenomicsContract);
+    let tokenomics = TokenomicsContractClient::new(&env, &tokenomics_id);
+    tokenomics.initialize(&admin, &profile_id);
+    let profile = UserProfileContractClient::new(&env, &profile_id);
 
-    env.mock_all_auths_multiple(&[&admin, &staker]);
-    verify_achievements(&env, &profile, &admin, &staker);
+    env.mock_all_auths();
+    verify_achievements(&profile, &admin, &staker);
 
     // 5 Bronze achievements: each (1+1)*500 = 1000 bps, total = 5000 bps
     // multiplier = 10000 + 5000 = 15000 = 1.5x
@@ -93,11 +94,15 @@ fn test_bronze_achievements_partial_multiplier() {
 #[test]
 fn test_mixed_achievements_multiplier() {
     let env = Env::default();
-    let (tokenomics, profile, admin, staker, _profile_id) =
+    let (admin, staker, profile_id) =
         setup_with_achievements(&env, &[0u32, 1u32]);
+    let tokenomics_id = env.register_contract(None, TokenomicsContract);
+    let tokenomics = TokenomicsContractClient::new(&env, &tokenomics_id);
+    tokenomics.initialize(&admin, &profile_id);
+    let profile = UserProfileContractClient::new(&env, &profile_id);
 
-    env.mock_all_auths_multiple(&[&admin, &staker]);
-    verify_achievements(&env, &profile, &admin, &staker);
+    env.mock_all_auths();
+    verify_achievements(&profile, &admin, &staker);
 
     // 1 Bronze (weight 1): (1+1)*500 = 1000 bps
     // 1 Silver (weight 2): (2+1)*500 = 1500 bps
@@ -110,11 +115,15 @@ fn test_mixed_achievements_multiplier() {
 #[test]
 fn test_multiplier_capped_at_2x() {
     let env = Env::default();
-    let (tokenomics, profile, admin, staker, _profile_id) =
+    let (admin, staker, profile_id) =
         setup_with_achievements(&env, &[3u32, 3u32, 3u32, 3u32, 3u32, 3u32]);
+    let tokenomics_id = env.register_contract(None, TokenomicsContract);
+    let tokenomics = TokenomicsContractClient::new(&env, &tokenomics_id);
+    tokenomics.initialize(&admin, &profile_id);
+    let profile = UserProfileContractClient::new(&env, &profile_id);
 
-    env.mock_all_auths_multiple(&[&admin, &staker]);
-    verify_achievements(&env, &profile, &admin, &staker);
+    env.mock_all_auths();
+    verify_achievements(&profile, &admin, &staker);
 
     // 6 Platinum achievements: each (4+1)*500 = 2500 bps
     // total = 15000 bps
@@ -146,7 +155,7 @@ fn test_staking_with_no_profile_multiplier() {
     tokenomics.stake_tokens(&staker, &500, &604800); // 1 week lock
 
     // Advance time past lock duration
-    env.ledger().set_timestamp(604800 + 1);
+    env.ledger().with_mut(|li| li.timestamp = 604800 + 1);
 
     // Unstake and claim - should succeed with base APY
     tokenomics.unstake_and_claim(&staker);
@@ -225,7 +234,7 @@ fn test_stake_zero_amount() {
     tokenomics.mint_reward(&staker, &1000);
     tokenomics.stake_tokens(&staker, &0, &604800);
 
-    env.ledger().set_timestamp(604800 + 1);
+    env.ledger().with_mut(|li| li.timestamp = 604800 + 1);
     tokenomics.unstake_and_claim(&staker);
 
     assert_eq!(tokenomics.balance_of(&staker, &0), 1000);
@@ -344,7 +353,7 @@ fn test_multi_cycle_reward_distribution() {
     assert_eq!(tokenomics.balance_of(&staker, &0), 0);
 
     // Wait 1 year
-    env.ledger().set_timestamp(lock_1_year + 1);
+    env.ledger().with_mut(|li| li.timestamp = lock_1_year + 1);
 
     // Unstake
     tokenomics.unstake_and_claim(&staker);
@@ -359,7 +368,7 @@ fn test_multi_cycle_reward_distribution() {
     assert_eq!(tokenomics.balance_of(&staker, &0), 0);
 
     // Wait another year
-    env.ledger().set_timestamp((lock_1_year * 2) + 2);
+    env.ledger().with_mut(|li| li.timestamp = (lock_1_year * 2) + 2);
 
     // Unstake
     tokenomics.unstake_and_claim(&staker);

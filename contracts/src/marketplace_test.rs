@@ -144,3 +144,191 @@ fn test_dispute_resolution() {
     let events = env.events().all();
     assert!(events.iter().any(|(topics, _): &(_, _)| *topics == (symbol_short!("marketplace"), symbol_short!("dispute_resolved"))));
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  Escrow System Tests
+// ═══════════════════════════════════════════════════════════════
+
+#[test]
+fn test_escrow_create_and_confirm_delivery() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MarketplaceContract);
+    let client = MarketplaceContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Create listing
+    let credential_id = 1u64;
+    let price = 1000u64;
+    let listing_id = client.list_credential(&seller, &credential_id, &price, &500);
+
+    // Create escrow
+    env.ledger().with_mut(|li| li.timestamp = 1000);
+    let timeout = 86400; // 1 day
+    let escrow_id = client.create_escrow(&buyer, &listing_id, &timeout);
+    assert_eq!(escrow_id, 1);
+
+    // Verify escrow created event
+    let events = env.events().all();
+    assert!(events.iter().any(|(topics, _): &(_, _)| *topics == (symbol_short!("marketplace"), symbol_short!("escrow_created"))));
+
+    // Confirm delivery
+    client.confirm_delivery(&buyer, &escrow_id);
+
+    // Verify escrow released event
+    let events = env.events().all();
+    assert!(events.iter().any(|(topics, _): &(_, _)| *topics == (symbol_short!("marketplace"), symbol_short!("escrow_released"))));
+
+    // Verify escrow is queryable
+    let escrow = client.get_escrow(&escrow_id);
+    assert_eq!(escrow.status, crate::marketplace::EscrowStatus::Released);
+    assert_eq!(escrow.buyer, buyer);
+    assert_eq!(escrow.seller, seller);
+    assert_eq!(escrow.amount, price);
+}
+
+#[test]
+fn test_escrow_timeout_refund() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MarketplaceContract);
+    let client = MarketplaceContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let listing_id = client.list_credential(&seller, &1, &1000, &500);
+
+    env.ledger().with_mut(|li| li.timestamp = 1000);
+    let timeout = 3600; // 1 hour
+    let escrow_id = client.create_escrow(&buyer, &listing_id, &timeout);
+
+    // Fast forward past timeout
+    env.ledger().with_mut(|li| li.timestamp = 1000 + timeout + 1);
+
+    // Claim refund
+    client.refund_escrow(&buyer, &escrow_id);
+
+    // Verify refund event
+    let events = env.events().all();
+    assert!(events.iter().any(|(topics, _): &(_, _)| *topics == (symbol_short!("marketplace"), symbol_short!("escrow_refunded"))));
+
+    let escrow = client.get_escrow(&escrow_id);
+    assert_eq!(escrow.status, crate::marketplace::EscrowStatus::Refunded);
+}
+
+#[test]
+#[should_panic(expected = "Escrow has not timed out yet")]
+fn test_escrow_refund_before_timeout_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MarketplaceContract);
+    let client = MarketplaceContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let listing_id = client.list_credential(&seller, &1, &1000, &500);
+
+    env.ledger().with_mut(|li| li.timestamp = 1000);
+    let escrow_id = client.create_escrow(&buyer, &listing_id, &3600);
+
+    // Try to refund before timeout (at timestamp 1000, timeout is 4600)
+    client.refund_escrow(&buyer, &escrow_id);
+}
+
+#[test]
+#[should_panic(expected = "Escrow is not in funded state")]
+fn test_double_release_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MarketplaceContract);
+    let client = MarketplaceContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let listing_id = client.list_credential(&seller, &1, &1000, &500);
+    let escrow_id = client.create_escrow(&buyer, &listing_id, &86400);
+
+    client.confirm_delivery(&buyer, &escrow_id);
+    // Second confirm should panic
+    client.confirm_delivery(&buyer, &escrow_id);
+}
+
+#[test]
+fn test_escrow_dispute_and_resolution() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MarketplaceContract);
+    let client = MarketplaceContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let listing_id = client.list_credential(&seller, &1, &1000, &500);
+    let escrow_id = client.create_escrow(&buyer, &listing_id, &86400);
+
+    // Buyer disputes
+    let reason = String::from_str(&env, "Wrong credential received");
+    let dispute_id = client.dispute_escrow(&buyer, &escrow_id, &reason);
+    assert_eq!(dispute_id, 1);
+
+    // Verify dispute event
+    let events = env.events().all();
+    assert!(events.iter().any(|(topics, _): &(_, _)| *topics == (symbol_short!("marketplace"), symbol_short!("escrow_disputed"))));
+
+    // Admin resolves in favor of buyer (refund)
+    client.resolve_escrow_dispute(&admin, &escrow_id, &dispute_id, &true);
+
+    let escrow = client.get_escrow(&escrow_id);
+    assert_eq!(escrow.status, crate::marketplace::EscrowStatus::Refunded);
+
+    // Verify resolution event
+    let events = env.events().all();
+    assert!(events.iter().any(|(topics, _): &(_, _)| *topics == (symbol_short!("marketplace"), symbol_short!("escrow_resolved"))));
+}
+
+#[test]
+fn test_escrow_seller_can_also_dispute() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, MarketplaceContract);
+    let client = MarketplaceContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let listing_id = client.list_credential(&seller, &1, &1000, &500);
+    let escrow_id = client.create_escrow(&buyer, &listing_id, &86400);
+
+    // Seller disputes (e.g., buyer unresponsive)
+    let reason = String::from_str(&env, "Buyer not responding");
+    let dispute_id = client.dispute_escrow(&seller, &escrow_id, &reason);
+
+    // Admin resolves in favor of seller (release funds)
+    client.resolve_escrow_dispute(&admin, &escrow_id, &dispute_id, &false);
+
+    let escrow = client.get_escrow(&escrow_id);
+    assert_eq!(escrow.status, crate::marketplace::EscrowStatus::Released);
+}
