@@ -50,6 +50,17 @@ class WebsocketService {
         this.addUserSocket(userId, socket);
         console.log(`User ${userId} registered with socket ${socket.id}`);
 
+        // Deliver missed notifications on reconnect
+        try {
+          const { notificationService } = await import('./notificationService');
+          const deliveredCount = await notificationService.deliverMissedNotifications(userId);
+          if (deliveredCount > 0) {
+            console.log(`Delivered ${deliveredCount} missed notifications to user ${userId} on reconnect`);
+          }
+        } catch (error) {
+          console.error(`Failed to deliver missed notifications for user ${userId}:`, error);
+        }
+
         // State recovery implementation: Replay missed sync messages if lastOffset is provided
         if (lastOffset && lastOffset > 0) {
           try {
@@ -184,6 +195,16 @@ class WebsocketService {
 
   public broadcastToAll(data: any, event: string): void {
     this.io.emit(event, data);
+  }
+
+  /// Broadcast to all connected sockets
+  public broadcast(event: string, data: any): void {
+    this.io.emit(event, data);
+  }
+
+  /// Get count of connected sockets
+  public getConnectedCount(): number {
+    return this.io.engine?.clientsCount || Object.keys(this.userSockets).length;
   }
 
   public emitToUser(userId: string, event: string, data: unknown): void {
