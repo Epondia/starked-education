@@ -4,7 +4,7 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 
 /// Achievement tier with weight
 #[contracttype]
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum AchievementTier {
     Bronze = 0,   // Course completion - weight 1
     Silver = 1,   // Multiple courses - weight 2
@@ -30,7 +30,7 @@ pub struct UserProfile {
 
 /// Privacy levels packed into flags
 #[contracttype]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PrivacyLevel {
     Public = 0,
     Private = 1,

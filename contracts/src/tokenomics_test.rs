@@ -1,16 +1,16 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
 
 use crate::tokenomics::{TokenomicsContract, TokenomicsContractClient};
 use crate::user_profile::{UserProfileContract, UserProfileContractClient};
 
-fn setup_with_achievements(
+fn setup_with_achievements<'a>(
     env: &Env,
     achievement_tiers: &[u32],
 ) -> (
-    TokenomicsContractClient,
-    UserProfileContractClient,
+    TokenomicsContractClient<'a>,
+    UserProfileContractClient<'a>,
     Address,
     Address,
     Address,
@@ -81,7 +81,7 @@ fn test_bronze_achievements_partial_multiplier() {
     let (tokenomics, profile, admin, staker, _profile_id) =
         setup_with_achievements(&env, &[0u32, 0u32, 0u32, 0u32, 0u32]);
 
-    env.mock_all_auths_multiple(&[&admin, &staker]);
+    env.mock_all_auths();
     verify_achievements(&env, &profile, &admin, &staker);
 
     // 5 Bronze achievements: each (1+1)*500 = 1000 bps, total = 5000 bps
@@ -96,7 +96,7 @@ fn test_mixed_achievements_multiplier() {
     let (tokenomics, profile, admin, staker, _profile_id) =
         setup_with_achievements(&env, &[0u32, 1u32]);
 
-    env.mock_all_auths_multiple(&[&admin, &staker]);
+    env.mock_all_auths();
     verify_achievements(&env, &profile, &admin, &staker);
 
     // 1 Bronze (weight 1): (1+1)*500 = 1000 bps
@@ -113,7 +113,7 @@ fn test_multiplier_capped_at_2x() {
     let (tokenomics, profile, admin, staker, _profile_id) =
         setup_with_achievements(&env, &[3u32, 3u32, 3u32, 3u32, 3u32, 3u32]);
 
-    env.mock_all_auths_multiple(&[&admin, &staker]);
+    env.mock_all_auths();
     verify_achievements(&env, &profile, &admin, &staker);
 
     // 6 Platinum achievements: each (4+1)*500 = 2500 bps
@@ -146,7 +146,9 @@ fn test_staking_with_no_profile_multiplier() {
     tokenomics.stake_tokens(&staker, &500, &604800); // 1 week lock
 
     // Advance time past lock duration
-    env.ledger().set_timestamp(604800 + 1);
+    let mut ledger_info = env.ledger().get();
+    ledger_info.timestamp = 604800 + 1;
+    env.ledger().set(ledger_info);
 
     // Unstake and claim - should succeed with base APY
     tokenomics.unstake_and_claim(&staker);
@@ -225,7 +227,9 @@ fn test_stake_zero_amount() {
     tokenomics.mint_reward(&staker, &1000);
     tokenomics.stake_tokens(&staker, &0, &604800);
 
-    env.ledger().set_timestamp(604800 + 1);
+    let mut ledger_info = env.ledger().get();
+    ledger_info.timestamp = 604800 + 1;
+    env.ledger().set(ledger_info);
     tokenomics.unstake_and_claim(&staker);
 
     assert_eq!(tokenomics.balance_of(&staker, &0), 1000);
@@ -344,7 +348,9 @@ fn test_multi_cycle_reward_distribution() {
     assert_eq!(tokenomics.balance_of(&staker, &0), 0);
 
     // Wait 1 year
-    env.ledger().set_timestamp(lock_1_year + 1);
+    let mut ledger_info = env.ledger().get();
+    ledger_info.timestamp = lock_1_year + 1;
+    env.ledger().set(ledger_info);
 
     // Unstake
     tokenomics.unstake_and_claim(&staker);
@@ -359,7 +365,9 @@ fn test_multi_cycle_reward_distribution() {
     assert_eq!(tokenomics.balance_of(&staker, &0), 0);
 
     // Wait another year
-    env.ledger().set_timestamp((lock_1_year * 2) + 2);
+    let mut ledger_info = env.ledger().get();
+    ledger_info.timestamp = (lock_1_year * 2) + 2;
+    env.ledger().set(ledger_info);
 
     // Unstake
     tokenomics.unstake_and_claim(&staker);

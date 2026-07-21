@@ -11,9 +11,11 @@ pub enum MarketplaceKey {
     Rental(u64, Address),
     Stake(u64, Address),
     Dispute(u64),
+    Escrow(u64),
     MarketplaceCount,
     ListingCount,
     DisputeCount,
+    EscrowCount,
     TradeCount(u64), // Trade count per credential for bonding curve
 }
 
@@ -50,9 +52,24 @@ pub struct Stake {
 pub struct Dispute {
     pub id: u64,
     pub listing_id: u64,
-    pub buyer: Address,
+    pub initiator: Address,
     pub reason: String,
     pub status: u32, // 0: Open, 1: Resolved, 2: Cancelled
+    pub escrow_id: u64, // 0 if not linked to an escrow
+}
+
+/// Escrow status: 0=Funded, 1=Released, 2=Refunded, 3=Disputed
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Escrow {
+    pub id: u64,
+    pub listing_id: u64,
+    pub buyer: Address,
+    pub seller: Address,
+    pub amount: u64,
+    pub status: u32, // 0=Funded, 1=Released, 2=Refunded, 3=Disputed
+    pub timeout: u64,
+    pub created_at: u64,
 }
 
 #[contract]
@@ -72,6 +89,9 @@ impl MarketplaceContract {
         env.storage()
             .instance()
             .set(&MarketplaceKey::DisputeCount, &0u64);
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::EscrowCount, &0u64);
     }
 
     /// List a credential for sale with royalties
@@ -112,7 +132,7 @@ impl MarketplaceContract {
             .set(&MarketplaceKey::ListingCount, &listing_id);
 
         env.events().publish(
-            (symbol_short!("marketplace"), symbol_short!("created")),
+            (symbol_short!("market"), symbol_short!("created")),
             (listing_id, credential_id, seller, price),
         );
 
@@ -157,7 +177,7 @@ impl MarketplaceContract {
         );
 
         env.events().publish(
-            (symbol_short!("marketplace"), symbol_short!("sale_completed")),
+            (symbol_short!("market"), symbol_short!("sold")),
             (listing_id, buyer, seller_amount, royalty_amount),
         );
     }
@@ -182,7 +202,7 @@ impl MarketplaceContract {
         );
 
         env.events().publish(
-            (symbol_short!("marketplace"), symbol_short!("rented")),
+            (symbol_short!("market"), symbol_short!("rented")),
             (credential_id, tenant, expiry, price),
         );
     }
@@ -219,7 +239,7 @@ impl MarketplaceContract {
         );
 
         env.events().publish(
-            (symbol_short!("marketplace"), symbol_short!("staked")),
+            (symbol_short!("market"), symbol_short!("staked")),
             (credential_id, staker, amount),
         );
     }
@@ -255,7 +275,7 @@ impl MarketplaceContract {
         );
 
         env.events().publish(
-            (symbol_short!("marketplace"), symbol_short!("rewards_claimed")),
+            (symbol_short!("market"), symbol_short!("claim_rwd")),
             (staker, total_reward),
         );
 
@@ -263,8 +283,8 @@ impl MarketplaceContract {
     }
 
     /// Automated Dispute Resolution: Open a dispute
-    pub fn open_dispute(env: Env, buyer: Address, listing_id: u64, reason: String) -> u64 {
-        buyer.require_auth();
+    pub fn open_dispute(env: Env, initiator: Address, listing_id: u64, reason: String) -> u64 {
+        initiator.require_auth();
 
         let dispute_id = env
             .storage()
@@ -276,9 +296,10 @@ impl MarketplaceContract {
         let dispute = Dispute {
             id: dispute_id,
             listing_id,
-            buyer: buyer.clone(),
+            initiator: initiator.clone(),
             reason,
             status: 0, // Open
+            escrow_id: 0, // Not linked to escrow by default
         };
 
         env.storage()
@@ -289,14 +310,16 @@ impl MarketplaceContract {
             .set(&MarketplaceKey::DisputeCount, &dispute_id);
 
         env.events().publish(
-            (symbol_short!("marketplace"), symbol_short!("dispute_opened")),
-            (dispute_id, listing_id, buyer),
+            (symbol_short!("market"), symbol_short!("d_open")),
+            (dispute_id, listing_id, initiator),
         );
 
         dispute_id
     }
 
-    /// Resolve a dispute (Admin only)
+    /// Resolve a dispute (Admin only).
+    /// For escrow-linked disputes, also resolves the escrow (release if resolved,
+    /// refund if cancelled).
     pub fn resolve_dispute(env: Env, admin: Address, dispute_id: u64, resolved: bool) {
         admin.require_auth();
 
@@ -321,28 +344,303 @@ impl MarketplaceContract {
             .instance()
             .set(&MarketplaceKey::Dispute(dispute_id), &dispute);
 
+        // If this dispute is linked to an escrow, resolve the escrow too
+        if dispute.escrow_id > 0 {
+            let mut escrow: Escrow = env
+                .storage()
+                .instance()
+                .get(&MarketplaceKey::Escrow(dispute.escrow_id))
+                .unwrap_or_else(|| panic!("Linked escrow not found"));
+
+            if escrow.status == 3 {
+                // Only resolve if still in Disputed state
+                if resolved {
+                    // Resolved in favor of the claim → release funds to seller
+                    escrow.status = 1; // Released
+                    env.storage()
+                        .instance()
+                        .set(&MarketplaceKey::Escrow(dispute.escrow_id), &escrow);
+
+                    // Update trade count
+                    let listing: Listing = env
+                        .storage()
+                        .instance()
+                        .get(&MarketplaceKey::Listing(escrow.listing_id))
+                        .unwrap_or_else(|| panic!("Listing not found for escrow"));
+                    let trade_count: u64 = env
+                        .storage()
+                        .instance()
+                        .get(&MarketplaceKey::TradeCount(listing.credential_id))
+                        .unwrap_or(0);
+                    env.storage().instance().set(
+                        &MarketplaceKey::TradeCount(listing.credential_id),
+                        &(trade_count + 1),
+                    );
+
+                    env.events().publish(
+                        (symbol_short!("market"), symbol_short!("escr_rel")),
+                        (escrow.id, escrow.listing_id, escrow.seller, escrow.amount),
+                    );
+                } else {
+                    // Cancelled → refund buyer and re-activate listing
+                    escrow.status = 2; // Refunded
+                    env.storage()
+                        .instance()
+                        .set(&MarketplaceKey::Escrow(dispute.escrow_id), &escrow);
+
+                    // Re-activate listing
+                    let mut listing: Listing = env
+                        .storage()
+                        .instance()
+                        .get(&MarketplaceKey::Listing(escrow.listing_id))
+                        .unwrap_or_else(|| panic!("Listing not found for escrow"));
+                    listing.active = true;
+                    env.storage()
+                        .instance()
+                        .set(&MarketplaceKey::Listing(escrow.listing_id), &listing);
+
+                    env.events().publish(
+                        (symbol_short!("market"), symbol_short!("escr_ref")),
+                        (escrow.id, escrow.listing_id, escrow.buyer, escrow.amount),
+                    );
+                }
+            }
+        }
+
         env.events().publish(
-            (symbol_short!("marketplace"), symbol_short!("dispute_resolved")),
+            (symbol_short!("market"), symbol_short!("d_resolve")),
             (dispute_id, dispute.status),
         );
     }
 
-    /// Escrow: Initiate a secure transaction with time-lock
-    pub fn initiate_escrow(env: Env, buyer: Address, listing_id: u64, timeout: u64) -> u64 {
+    // ── Escrow System ──
+
+    /// Create an escrow for a listing. Buyer funds held until delivery confirmed.
+    /// The listing is marked inactive (pending) and the escrow is created in Funded state.
+    pub fn create_escrow(
+        env: Env,
+        buyer: Address,
+        listing_id: u64,
+        timeout: u64,
+    ) -> u64 {
         buyer.require_auth();
-        
-        // Logical escrow ID
-        let escrow_id = env.storage().instance().get::<_, u64>(&symbol_short!("esc_cnt")).unwrap_or(0) + 1;
-        env.storage().instance().set(&symbol_short!("esc_cnt"), &escrow_id);
-        
-        let release_time = env.ledger().timestamp() + timeout;
-        env.storage().instance().set(&symbol_short!("escrow_t"), &release_time);
-        
+
+        if timeout == 0 {
+            panic!("Timeout must be greater than zero");
+        }
+
+        let mut listing: Listing = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::Listing(listing_id))
+            .unwrap_or_else(|| panic!("Listing not found"));
+
+        if !listing.active {
+            panic!("Listing is inactive");
+        }
+
+        // Prevent self-dealing
+        if buyer == listing.seller {
+            panic!("Buyer cannot be the seller");
+        }
+
+        // Mark listing as pending (inactive)
+        listing.active = false;
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::Listing(listing_id), &listing);
+
+        let escrow_id = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::EscrowCount)
+            .unwrap_or(0u64)
+            + 1;
+
+        let now = env.ledger().timestamp();
+        let escrow = Escrow {
+            id: escrow_id,
+            listing_id,
+            buyer: buyer.clone(),
+            seller: listing.seller.clone(),
+            amount: listing.price,
+            status: 0, // Funded
+            timeout: now + timeout,
+            created_at: now,
+        };
+
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::Escrow(escrow_id), &escrow);
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::EscrowCount, &escrow_id);
+
         env.events().publish(
-            (symbol_short!("marketplace"), symbol_short!("escrow_initiated")),
-            (escrow_id, buyer, listing_id, release_time),
+            (symbol_short!("market"), symbol_short!("escr_open")),
+            (escrow_id, listing_id, buyer, listing.seller, listing.price),
         );
-        
+
         escrow_id
+    }
+
+    /// Buyer confirms delivery: funds are released to the seller.
+    /// Only the escrow buyer can call this.
+    pub fn confirm_delivery(env: Env, buyer: Address, escrow_id: u64) {
+        buyer.require_auth();
+
+        let mut escrow: Escrow = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::Escrow(escrow_id))
+            .unwrap_or_else(|| panic!("Escrow not found"));
+
+        // Only the buyer can confirm delivery
+        if buyer != escrow.buyer {
+            panic!("Only the buyer can confirm delivery");
+        }
+
+        // Must be in Funded state
+        if escrow.status != 0 {
+            panic!("Escrow is not in funded state");
+        }
+
+        escrow.status = 1; // Released
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::Escrow(escrow_id), &escrow);
+
+        // Update trade count for bonding curve
+        let listing: Listing = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::Listing(escrow.listing_id))
+            .unwrap_or_else(|| panic!("Listing not found for escrow"));
+        let trade_count: u64 = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::TradeCount(listing.credential_id))
+            .unwrap_or(0);
+        env.storage().instance().set(
+            &MarketplaceKey::TradeCount(listing.credential_id),
+            &(trade_count + 1),
+        );
+
+        env.events().publish(
+            (symbol_short!("market"), symbol_short!("escr_rel")),
+            (escrow_id, escrow.listing_id, escrow.seller, escrow.amount),
+        );
+    }
+
+    /// Claim a timeout refund for an escrow that has expired without delivery.
+    /// Anyone can trigger this after the timeout has passed.
+    pub fn claim_timeout_refund(env: Env, escrow_id: u64) {
+        let mut escrow: Escrow = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::Escrow(escrow_id))
+            .unwrap_or_else(|| panic!("Escrow not found"));
+
+        // Must be in Funded state
+        if escrow.status != 0 {
+            panic!("Escrow is not in funded state");
+        }
+
+        let now = env.ledger().timestamp();
+        if now < escrow.timeout {
+            panic!("Timeout has not yet expired");
+        }
+
+        escrow.status = 2; // Refunded
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::Escrow(escrow_id), &escrow);
+
+        // Re-activate the listing so it can be sold again
+        let mut listing: Listing = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::Listing(escrow.listing_id))
+            .unwrap_or_else(|| panic!("Listing not found for escrow"));
+        listing.active = true;
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::Listing(escrow.listing_id), &listing);
+
+        env.events().publish(
+            (symbol_short!("market"), symbol_short!("escr_ref")),
+            (escrow_id, escrow.listing_id, escrow.buyer, escrow.amount),
+        );
+    }
+
+    /// Query escrow state. Readable by both parties and any observer.
+    pub fn get_escrow(env: Env, escrow_id: u64) -> Escrow {
+        env.storage()
+            .instance()
+            .get(&MarketplaceKey::Escrow(escrow_id))
+            .unwrap_or_else(|| panic!("Escrow not found"))
+    }
+
+    /// Escalate an active escrow to a dispute. Either buyer or seller can call.
+    /// Links the escrow to the dispute system and marks the escrow as Disputed.
+    pub fn escalate_escrow_to_dispute(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+        reason: String,
+    ) -> u64 {
+        caller.require_auth();
+
+        let mut escrow: Escrow = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::Escrow(escrow_id))
+            .unwrap_or_else(|| panic!("Escrow not found"));
+
+        // Only buyer or seller can escalate
+        if caller != escrow.buyer && caller != escrow.seller {
+            panic!("Only escrow parties can escalate to dispute");
+        }
+
+        // Must be in Funded state
+        if escrow.status != 0 {
+            panic!("Escrow is not in funded state");
+        }
+
+        let dispute_id = env
+            .storage()
+            .instance()
+            .get(&MarketplaceKey::DisputeCount)
+            .unwrap_or(0u64)
+            + 1;
+
+        let dispute = Dispute {
+            id: dispute_id,
+            listing_id: escrow.listing_id,
+            initiator: caller.clone(),
+            reason,
+            status: 0, // Open
+            escrow_id,
+        };
+
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::Dispute(dispute_id), &dispute);
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::DisputeCount, &dispute_id);
+
+        // Mark escrow as disputed
+        escrow.status = 3; // Disputed
+        env.storage()
+            .instance()
+            .set(&MarketplaceKey::Escrow(escrow_id), &escrow);
+
+        env.events().publish(
+            (symbol_short!("market"), symbol_short!("escr_disp")),
+            (escrow_id, dispute_id, caller),
+        );
+
+        dispute_id
     }
 }

@@ -10,6 +10,9 @@ pub mod tokenomics_test;
 pub mod user_profile;
 #[cfg(test)]
 pub mod user_profile_test;
+pub mod marketplace;
+#[cfg(test)]
+pub mod marketplace_test;
 pub mod utils;
 
 /// Core storage keys
