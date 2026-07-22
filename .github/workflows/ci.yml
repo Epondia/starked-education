@@ -112,7 +112,7 @@ jobs:
           timeout_minutes: 5
           max_attempts: 2
           retry_on: error
-          command: cd frontend && npm ci
+          command: cd frontend && npm install --legacy-peer-deps
 
       - name: Type check
         continue-on-error: true
