@@ -59,6 +59,7 @@ const courseRoutes = require('./routes/courses');
 const searchRoutes = require('./routes/search');
 const transactionRoutes = require('./routes/transactions');
 const notificationRoutes = resolveRoute(require('./routes/notificationRoutes'));
+const webhookRoutes = resolveRoute(require('./routes/webhookRoutes'));
 
 // Your branch routes
 const collaborationRoutes = resolveRoute(require('./routes/collaborationRoutes'));
@@ -136,6 +137,7 @@ v1Router.use('/search', searchRoutes);
 v1Router.use('/rbac', rbacRoutes);
 v1Router.use('/transactions', transactionRoutes);
 v1Router.use('/notifications', notificationRoutes);
+v1Router.use('/webhooks', webhookRoutes);
 v1Router.use('/collaboration', collaborationRoutes);
 v1Router.use('/holographic', holographicRoutes);
 v1Router.use('/aco', acoRoutes);
@@ -247,6 +249,7 @@ async function startServer() {
       console.log(`🧠 ACO API available at /api/v1/aco`);
       console.log(`🌐 Federated Learning API available at /api/v1/federated-learning`);
       console.log(`🧠 AGI Tutor API available at /api/v1/agi-tutor`);
+      console.log(`🔗 Webhook API available at /api/v1/webhooks`);
       console.log(`🔐 Quantum-Resistant Secure Communication API available at /api/v1/secure-comm`);
       console.log(`🏥 Health check available at /api/health`);
       console.log(`✅ Transaction Queue System initialized successfully`);
