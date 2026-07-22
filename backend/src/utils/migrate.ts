@@ -213,6 +213,10 @@ export async function migrateDown(
 
       if (!dryRun) {
         state.applied.pop();
+        // Decrement lastBatch if the last migration was rolled back
+        if (state.applied.length === 0) {
+          state.lastBatch = 0;
+        }
         saveState(state);
       }
 
