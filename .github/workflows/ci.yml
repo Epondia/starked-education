@@ -132,6 +132,16 @@ jobs:
         timeout-minutes: 15
         run: cd frontend && NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
+      - name: E2E Tests (Playwright)
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+
   # ─── Dependency Audit ────────────────────────────────────────────
   dependency-audit:
     name: Dependency Audit
