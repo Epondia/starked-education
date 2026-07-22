@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, X, Clock, Trash2, ArrowRight, BookOpen, User, Award } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { discoveryApi } from '@/lib/discoveryApi';
 
@@ -62,7 +63,7 @@ function highlightMatch(text: string, query: string): React.ReactNode {
   return (
     <>
       {parts.map((part, i) =>
-        regex.test(part) ? (
+        part.toLowerCase() === query.toLowerCase() ? (
           <mark key={i} className="bg-amber-100 text-amber-950 rounded-sm px-0.5 font-medium">
             {part}
           </mark>
@@ -119,8 +120,8 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Load recent searches on mount
+  const abortRef = useRef<AbortController | null>(null);
+  const router = useRouter();
   useEffect(() => {
     setRecentSearches(loadRecentSearches());
   }, []);
@@ -129,6 +130,11 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
+    }
+
+    // Cancel previous in-flight request
+    if (abortRef.current) {
+      abortRef.current.abort();
     }
 
     if (!query.trim()) {
@@ -140,10 +146,19 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
     setIsLoading(true);
     setError(null);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     debounceRef.current = setTimeout(async () => {
       try {
         const sessionId = window.sessionStorage.getItem('starked-discovery-session') ||
           `globalsearch_${Math.random().toString(36).slice(2, 10)}`;
+        // Persist session ID for consistency
+        if (!window.sessionStorage.getItem('starked-discovery-session')) {
+          window.sessionStorage.setItem('starked-discovery-session', sessionId);
+        }
+
+        if (controller.signal.aborted) return;
 
         // Fetch from multiple sources in parallel
         const [searchData, suggestionData] = await Promise.allSettled([
@@ -206,13 +221,18 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
         setError('Search failed. Please try again.');
         setResults([]);
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     }, DEBOUNCE_MS);
 
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
+      }
+      if (abortRef.current) {
+        abortRef.current.abort();
       }
     };
   }, [query]);
@@ -269,9 +289,9 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
       setQuery('');
 
       if (typeof item === 'object' && item.url) {
-        window.location.href = item.url;
+        router.push(item.url);
       } else {
-        window.location.href = `/discovery?q=${encodeURIComponent(searchTerm)}`;
+        router.push(`/discovery?q=${encodeURIComponent(searchTerm)}`);
       }
     },
     [recentSearches]
