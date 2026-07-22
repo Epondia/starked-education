@@ -149,7 +149,7 @@ export default function AdminDashboard() {
                 {Math.abs(stats.users.growth)}%
               </div>
             </div>
-            <h3 className="text-2xl font-bold text-gray-800">{stats.users.total.toLocaleString()}</h3>
+            <p className="text-2xl font-bold text-gray-800">{stats.users.total.toLocaleString()}</p>
             <p className="text-gray-600 text-sm">Total Users</p>
             <div className="mt-4 space-y-1">
               <div className="flex justify-between text-xs text-gray-500">
@@ -173,7 +173,7 @@ export default function AdminDashboard() {
                 {Math.abs(stats.courses.growth)}%
               </div>
             </div>
-            <h3 className="text-2xl font-bold text-gray-800">{stats.courses.total}</h3>
+            <p className="text-2xl font-bold text-gray-800">{stats.courses.total}</p>
             <p className="text-gray-600 text-sm">Total Courses</p>
             <div className="mt-4 space-y-1">
               <div className="flex justify-between text-xs text-gray-500">
@@ -196,7 +196,7 @@ export default function AdminDashboard() {
                 <Eye className="w-4 h-4" />
               </div>
             </div>
-            <h3 className="text-2xl font-bold text-gray-800">{stats.quizzes.total}</h3>
+            <p className="text-2xl font-bold text-gray-800">{stats.quizzes.total}</p>
             <p className="text-gray-600 text-sm">Total Quizzes</p>
             <div className="mt-4 space-y-1">
               <div className="flex justify-between text-xs text-gray-500">
@@ -219,7 +219,7 @@ export default function AdminDashboard() {
                 <TrendingUp className="w-4 h-4" />
               </div>
             </div>
-            <h3 className="text-2xl font-bold text-gray-800">{stats.system.uptime}</h3>
+            <p className="text-2xl font-bold text-gray-800">{stats.system.uptime}</p>
             <p className="text-gray-600 text-sm">System Uptime</p>
             <div className="mt-4 space-y-1">
               <div className="text-xs text-gray-500">

@@ -99,34 +99,67 @@ export default function AdminSidebar() {
     const isExpanded = expandedItems.includes(item.title);
     const active = isActive(item.href);
 
+    // Items with children are toggle buttons; leaf items are navigation links.
+    const sharedClasses = `
+      flex items-center justify-between w-full px-3 py-2 text-sm rounded-lg transition-colors
+      ${active ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}
+      ${isCollapsed && level === 0 ? 'justify-center' : ''}
+    `;
+
     return (
       <div key={item.title} className="w-full">
-        <div
-          className={`
-            flex items-center justify-between w-full px-3 py-2 text-sm rounded-lg transition-colors
-            ${active ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}
-            ${isCollapsed && level === 0 ? 'justify-center' : ''}
-          `}
-          onClick={() => hasChildren && toggleExpanded(item.title)}
-        >
-          <div className="flex items-center gap-3">
-            <Icon className="w-5 h-5 flex-shrink-0" />
-            {!isCollapsed && (
-              <span className="font-medium">{item.title}</span>
-            )}
-          </div>
-          {!isCollapsed && hasChildren && (
-            isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
-          )}
-          {!isCollapsed && item.badge && (
-            <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-              {item.badge}
+        {hasChildren ? (
+          /* Expandable group — render a <button> so it is keyboard-accessible */
+          <button
+            type="button"
+            aria-expanded={isExpanded}
+            aria-controls={`sidebar-submenu-${item.title.replace(/\s+/g, '-').toLowerCase()}`}
+            onClick={() => toggleExpanded(item.title)}
+            title={isCollapsed ? item.title : undefined}
+            className={sharedClasses}
+          >
+            <span className="flex items-center gap-3">
+              <Icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+              {!isCollapsed && <span className="font-medium">{item.title}</span>}
             </span>
-          )}
-        </div>
-        
+            {!isCollapsed && (
+              isExpanded
+                ? <ChevronDown className="w-4 h-4" aria-hidden="true" />
+                : <ChevronRight className="w-4 h-4" aria-hidden="true" />
+            )}
+            {!isCollapsed && item.badge && (
+              <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full" aria-label={`${item.badge} unread`}>
+                {item.badge}
+              </span>
+            )}
+          </button>
+        ) : (
+          /* Leaf item — render a proper Next.js <Link> */
+          <Link
+            href={item.href}
+            aria-current={active ? 'page' : undefined}
+            title={isCollapsed ? item.title : undefined}
+            className={sharedClasses}
+          >
+            <span className="flex items-center gap-3">
+              <Icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+              {!isCollapsed && <span className="font-medium">{item.title}</span>}
+            </span>
+            {!isCollapsed && item.badge && (
+              <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full" aria-label={`${item.badge} unread`}>
+                {item.badge}
+              </span>
+            )}
+          </Link>
+        )}
+
         {hasChildren && !isCollapsed && isExpanded && (
-          <div className="ml-4 mt-1 space-y-1">
+          <div
+            id={`sidebar-submenu-${item.title.replace(/\s+/g, '-').toLowerCase()}`}
+            className="ml-4 mt-1 space-y-1"
+            role="list"
+            aria-label={`${item.title} sub-navigation`}
+          >
             {item.children!.map(child => renderSidebarItem(child, level + 1))}
           </div>
         )}
@@ -148,9 +181,10 @@ export default function AdminSidebar() {
           )}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             className="p-1 rounded hover:bg-gray-100 transition-colors"
           >
-            {isCollapsed ? <Menu className="w-5 h-5" /> : <X className="w-5 h-5" />}
+            {isCollapsed ? <Menu className="w-5 h-5" aria-hidden="true" /> : <X className="w-5 h-5" aria-hidden="true" />}
           </button>
         </div>
       </div>

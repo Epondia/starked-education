@@ -87,3 +87,114 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.8);
 }
+
+/* ─── Screen-reader utility ──────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─── Skip-to-content link (WCAG 2.4.1) ─────────────────────────── */
+/*
+ * Visually hidden by default; slides into view when focused.
+ * Target: <a href="#main-content" class="skip-link">Skip to main content</a>
+ */
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 9999;
+  transform: translateY(-200%);
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #111827;
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+  box-shadow:
+    0 0 0 3px #1d4ed8,
+    0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  outline: none; /* ring already supplied by box-shadow above */
+}
+
+/* ─── Global focus indicators (WCAG 2.4.7 / 2.4.11) ────────────── */
+/*
+ * 3-pixel solid ring on every focusable element when navigated by keyboard.
+ * Uses :focus-visible so mouse users never see the ring (clean UX).
+ * The !important guards against per-component `outline: none` resets.
+ */
+:where(
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  details > summary,
+  [tabindex]:not([tabindex='-1'])
+):focus-visible {
+  outline: 3px solid #1d4ed8 !important; /* APCA ≥ 60 Lc on white */
+  outline-offset: 3px !important;
+  border-radius: 4px;
+}
+
+/*
+ * High-contrast mode: switch to amber-400 (12.9:1 on black).
+ * Activated when AccessibilityProvider adds .focus-visible-enabled to <html>.
+ */
+.focus-visible-enabled
+  :where(
+    a,
+    button,
+    input,
+    select,
+    textarea,
+    details > summary,
+    [tabindex]:not([tabindex='-1'])
+  ):focus-visible {
+  outline: 4px solid #facc15 !important;
+  outline-offset: 3px !important;
+}
+
+/* Disabled form elements should never receive pointer interaction */
+:where(button, input, select, textarea):disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ─── High-contrast content override ────────────────────────────── */
+/*
+ * Activated by AccessibilityProvider adding .high-contrast to <html>.
+ * Scoped to <main> only so global chrome (header, nav) keeps its colours.
+ */
+.high-contrast main,
+.high-contrast [role='main'] {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+.high-contrast main :where(button, a),
+.high-contrast [role='main'] :where(button, a) {
+  background: #fff !important;
+  color: #000 !important;
+  border: 2px solid #fff !important;
+}
+
+.high-contrast main :where(button, a):hover,
+.high-contrast main :where(button, a):focus-visible,
+.high-contrast [role='main'] :where(button, a):hover,
+.high-contrast [role='main'] :where(button, a):focus-visible {
+  background: #facc15 !important;
+  color: #000 !important;
+}

@@ -53,6 +53,7 @@ export function ProfileHeader({ user }: ProfileHeaderProps) {
                   type="text"
                   value={editedName}
                   onChange={(e) => setEditedName(e.target.value)}
+                  aria-label="Edit your display name"
                   className="bg-white/20 border border-white/30 rounded px-3 py-1 text-white placeholder-white/50 text-2xl font-bold"
                   onBlur={handleSave}
                   onKeyDown={(e) => e.key === "Enter" && handleSave()}
@@ -64,9 +65,9 @@ export function ProfileHeader({ user }: ProfileHeaderProps) {
                   <button
                     onClick={() => setIsEditing(true)}
                     className="text-white/70 hover:text-white transition-colors"
-                    aria-label="Edit name"
+                    aria-label="Edit display name"
                   >
-                    ✎
+                    <span aria-hidden="true">✎</span>
                   </button>
                 </>
               )}
@@ -74,24 +75,24 @@ export function ProfileHeader({ user }: ProfileHeaderProps) {
             <p className="text-white/80 mb-4">{user.email}</p>
 
             {/* Stats */}
-            <div className="flex gap-8">
+            <dl className="flex gap-8">
               <div>
-                <div className="text-sm text-white/70">Courses Completed</div>
-                <div className="text-2xl font-bold">
+                <dt className="text-sm text-white/70">Courses Completed</dt>
+                <dd className="text-2xl font-bold">
                   {user.totalCoursesCompleted}
-                </div>
+                </dd>
               </div>
               <div>
-                <div className="text-sm text-white/70">Current Streak</div>
-                <div className="text-2xl font-bold">
+                <dt className="text-sm text-white/70">Current Streak</dt>
+                <dd className="text-2xl font-bold">
                   {user.currentStreak} days
-                </div>
+                </dd>
               </div>
               <div>
-                <div className="text-sm text-white/70">Member Since</div>
-                <div className="text-lg font-semibold">{user.joinDate}</div>
+                <dt className="text-sm text-white/70">Member Since</dt>
+                <dd className="text-lg font-semibold">{user.joinDate}</dd>
               </div>
-            </div>
+            </dl>
           </div>
         </div>
       </div>

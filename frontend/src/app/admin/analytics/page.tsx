@@ -160,7 +160,7 @@ export default function AnalyticsDashboard() {
               </div>
               <TrendingUp className="w-5 h-5 text-green-500" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-800">{analytics.overview.totalUsers.toLocaleString()}</h3>
+            <p className="text-2xl font-bold text-gray-800">{analytics.overview.totalUsers.toLocaleString()}</p>
             <p className="text-sm text-gray-600">Total Users</p>
             <p className="text-xs text-green-600 mt-2">{analytics.overview.activeUsers} active</p>
           </div>
@@ -172,7 +172,7 @@ export default function AnalyticsDashboard() {
               </div>
               <TrendingUp className="w-5 h-5 text-green-500" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-800">{analytics.overview.totalCourses}</h3>
+            <p className="text-2xl font-bold text-gray-800">{analytics.overview.totalCourses}</p>
             <p className="text-sm text-gray-600">Total Courses</p>
             <p className="text-xs text-green-600 mt-2">{analytics.overview.totalCompletions} completions</p>
           </div>
@@ -184,7 +184,7 @@ export default function AnalyticsDashboard() {
               </div>
               <Target className="w-5 h-5 text-blue-500" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-800">{analytics.overview.averageScore}%</h3>
+            <p className="text-2xl font-bold text-gray-800">{analytics.overview.averageScore}%</p>
             <p className="text-sm text-gray-600">Average Score</p>
             <p className="text-xs text-blue-600 mt-2">Across all quizzes</p>
           </div>
@@ -196,7 +196,7 @@ export default function AnalyticsDashboard() {
               </div>
               <Zap className="w-5 h-5 text-yellow-500" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-800">{analytics.overview.totalCompletions}</h3>
+            <p className="text-2xl font-bold text-gray-800">{analytics.overview.totalCompletions}</p>
             <p className="text-sm text-gray-600">Completions</p>
             <p className="text-xs text-orange-600 mt-2">This period</p>
           </div>
@@ -208,7 +208,7 @@ export default function AnalyticsDashboard() {
               </div>
               <BarChart3 className="w-5 h-5 text-purple-500" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-800">${analytics.overview.totalRevenue.toLocaleString()}</h3>
+            <p className="text-2xl font-bold text-gray-800">${analytics.overview.totalRevenue.toLocaleString()}</p>
             <p className="text-sm text-gray-600">Revenue</p>
             <p className="text-xs text-red-600 mt-2">Total earnings</p>
           </div>

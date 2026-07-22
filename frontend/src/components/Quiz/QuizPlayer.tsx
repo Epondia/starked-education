@@ -84,12 +84,17 @@ const QuizPlayer: React.FC<QuizPlayerProps> = ({
 
   return (
     <div className="max-w-4xl mx-auto w-full px-4 py-8">
+      {/* Screen-reader announcement of current progress */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        Question {currentQuestionIndex + 1} of {questions.length}
+      </div>
+
       {/* Quiz Progress Header */}
       <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-800 mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-              <span className="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center text-sm">
+              <span className="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center text-sm" aria-hidden="true">
                 Q{currentQuestionIndex + 1}
               </span>
               Progress <span className="text-gray-400 font-normal">({currentQuestionIndex + 1}/{questions.length})</span>
@@ -97,7 +102,7 @@ const QuizPlayer: React.FC<QuizPlayerProps> = ({
           </div>
           <div className="flex items-center gap-6">
             <Timer duration={timeLimit} onTimeUp={handleTimeUp} />
-            <div className="hidden md:block w-px h-10 bg-gray-200 dark:bg-gray-800" />
+            <div className="hidden md:block w-px h-10 bg-gray-200 dark:bg-gray-800" aria-hidden="true" />
             <div className="text-right">
               <div className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-1">Overall Progress</div>
               <div className="flex items-center gap-3">
@@ -105,6 +110,11 @@ const QuizPlayer: React.FC<QuizPlayerProps> = ({
                   <div 
                     className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-700 ease-out"
                     style={{ width: `${progress}%` }}
+                    role="progressbar"
+                    aria-valuenow={currentQuestionIndex + 1}
+                    aria-valuemin={1}
+                    aria-valuemax={questions.length}
+                    aria-label={`Quiz progress: ${currentQuestionIndex + 1} of ${questions.length}`}
                   />
                 </div>
                 <span className="text-sm font-bold text-blue-600">{Math.round(progress)}%</span>
@@ -128,6 +138,7 @@ const QuizPlayer: React.FC<QuizPlayerProps> = ({
         <button
           onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
           disabled={currentQuestionIndex === 0}
+          aria-label="Previous question"
           className="px-6 py-3 rounded-xl font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-0 transition-all"
         >
           Previous
@@ -136,6 +147,7 @@ const QuizPlayer: React.FC<QuizPlayerProps> = ({
         <button
           onClick={handleNext}
           disabled={selectedAnswers[currentQuestionIndex] === null || selectedAnswers[currentQuestionIndex] === ''}
+          aria-label={currentQuestionIndex === questions.length - 1 ? 'Complete assessment' : 'Next question'}
           className={`group flex items-center gap-3 px-8 py-4 rounded-2xl font-bold transition-all transform hover:scale-105 active:scale-95 ${
             selectedAnswers[currentQuestionIndex] !== null && selectedAnswers[currentQuestionIndex] !== ''
               ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-xl shadow-blue-500/25 hover:shadow-blue-500/40'
@@ -143,16 +155,18 @@ const QuizPlayer: React.FC<QuizPlayerProps> = ({
           }`}
         >
           {currentQuestionIndex === questions.length - 1 ? 'Complete Assessment' : 'Next Challenge'}
-          <ChevronRight size={22} className="group-hover:translate-x-1 transition-transform" />
+          <ChevronRight size={22} className="group-hover:translate-x-1 transition-transform" aria-hidden="true" />
         </button>
       </div>
       
       {/* Quick Navigation Dots */}
-      <div className="mt-8 flex justify-center gap-2">
+      <div className="mt-8 flex justify-center gap-2" role="navigation" aria-label="Question navigation">
         {questions.map((_, idx) => (
           <button
             key={idx}
             onClick={() => setCurrentQuestionIndex(idx)}
+            aria-label={`Go to question ${idx + 1}${selectedAnswers[idx] !== null ? ' (answered)' : ''}`}
+            aria-current={idx === currentQuestionIndex ? 'step' : undefined}
             className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
               idx === currentQuestionIndex 
                 ? 'bg-blue-600 w-8' 
