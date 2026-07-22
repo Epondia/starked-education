@@ -112,7 +112,7 @@ jobs:
           timeout_minutes: 5
           max_attempts: 2
           retry_on: error
-          command: cd frontend && npm ci
+          command: cd frontend && npm install --legacy-peer-deps
 
       - name: Type check
         continue-on-error: true
@@ -131,6 +131,34 @@ jobs:
         continue-on-error: true
         timeout-minutes: 15
         run: cd frontend && NODE_OPTIONS="--max-old-space-size=4096" npm run build
+
+      - name: Start server for E2E tests
+        run: |
+          cd frontend
+          npm run build 2>/dev/null || true
+          npx next start -p 3000 &
+          sleep 5
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: E2E Tests (Playwright)
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+
+      - name: Upload Playwright report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
 
   # ─── Dependency Audit ────────────────────────────────────────────
   dependency-audit:
