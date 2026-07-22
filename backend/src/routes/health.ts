@@ -22,6 +22,7 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
 import { checkDatabaseConnectivity, DependencyHealth } from '../utils/database';
+import { getCompressionStats } from '../middleware/compression';
 
 const router: Router = Router();
 
@@ -200,6 +201,7 @@ router.get('/', async (req: Request, res: Response) => {
       version: packageJson.version,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
+      compression: getCompressionStats(),
       memory: {
         heapUsed: memory.heapUsed,
         heapTotal: memory.heapTotal,
@@ -235,6 +237,7 @@ router.get('/', async (req: Request, res: Response) => {
       version: packageJson.version,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
+      compression: getCompressionStats(),
       memory: {
         heapUsed: 0,
         heapTotal: 0,
