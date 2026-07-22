@@ -14,6 +14,7 @@ const SecureRealtimeCommunication = require('./services/secureRealtimeCommunicat
 const transactionQueue = require('./services/transactionQueue');
 const transactionProcessor = require('./workers/transactionProcessor');
 const transactionEvents = require('./events/transactionEvents');
+const emailWorker = require('./workers/emailWorker');
 
 // Import security middleware
 const {
@@ -179,6 +180,10 @@ v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
 const adminRoutes = require('./routes/admin');
 v1Router.use('/admin', adminRoutes);
 
+// Admin jobs monitoring dashboard (email queue + worker stats for #178)
+const adminJobsRoutes = resolveRoute(require('./routes/admin/jobs'));
+v1Router.use('/admin/jobs', adminJobsRoutes);
+
 // Mount v1 router at /api/v1
 app.use('/api/v1', v1Router);
 
@@ -234,6 +239,7 @@ async function startServer() {
     await transactionQueue.startProcessing();
     await transactionProcessor.start();
     await transactionEvents.startListening();
+    emailWorker.getEmailWorker().start();
 
     server.listen(PORT, () => {
       console.log(`🚀 StarkEd Education Backend running on port ${PORT}`);
@@ -259,6 +265,7 @@ async function startServer() {
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
+  emailWorker.getEmailWorker().stop();
   await transactionQueue.stopProcessing();
   await transactionProcessor.stop();
   await transactionEvents.stopListening();
