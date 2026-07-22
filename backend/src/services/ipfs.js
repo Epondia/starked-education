@@ -43,10 +43,18 @@ class IpfsService {
    */
   async uploadFile(file, user = null, options = {}) {
     try {
-      // Validate file
-      const validation = validateFile(file);
+      // Check for admin bypass
+      const isAdmin = user && (user.role === 'admin' || user.isAdmin === true);
+      const bypassValidation = options.bypassValidation === true || 
+        (isAdmin && ipfsConfig.adminBypassValidation === true);
+      
+      // Validate file with optional admin bypass
+      const validation = validateFile(file, { bypassValidation });
       if (!validation.isValid) {
-        throw createIpfsError('File validation failed', 'upload', { errors: validation.errors });
+        throw createIpfsError('File validation failed', 'upload', { 
+          errors: validation.errors,
+          details: validation.details 
+        });
       }
 
       // Create metadata
