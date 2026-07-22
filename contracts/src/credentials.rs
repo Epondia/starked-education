@@ -588,7 +588,10 @@ pub fn remove_signer_from_multi_sig(
     }
 
     let new_signer_count = (credential.signers.len() - 1) as u32;
-    if credential.threshold > new_signer_count && new_signer_count > 0 {
+    if new_signer_count == 0 {
+        panic!("Cannot remove the last signer from a credential");
+    }
+    if credential.threshold > new_signer_count {
         panic!("Cannot remove signer: threshold would exceed remaining signer count");
     }
 

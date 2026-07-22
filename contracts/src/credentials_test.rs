@@ -1309,6 +1309,45 @@ fn test_rotate_signer_duplicate_rejected() {
     assert!(result.is_err());
 }
 
+/// Test: Removing the last signer from a credential is rejected
+#[test]
+fn test_remove_last_signer_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let signers = Vec::from_array(&env, [signer1.clone()]);
+
+    // 1-of-1 credential with a single signer
+    let cred_id = create_multi_sig_credential(
+        &env,
+        admin.clone(),
+        signers,
+        1,
+        recipient.clone(),
+        String::from_str(&env, "Single Signer Cred"),
+        String::from_str(&env, "Should not be able to remove only signer"),
+        String::from_str(&env, "single-001"),
+        String::from_str(&env, "ipfs://QmSingle"),
+    );
+
+    // Attempt to remove the only signer
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        remove_signer_from_multi_sig(&env, cred_id, admin.clone(), signer1.clone());
+    }));
+    assert!(result.is_err());
+
+    // Signer count unchanged
+    assert_eq!(get_multi_sig_credential(&env, cred_id).signers.len(), 1);
+}
+
 /// Test: Non-admin cannot manage signers
 #[test]
 fn test_signer_management_only_admin() {
