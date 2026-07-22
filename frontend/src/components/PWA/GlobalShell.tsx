@@ -27,20 +27,28 @@ const GlobalPWA = dynamic(
 // ThemeToggle reads localStorage and matchMedia — must be client-only.
 const ThemeToggle = dynamic(() => import('../ui/ThemeToggle'), { ssr: false });
 
+// GlobalSearch is client-only (uses window, debounce, API calls)
+const GlobalSearch = dynamic(() => import('../GlobalSearch').then((m) => m.GlobalSearch), { ssr: false });
+
 export const GlobalShell: React.FC = () => {
   return (
     <>
       <GlobalPWA />
-      {/* Fixed top-right strip: ThemeToggle + LanguageSwitcher.
-          gap-2 keeps them from overlapping; z-40 sits above most content. */}
+      {/* Fixed top strip: GlobalSearch (left) + ThemeToggle + LanguageSwitcher (right).
+          z-40 sits above most content. */}
       <div
-        className="fixed top-2 right-2 z-40 flex items-center gap-2"
+        className="fixed top-2 left-2 right-2 z-40 flex items-center justify-between gap-2"
         style={{ pointerEvents: 'auto' }}
         role="region"
         aria-label="Page controls"
       >
-        <ThemeToggle />
-        <LanguageSwitcher variant="compact" />
+        <div className="flex items-center gap-2">
+          <GlobalSearch />
+        </div>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <LanguageSwitcher variant="compact" />
+        </div>
       </div>
     </>
   );
