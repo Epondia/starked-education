@@ -7,6 +7,7 @@ pub enum EventType {
     CourseCompletion,
     CredentialIssuance,
     CredentialRenewed,
+    CredentialRevoked,   // NEW: on-chain revocation
     UserAchievement,
     ProfileUpdate,
     CourseEnrollment,
@@ -112,6 +113,44 @@ impl EventLoggerContract {
         env.events().publish(
             (symbol_short!("cred"), symbol_short!("issued")),
             (user, credential_id, event_id),
+        );
+
+        event_id
+    }
+
+    /// Log a credential revocation event.
+    ///
+    /// # Arguments
+    /// * `revoker`       – the address that performed the revocation
+    /// * `credential_id` – the credential that was revoked
+    /// * `reason_code`   – packed u8 matching the `RevocationReason` enum
+    /// * `timestamp`     – ledger timestamp of the revocation
+    /// * `metadata`      – optional JSON string with extra context (e.g. reason_str)
+    pub fn log_credential_revocation(
+        env: Env,
+        revoker: Address,
+        credential_id: u64,
+        reason_code: u32,   // u32 because Soroban SDK exposes integers as u32 in contract args
+        timestamp: u64,
+        metadata: String,
+    ) -> u64 {
+        // In production, require admin/revoker auth
+        // revoker.require_auth();
+
+        let event_id = Self::create_event(
+            env.clone(),
+            EventType::CredentialRevoked,
+            revoker.clone(),
+            None,
+            Some(credential_id),
+            None,
+            metadata,
+        );
+
+        // Emit CredentialRevoked notification
+        env.events().publish(
+            (symbol_short!("cred"), symbol_short!("revoked")),
+            (revoker, credential_id, reason_code as u8, timestamp, event_id),
         );
 
         event_id

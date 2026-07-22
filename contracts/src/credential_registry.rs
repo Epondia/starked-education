@@ -1,5 +1,5 @@
 use crate::utils::storage::{EntityType, StorageUtils};
-use soroban_sdk::{contracttype, panic_with_error, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
 
 /// Credential status enumeration
 #[contracttype]
@@ -32,6 +32,68 @@ impl CredentialStatus {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  Revocation Types
+// ═══════════════════════════════════════════════════════════════════
+
+/// Reason codes for credential revocation — stored as u8 for gas efficiency.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RevocationReason {
+    AdministrativeError = 0,
+    AcademicDishonesty  = 1,
+    DataCorrection      = 2,
+    VoluntarySurrender  = 3,
+    Other               = 4,
+}
+
+impl RevocationReason {
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            RevocationReason::AdministrativeError => 0,
+            RevocationReason::AcademicDishonesty  => 1,
+            RevocationReason::DataCorrection      => 2,
+            RevocationReason::VoluntarySurrender  => 3,
+            RevocationReason::Other               => 4,
+        }
+    }
+
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            0 => RevocationReason::AdministrativeError,
+            1 => RevocationReason::AcademicDishonesty,
+            2 => RevocationReason::DataCorrection,
+            3 => RevocationReason::VoluntarySurrender,
+            _ => RevocationReason::Other,
+        }
+    }
+}
+
+/// Immutable revocation record, written once.
+/// Uses u8 for reason code and u64 for timestamp to minimise storage cost.
+#[contracttype]
+#[derive(Clone)]
+pub struct RegistryRevocationRecord {
+    /// Unix timestamp packed as u64
+    pub timestamp:   u64,
+    /// Reason packed as u8
+    pub reason_code: u8,
+    /// Optional human-readable note — callers must cap at 256 bytes
+    pub reason_str:  Option<String>,
+    /// Address that performed the revocation
+    pub revoker:     Address,
+}
+
+/// Return type for `verify_credential` in the registry
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RegistryVerificationResult {
+    Valid,
+    Expired,
+    Revoked { reason_code: u8, timestamp: u64 },
+    Pending,
+}
+
 /// Enhanced credential with expiration support
 #[contracttype]
 #[derive(Clone)]
@@ -56,7 +118,8 @@ pub enum CredentialRegistryKey {
     UserCredentials(Address),
     CredentialCount,
     ExpiredCredentials,
-    RenewalHistory(u64), // credential_id -> Vec<RenewalRecord>
+    RenewalHistory(u64),   // credential_id -> Vec<RenewalRecord>
+    RevocationHistory(u64), // credential_id -> RegistryRevocationRecord
 }
 
 /// Renewal record for tracking credential renewals
@@ -328,8 +391,43 @@ pub fn get_renewal_history(env: &Env, credential_id: u64) -> Vec<RenewalRecord> 
         .unwrap_or_else(|| Vec::new(env))
 }
 
-/// Revoke a credential
-pub fn revoke_credential(env: &Env, credential_id: u64, revoker: Address) -> bool {
+/// Verify a credential in the registry — returns a `RegistryVerificationResult`.
+pub fn verify_credential(env: &Env, credential_id: u64) -> RegistryVerificationResult {
+    // Trigger lazy expiration check
+    let status = check_credential_expiration(env, credential_id);
+
+    match status {
+        CredentialStatus::Revoked => {
+            let record: RegistryRevocationRecord = env
+                .storage()
+                .persistent()
+                .get(&CredentialRegistryKey::RevocationHistory(credential_id))
+                .unwrap_or_else(|| panic!("Revocation record missing for revoked credential"));
+            RegistryVerificationResult::Revoked {
+                reason_code: record.reason_code,
+                timestamp:   record.timestamp,
+            }
+        }
+        CredentialStatus::Expired  => RegistryVerificationResult::Expired,
+        CredentialStatus::Pending  => RegistryVerificationResult::Pending,
+        CredentialStatus::Active   => RegistryVerificationResult::Valid,
+    }
+}
+
+/// Revoke a credential with a structured reason.
+///
+/// Only the **original issuer** or the **contract admin** may call this.
+/// Revocation is **irreversible** — calling on an already-revoked credential panics.
+///
+/// # Emits
+/// `CredentialRevoked` event: `(credential_id, revoker, reason_code u8, timestamp u64)`.
+pub fn revoke_credential(
+    env:           &Env,
+    credential_id: u64,
+    revoker:       Address,
+    reason:        RevocationReason,
+    reason_str:    Option<String>,
+) -> bool {
     revoker.require_auth();
 
     let admin: Address = env
@@ -338,15 +436,24 @@ pub fn revoke_credential(env: &Env, credential_id: u64, revoker: Address) -> boo
         .get(&Symbol::new(env, "admin"))
         .unwrap_or_else(|| panic!("Admin not found"));
 
-    if revoker != admin {
-        panic!("Only admin can revoke credentials");
-    }
-
     let mut credential: CredentialRegistry = env
         .storage()
         .persistent()
         .get(&CredentialRegistryKey::Credential(credential_id))
         .unwrap_or_else(|| panic!("Credential not found"));
+
+    // Authorization: original issuer OR admin
+    if revoker != credential.issuer && revoker != admin {
+        panic!("Unauthorized: only the original issuer or admin can revoke credentials");
+    }
+
+    // Revocation is irreversible
+    if credential.status == CredentialStatus::Revoked {
+        panic!("AlreadyRevoked");
+    }
+
+    let revocation_time = env.ledger().timestamp();
+    let reason_code     = reason.to_u8();
 
     credential.status = CredentialStatus::Revoked;
     env.storage().persistent().set(
@@ -354,13 +461,42 @@ pub fn revoke_credential(env: &Env, credential_id: u64, revoker: Address) -> boo
         &credential,
     );
 
-    // Emit revocation event
+    // Write the full revocation record
+    let record = RegistryRevocationRecord {
+        timestamp:   revocation_time,
+        reason_code,
+        reason_str:  reason_str.clone(),
+        revoker:     revoker.clone(),
+    };
+    env.storage().persistent().set(
+        &CredentialRegistryKey::RevocationHistory(credential_id),
+        &record,
+    );
+
+    // Emit CredentialRevoked event
     env.events().publish(
         (Symbol::new(env, "credential"), Symbol::new(env, "revoked")),
-        (credential_id, revoker),
+        (credential_id, revoker, reason_code, revocation_time),
     );
 
     true
+}
+
+/// Return the `RegistryRevocationRecord` for a credential, or `None` if not revoked.
+pub fn get_revocation_history(
+    env:           &Env,
+    credential_id: u64,
+) -> Option<RegistryRevocationRecord> {
+    // Confirm credential exists first
+    let _: CredentialRegistry = env
+        .storage()
+        .persistent()
+        .get(&CredentialRegistryKey::Credential(credential_id))
+        .unwrap_or_else(|| panic!("Credential not found"));
+
+    env.storage()
+        .persistent()
+        .get(&CredentialRegistryKey::RevocationHistory(credential_id))
 }
 
 /// Get credential count
@@ -674,8 +810,14 @@ pub fn get_multi_sig_credential_count(env: &Env) -> u64 {
         .unwrap_or(0)
 }
 
-/// Revoke a multi-sig credential
-pub fn revoke_multi_sig_credential(env: &Env, credential_id: u64, revoker: Address) -> bool {
+/// Revoke a multi-sig credential with a structured reason.
+pub fn revoke_multi_sig_credential(
+    env:           &Env,
+    credential_id: u64,
+    revoker:       Address,
+    reason:        RevocationReason,
+    reason_str:    Option<String>,
+) -> bool {
     revoker.require_auth();
 
     let admin: Address = env
@@ -685,7 +827,7 @@ pub fn revoke_multi_sig_credential(env: &Env, credential_id: u64, revoker: Addre
         .unwrap_or_else(|| panic!("Admin not found"));
 
     if revoker != admin {
-        panic!("Only admin can revoke credentials");
+        panic!("Only admin can revoke multi-sig credentials");
     }
 
     let mut credential: MultiSigCredentialRegistry = env
@@ -693,6 +835,13 @@ pub fn revoke_multi_sig_credential(env: &Env, credential_id: u64, revoker: Addre
         .persistent()
         .get(&MultiSigRegistryKey::MultiSigCredential(credential_id))
         .unwrap_or_else(|| panic!("Multi-sig credential not found"));
+
+    if credential.status == CredentialStatus::Revoked {
+        panic!("AlreadyRevoked");
+    }
+
+    let revocation_time = env.ledger().timestamp();
+    let reason_code     = reason.to_u8();
 
     credential.status = CredentialStatus::Revoked;
     env.storage().persistent().set(
@@ -705,7 +854,7 @@ pub fn revoke_multi_sig_credential(env: &Env, credential_id: u64, revoker: Addre
             Symbol::new(env, "multi_sig_registry"),
             Symbol::new(env, "revoked"),
         ),
-        (credential_id, revoker),
+        (credential_id, revoker, reason_code, revocation_time),
     );
 
     true
