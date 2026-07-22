@@ -6,6 +6,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { UserRole } from '../models/User';
+import { auditLogService } from '../services/auditLogService';
 
 export interface AuthenticatedRequest extends Request {
   user: {
@@ -26,7 +27,13 @@ export const authMiddleware = async (
     const token = req.header('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
-      return res.status(401).json({ error: 'Access denied. No token provided.' });
+      return    auditLogService.logFailedAuth(
+      'anonymous',
+      { reason: 'No token provided' },
+      req.ip,
+      req.headers['user-agent']
+    ).catch(() => {});
+    res.status(401).json({ error: 'Access denied. No token provided.' });
     }
 
     const jwtSecret = process.env.JWT_SECRET;
@@ -46,6 +53,12 @@ export const authMiddleware = async (
 
     next();
   } catch (error) {
+    auditLogService.logFailedAuth(
+      'anonymous',
+      { reason: (error as any)?.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token' },
+      req.ip,
+      req.headers['user-agent']
+    ).catch(() => {});
     res.status(401).json({ error: 'Invalid token.' });
   }
 };

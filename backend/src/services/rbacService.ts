@@ -1,5 +1,6 @@
 import { UserRole, ROLE_PERMISSIONS, ROLE_HIERARCHY } from '../utils/roles';
 import { clearCachedPermissions } from '../utils/redis';
+import { auditLogService } from './auditLogService';
 import logger from '../utils/logger';
 
 /**
@@ -11,9 +12,18 @@ class RBACService {
    * @param adminId - ID of the admin performing the action
    * @param userId - ID of the user to assign the role to
    * @param newRole - The role to assign
+   * @param oldRole - The user's previous role (for audit trail)
+   * @param ipAddress - IP of the admin for audit trail
    * @returns - The update results
    */
-  async assignRole(adminId: string, userId: string, newRole: string): Promise<any> {
+  async assignRole(
+    adminId: string,
+    userId: string,
+    newRole: string,
+    adminRole: string = 'admin',
+    oldRole?: string,
+    ipAddress?: string
+  ): Promise<any> {
     try {
       if (!Object.values(UserRole).includes(newRole as any)) {
         throw new Error(`Invalid role: ${newRole}`);
@@ -25,10 +35,19 @@ class RBACService {
       // 2. Clear permission cache to ensure immediate effect
       await clearCachedPermissions(userId);
 
-      // 3. Log to Audit (Mocked for now)
-      await this.logPermissionChange(adminId, userId, 'role_assignment', {
-        newRole,
-        timestamp: new Date().toISOString()
+      // 3. Create tamper-evident audit log entry with the admin's actual role
+      await auditLogService.logRoleChange(
+        adminId,
+        adminRole,
+        userId,
+        {
+          oldRole: oldRole || 'unknown',
+          newRole,
+        },
+        ipAddress
+      ).catch(err => {
+        // Don't fail the role assignment if audit logging fails
+        logger.error('Failed to create audit log entry for role change:', err);
       });
 
       return { userId, role: newRole, success: true };
@@ -57,18 +76,29 @@ class RBACService {
   }
 
   /**
-   * Log permission changes for audit purposes
+   * Log permission changes for audit purposes.
+   * Now delegates to the tamper-evident auditLogService.
    */
-  async logPermissionChange(executorId: string, targetId: string, action: string, details: any): Promise<void> {
-    const logEntry = {
+  async logPermissionChange(
+    executorId: string,
+    targetId: string,
+    action: string,
+    details: any,
+    ipAddress?: string
+  ): Promise<void> {
+    await auditLogService.logPermissionChange(
       executorId,
+      'admin',
       targetId,
-      action,
-      details,
-      timestamp: new Date().toISOString()
-    };
-    
-    logger.info(`[AUDIT] Permission Change: ${JSON.stringify(logEntry)}`);
+      {
+        action: action.includes('grant') ? 'grant' : 'revoke',
+        permission: action,
+        ...details,
+      },
+      ipAddress
+    ).catch(err => {
+      logger.error('[AUDIT] Failed to log permission change:', err);
+    });
   }
 }
 
