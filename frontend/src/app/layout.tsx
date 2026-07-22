@@ -5,6 +5,7 @@ import './globals.css';
 import { performanceMonitor } from '@/lib/performance-monitor';
 import { GlobalShell } from '@/components/PWA/GlobalShell';
 import { CommandPalette } from '@/components/ui/command-palette';
+import RouteAnnouncer from '@/components/accessibility/RouteAnnouncer';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -49,8 +50,32 @@ export default function RootLayout({
           storageKey="starked-theme"
           disableTransitionOnChange={false}
         >
+          {/*
+           * WCAG 2.4.1 — Skip navigation link.
+           * Visually hidden until focused; jumps keyboard users past global chrome.
+           * The target #main-content is set on the <main> landmark below.
+           */}
+          <a href="#main-content" className="skip-link">
+            Skip to main content
+          </a>
+
           <GlobalShell />
-          {children}
+
+          {/*
+           * Single canonical <main> landmark for the App Router.
+           * Admin sub-layout must NOT nest another <main>; it uses
+           * role="region" + aria-label instead.
+           * tabIndex={-1} lets the skip-link move focus programmatically.
+           */}
+          <main id="main-content" tabIndex={-1} className="focus:outline-none">
+            {children}
+          </main>
+
+          {/*
+           * WCAG 4.1.3 — Route-change announcements for screen readers.
+           * Politely announces the new pathname on every client-side navigation.
+           */}
+          <RouteAnnouncer />
         </ThemeProvider>
       </body>
     </html>

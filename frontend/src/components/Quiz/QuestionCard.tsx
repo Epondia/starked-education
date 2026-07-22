@@ -24,7 +24,16 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const renderMCQ = () => {
     const options = (question.options || []) as (string | { id: string, text: string })[];
     return (
-      <div className="space-y-3">
+      /*
+       * WCAG 1.3.1, 4.1.2 — Use role="radiogroup" so assistive technologies
+       * understand that these buttons form a mutually-exclusive choice group.
+       * Each option uses role="radio" + aria-checked rather than a plain button.
+       */
+      <div
+        role="radiogroup"
+        aria-labelledby={`question-label-${question.id}`}
+        className="space-y-3"
+      >
         {options.map((option, index) => {
           const optionText = typeof option === 'string' ? option : option.text;
           const optionId = typeof option === 'string' ? index : option.id;
@@ -33,6 +42,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           return (
             <button
               key={index}
+              role="radio"
+              aria-checked={isSelected}
               onClick={() => onChange(optionId)}
               className={`w-full text-left p-4 rounded-lg border transition-all duration-200 ${
                 isSelected
@@ -42,11 +53,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             >
               <div className="flex items-center">
                 <div
-                  className={`w-6 h-6 rounded-full border flex items-center justify-center mr-3 ${
+                  className={`w-6 h-6 rounded-full border flex items-center justify-center mr-3 flex-shrink-0 ${
                     isSelected
                       ? 'border-blue-500 bg-blue-500 text-white'
                       : 'border-gray-400 text-gray-400'
                   }`}
+                  aria-hidden="true"
                 >
                   {isSelected && <div className="w-2 h-2 bg-white rounded-full" />}
                 </div>
@@ -64,18 +76,20 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       value={answer || ''}
       onChange={(e) => onChange(e.target.value)}
       placeholder="Write your answer here..."
+      aria-label={`Answer to: ${question.question}`}
       className="w-full min-h-[200px] p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
     />
   );
 
   const renderCode = () => (
     <div className="space-y-4">
-      <div className="p-3 bg-gray-100 dark:bg-gray-900 rounded-md text-sm font-mono text-gray-600 dark:text-gray-400">
+      <div className="p-3 bg-gray-100 dark:bg-gray-900 rounded-md text-sm font-mono text-gray-600 dark:text-gray-400" aria-hidden="true">
         // Write your code solution here
       </div>
       <textarea
         value={answer || question.codeTemplate || ''}
         onChange={(e) => onChange(e.target.value)}
+        aria-label={`Code answer to: ${question.question}`}
         className="w-full min-h-[300px] p-4 rounded-lg bg-gray-950 text-emerald-400 font-mono text-sm border-none focus:ring-2 focus:ring-emerald-500 focus:outline-none"
         spellCheck="false"
       />
@@ -86,7 +100,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     <div className="space-y-4">
       {question.imageUrl && (
         <div className="mb-4 overflow-hidden rounded-lg">
-          <img src={question.imageUrl} alt="Question Context" className="max-w-full h-auto object-cover hover:scale-105 transition-transform duration-500" />
+          {/* Descriptive alt is required; fall back to question text if no dedicated alt */}
+          <img
+            src={question.imageUrl}
+            alt={`Image for question: ${question.question}`}
+            className="max-w-full h-auto object-cover hover:scale-105 transition-transform duration-500"
+          />
         </div>
       )}
       {renderMCQ()}
@@ -118,10 +137,17 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   return (
     <div className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-800">
       <div className="mb-6">
-        <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mb-2 uppercase tracking-wider">
+        <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mb-2 uppercase tracking-wider" aria-hidden="true">
           {question.type.replace('-', ' ')}
         </span>
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white leading-tight">
+        {/*
+         * id matches `aria-labelledby` on the radiogroup above.
+         * h3 is appropriate here — QuizPlayer already renders an h2 for Progress.
+         */}
+        <h3
+          id={`question-label-${question.id}`}
+          className="text-xl font-bold text-gray-900 dark:text-white leading-tight"
+        >
           {question.question}
         </h3>
       </div>

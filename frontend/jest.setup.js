@@ -1,5 +1,22 @@
 import '@testing-library/jest-dom'
+import { configureAxe, toHaveNoViolations } from 'jest-axe'
 import React from 'react'
+
+// ─── jest-axe — automated WCAG 2.1 AA audit in unit tests ────────────────────
+// Adds the `toHaveNoViolations` matcher to every test file automatically.
+// Usage inside a test:
+//   const results = await axe(container)
+//   expect(results).toHaveNoViolations()
+expect.extend(toHaveNoViolations)
+
+// Default axe rules scoped to WCAG 2.1 level AA.
+// Tests can override by passing their own axe config to configureAxe().
+configureAxe({
+  rules: {
+    // Disable color-contrast in jsdom — it cannot resolve computed styles
+    'color-contrast': { enabled: false },
+  },
+})
 
 // Mock performance monitoring modules
 jest.mock('@/lib/performance-monitor', () => ({
