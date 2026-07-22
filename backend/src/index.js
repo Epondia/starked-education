@@ -11,6 +11,9 @@ const { initCollaborationService } = require('./services/initCollaboration');
 const { Redis } = require('ioredis');
 const SecureRealtimeCommunication = require('./services/secureRealtimeCommunication').default;
 
+// Import circuit breaker registry
+const { circuitBreakerRegistry } = require('./utils/circuitBreaker');
+
 const transactionQueue = require('./services/transactionQueue');
 const transactionProcessor = require('./workers/transactionProcessor');
 const transactionEvents = require('./events/transactionEvents');
@@ -231,6 +234,25 @@ const PORT = process.env.PORT || 3001;
 
 async function startServer() {
   try {
+    // Initialize circuit breakers for external services
+    console.log('🔌 Initializing circuit breakers...');
+    circuitBreakerRegistry.getOrCreate('ipfs', {
+      failureThreshold: parseInt(process.env.CB_IPFS_FAILURE_THRESHOLD) || 5,
+      timeoutWindow: parseInt(process.env.CB_IPFS_TIMEOUT) || 30000,
+      halfOpenMaxRequests: parseInt(process.env.CB_IPFS_HALF_OPEN_MAX) || 3,
+    });
+    circuitBreakerRegistry.getOrCreate('stellar', {
+      failureThreshold: parseInt(process.env.CB_STELLAR_FAILURE_THRESHOLD) || 5,
+      timeoutWindow: parseInt(process.env.CB_STELLAR_TIMEOUT) || 30000,
+      halfOpenMaxRequests: parseInt(process.env.CB_STELLAR_HALF_OPEN_MAX) || 3,
+    });
+    circuitBreakerRegistry.getOrCreate('redis', {
+      failureThreshold: parseInt(process.env.CB_REDIS_FAILURE_THRESHOLD) || 5,
+      timeoutWindow: parseInt(process.env.CB_REDIS_TIMEOUT) || 30000,
+      halfOpenMaxRequests: parseInt(process.env.CB_REDIS_HALF_OPEN_MAX) || 3,
+    });
+    console.log('✅ Circuit breakers initialized');
+
     await transactionQueue.startProcessing();
     await transactionProcessor.start();
     await transactionEvents.startListening();
