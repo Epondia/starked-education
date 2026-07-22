@@ -267,6 +267,204 @@ export function validateFile(
 }
 
 // =============================================================================
+// Form: LoginForm
+// =============================================================================
+
+export const loginSchema = z.object({
+  email: emailSchema,
+  password: z
+    .string({ message: 'Password is required' })
+    .min(1, 'Password is required'),
+  rememberMe: z.boolean().optional().default(false),
+});
+
+export type LoginFormData = z.infer<typeof loginSchema>;
+export type LoginFormDataIn = z.input<typeof loginSchema>;
+
+// =============================================================================
+// Form: RegisterForm
+// =============================================================================
+
+export const registerSchema = z
+  .object({
+    name: nameSchema,
+    email: emailSchema,
+    password: z
+      .string({ message: 'Password is required' })
+      .min(8, 'Password must be at least 8 characters')
+      .max(128, 'Password is too long')
+      .regex(/[A-Z]/u, 'Password must contain at least one uppercase letter')
+      .regex(/[a-z]/u, 'Password must contain at least one lowercase letter')
+      .regex(/\d/u, 'Password must contain at least one number'),
+    confirmPassword: z
+      .string({ message: 'Please confirm your password' })
+      .min(1, 'Please confirm your password'),
+    acceptTerms: z
+      .boolean({ message: 'You must accept the terms' })
+      .refine((v) => v === true, 'You must accept the terms and conditions'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+export type RegisterFormData = z.infer<typeof registerSchema>;
+export type RegisterFormDataIn = z.input<typeof registerSchema>;
+
+// =============================================================================
+// Form: CourseCreationForm
+// =============================================================================
+
+export const COURSE_CATEGORIES = [
+  'blockchain',
+  'programming',
+  'data-science',
+  'design',
+  'business',
+  'language',
+  'mathematics',
+  'science',
+  'arts',
+  'other',
+] as const;
+
+export type CourseCategory = (typeof COURSE_CATEGORIES)[number];
+
+export const COURSE_DIFFICULTY_LEVELS = [
+  'beginner',
+  'intermediate',
+  'advanced',
+] as const;
+
+export type CourseDifficulty = (typeof COURSE_DIFFICULTY_LEVELS)[number];
+
+export const COURSE_CURRENCIES = ['XLM', 'USDC', 'USD', 'EUR'] as const;
+
+export const courseSchema = z.object({
+  title: z
+    .string({ message: 'Course title is required' })
+    .trim()
+    .min(5, 'Title must be at least 5 characters')
+    .max(120, 'Title cannot exceed 120 characters'),
+  description: z
+    .string({ message: 'Description is required' })
+    .trim()
+    .min(20, 'Description must be at least 20 characters')
+    .max(2000, 'Description cannot exceed 2,000 characters'),
+  category: z.enum(COURSE_CATEGORIES, {
+    message: 'Please select a category',
+  }),
+  difficulty: z.enum(COURSE_DIFFICULTY_LEVELS, {
+    message: 'Please select a difficulty level',
+  }),
+  price: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,7})?$/u, 'Enter a valid price (e.g. 10 or 10.50)')
+    .refine((v) => parseFloat(v) >= 0, 'Price cannot be negative'),
+  currency: z.enum(COURSE_CURRENCIES, {
+    message: 'Please select a currency',
+  }),
+  duration: z
+    .string({ message: 'Estimated duration is required' })
+    .trim()
+    .min(1, 'Estimated duration is required')
+    .max(50, 'Duration cannot exceed 50 characters'),
+  prerequisites: z
+    .string()
+    .trim()
+    .max(500, 'Prerequisites cannot exceed 500 characters')
+    .optional()
+    .default(''),
+  tags: z
+    .string()
+    .trim()
+    .max(200, 'Tags cannot exceed 200 characters')
+    .optional()
+    .default(''),
+  isPublished: z.boolean().optional().default(false),
+});
+
+export type CourseFormData = z.infer<typeof courseSchema>;
+export type CourseFormDataIn = z.input<typeof courseSchema>;
+
+// =============================================================================
+// Form: CredentialIssuanceForm
+// =============================================================================
+
+export const CREDENTIAL_TYPES = [
+  'certificate',
+  'badge',
+  'diploma',
+  'achievement',
+  'license',
+] as const;
+
+export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
+
+export const credentialIssuanceSchema = z.object({
+  recipientName: nameSchema,
+  recipientEmail: emailSchema,
+  recipientWalletAddress: z
+    .string({ message: 'Wallet address is required' })
+    .trim()
+    .min(1, 'Wallet address is required')
+    .max(100, 'Wallet address is too long'),
+  credentialType: z.enum(CREDENTIAL_TYPES, {
+    message: 'Please select a credential type',
+  }),
+  credentialTitle: z
+    .string({ message: 'Credential title is required' })
+    .trim()
+    .min(3, 'Title must be at least 3 characters')
+    .max(100, 'Title cannot exceed 100 characters'),
+  description: z
+    .string({ message: 'Description is required' })
+    .trim()
+    .min(10, 'Description must be at least 10 characters')
+    .max(1000, 'Description cannot exceed 1,000 characters'),
+  courseId: z
+    .string()
+    .trim()
+    .max(100, 'Course ID cannot exceed 100 characters')
+    .optional()
+    .default(''),
+  issueDate: z
+    .string({ message: 'Issue date is required' })
+    .min(1, 'Issue date is required')
+    .regex(
+      /^\d{4}-\d{2}-\d{2}$/u,
+      'Use YYYY-MM-DD format',
+    )
+    .refine((v) => {
+      const d = new Date(v);
+      return !isNaN(d.getTime());
+    }, 'Please enter a valid date'),
+  expirationDate: z
+    .string()
+    .regex(
+      /^(\d{4}-\d{2}-\d{2})?$/u,
+      'Use YYYY-MM-DD format',
+    )
+    .refine((v) => {
+      if (!v) return true;
+      const d = new Date(v);
+      return !isNaN(d.getTime());
+    }, 'Please enter a valid date')
+    .optional()
+    .default(''),
+  metadata: z
+    .string()
+    .trim()
+    .max(500, 'Metadata cannot exceed 500 characters')
+    .optional()
+    .default(''),
+});
+
+export type CredentialIssuanceFormData = z.infer<typeof credentialIssuanceSchema>;
+export type CredentialIssuanceFormDataIn = z.input<typeof credentialIssuanceSchema>;
+
+// =============================================================================
 // Form: AssignmentSubmission
 // =============================================================================
 
