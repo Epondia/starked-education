@@ -1,10 +1,12 @@
 #![cfg(test)]
 
 use crate::credentials::{
-    add_multi_sig_signature, create_multi_sig_credential, get_credential, get_credential_count,
-    get_credential_status, get_multi_sig_credential, get_multi_sig_signatures, get_multi_sig_status,
-    get_user_credentials, is_multi_sig_threshold_met, issue_credential, renew_credential,
-    revoke_credential, verify_credential, CredentialStatus,
+    add_multi_sig_signature, add_signer_to_multi_sig, create_multi_sig_credential,
+    get_credential, get_credential_count, get_credential_status, get_multi_sig_credential,
+    get_multi_sig_signatures, get_multi_sig_status, get_user_credentials,
+    is_multi_sig_threshold_met, issue_credential, remove_signer_from_multi_sig,
+    renew_credential, revoke_credential, rotate_signer_in_multi_sig, verify_credential,
+    CredentialStatus,
 };
 use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol, Vec};
 
@@ -928,6 +930,437 @@ fn test_multi_sig_sign_after_activation_rejected() {
     // Third signer tries to sign after activation — should fail
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         add_multi_sig_signature(&env, cred_id, signer3.clone());
+    }));
+    assert!(result.is_err());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Multi-Signature Signer Management Tests
+// ═══════════════════════════════════════════════════════════════════
+
+/// Test: Admin can add a new signer to a pending multi-sig credential
+#[test]
+fn test_add_signer_to_pending_multi_sig() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+    let new_signer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
+
+    let cred_id = create_multi_sig_credential(
+        &env,
+        admin.clone(),
+        signers,
+        2,
+        recipient.clone(),
+        String::from_str(&env, "MSc Biology"),
+        String::from_str(&env, "Master's in Biology"),
+        String::from_str(&env, "msc-bio-2026"),
+        String::from_str(&env, "ipfs://QmMScBio"),
+    );
+
+    // Initially 2 signers
+    let cred = get_multi_sig_credential(&env, cred_id);
+    assert_eq!(cred.signers.len(), 2);
+
+    // Add a new signer
+    add_signer_to_multi_sig(&env, cred_id, admin.clone(), new_signer.clone());
+
+    // Now 3 signers
+    let cred = get_multi_sig_credential(&env, cred_id);
+    assert_eq!(cred.signers.len(), 3);
+    assert!(cred.signers.contains(&new_signer));
+
+    // New signer can now sign
+    add_multi_sig_signature(&env, cred_id, new_signer.clone());
+    let sigs = get_multi_sig_signatures(&env, cred_id);
+    assert_eq!(sigs.len(), 1);
+    assert!(sigs.contains(&new_signer));
+}
+
+/// Test: Cannot add duplicate signer
+#[test]
+fn test_add_signer_duplicate_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
+
+    let cred_id = create_multi_sig_credential(
+        &env,
+        admin.clone(),
+        signers,
+        2,
+        recipient.clone(),
+        String::from_str(&env, "Test Cert"),
+        String::from_str(&env, "Test"),
+        String::from_str(&env, "cert-001"),
+        String::from_str(&env, "ipfs://QmTest"),
+    );
+
+    // Attempt to add signer1 who is already in the list
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        add_signer_to_multi_sig(&env, cred_id, admin.clone(), signer1.clone());
+    }));
+    assert!(result.is_err());
+
+    // Signer count should remain 2
+    let cred = get_multi_sig_credential(&env, cred_id);
+    assert_eq!(cred.signers.len(), 2);
+}
+
+/// Test: Cannot add signer to activated credential
+#[test]
+fn test_add_signer_to_activated_credential_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+    let new_signer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
+
+    let cred_id = create_multi_sig_credential(
+        &env,
+        admin.clone(),
+        signers,
+        2,
+        recipient.clone(),
+        String::from_str(&env, "BA English"),
+        String::from_str(&env, "Bachelor of Arts in English"),
+        String::from_str(&env, "ba-eng-2026"),
+        String::from_str(&env, "ipfs://QmBAEng"),
+    );
+
+    // Activate the credential
+    add_multi_sig_signature(&env, cred_id, signer1.clone());
+    add_multi_sig_signature(&env, cred_id, signer2.clone());
+    assert!(is_multi_sig_threshold_met(&env, cred_id));
+
+    // Attempt to add signer after activation
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        add_signer_to_multi_sig(&env, cred_id, admin.clone(), new_signer.clone());
+    }));
+    assert!(result.is_err());
+}
+
+/// Test: Admin can remove a signer from a pending multi-sig credential
+#[test]
+fn test_remove_signer_from_pending_multi_sig() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+    let signer3 = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let signers = Vec::from_array(&env, [
+        signer1.clone(),
+        signer2.clone(),
+        signer3.clone(),
+    ]);
+
+    let cred_id = create_multi_sig_credential(
+        &env,
+        admin.clone(),
+        signers,
+        2,
+        recipient.clone(),
+        String::from_str(&env, "BSc Physics"),
+        String::from_str(&env, "Bachelor of Science in Physics"),
+        String::from_str(&env, "bsc-phy-2026"),
+        String::from_str(&env, "ipfs://QmBScPhy"),
+    );
+
+    // Initially 3 signers
+    assert_eq!(get_multi_sig_credential(&env, cred_id).signers.len(), 3);
+
+    // Remove signer3
+    remove_signer_from_multi_sig(&env, cred_id, admin.clone(), signer3.clone());
+
+    // Now 2 signers
+    let cred = get_multi_sig_credential(&env, cred_id);
+    assert_eq!(cred.signers.len(), 2);
+    assert!(!cred.signers.contains(&signer3));
+    assert!(cred.signers.contains(&signer1));
+    assert!(cred.signers.contains(&signer2));
+}
+
+/// Test: Removing a signer also removes their signature
+#[test]
+fn test_remove_signer_clears_their_signature() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+    let signer3 = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let signers = Vec::from_array(&env, [
+        signer1.clone(),
+        signer2.clone(),
+        signer3.clone(),
+    ]);
+
+    let cred_id = create_multi_sig_credential(
+        &env,
+        admin.clone(),
+        signers,
+        2,
+        recipient.clone(),
+        String::from_str(&env, "BSc Chemistry"),
+        String::from_str(&env, "Bachelor of Science in Chemistry"),
+        String::from_str(&env, "bsc-chem-2026"),
+        String::from_str(&env, "ipfs://QmBScChem"),
+    );
+
+    // Signer3 signs
+    add_multi_sig_signature(&env, cred_id, signer3.clone());
+    assert_eq!(get_multi_sig_signatures(&env, cred_id).len(), 1);
+
+    // Remove signer3
+    remove_signer_from_multi_sig(&env, cred_id, admin.clone(), signer3.clone());
+
+    // Signature should be cleared
+    let sigs = get_multi_sig_signatures(&env, cred_id);
+    assert_eq!(sigs.len(), 0);
+    assert!(!sigs.contains(&signer3));
+}
+
+/// Test: Cannot remove the last signer if threshold requires them
+#[test]
+fn test_remove_signer_violating_threshold_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
+
+    // 2-of-2 threshold means removing any signer breaks threshold
+    let cred_id = create_multi_sig_credential(
+        &env,
+        admin.clone(),
+        signers,
+        2,
+        recipient.clone(),
+        String::from_str(&env, "BSc Math"),
+        String::from_str(&env, "Bachelor of Science in Math"),
+        String::from_str(&env, "bsc-math-2026"),
+        String::from_str(&env, "ipfs://QmBScMath"),
+    );
+
+    // Attempt to remove signer1 when threshold=2 and signers=2
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        remove_signer_from_multi_sig(&env, cred_id, admin.clone(), signer1.clone());
+    }));
+    assert!(result.is_err());
+
+    // Signer count unchanged
+    assert_eq!(get_multi_sig_credential(&env, cred_id).signers.len(), 2);
+}
+
+/// Test: Admin can rotate (replace) a signer on a pending multi-sig credential
+#[test]
+fn test_rotate_signer_on_pending_multi_sig() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+    let signer3 = Address::generate(&env);
+    let new_signer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let signers = Vec::from_array(&env, [
+        signer1.clone(),
+        signer2.clone(),
+        signer3.clone(),
+    ]);
+
+    let cred_id = create_multi_sig_credential(
+        &env,
+        admin.clone(),
+        signers,
+        2,
+        recipient.clone(),
+        String::from_str(&env, "BSc Economics"),
+        String::from_str(&env, "Bachelor of Science in Economics"),
+        String::from_str(&env, "bsc-econ-2026"),
+        String::from_str(&env, "ipfs://QmBScEcon"),
+    );
+
+    // Signer3 signs, then rotate signer3 out
+    add_multi_sig_signature(&env, cred_id, signer3.clone());
+    assert_eq!(get_multi_sig_signatures(&env, cred_id).len(), 1);
+
+    rotate_signer_in_multi_sig(
+        &env,
+        cred_id,
+        admin.clone(),
+        signer3.clone(),
+        new_signer.clone(),
+    );
+
+    // Old signer gone, new signer present
+    let cred = get_multi_sig_credential(&env, cred_id);
+    assert_eq!(cred.signers.len(), 3);
+    assert!(!cred.signers.contains(&signer3));
+    assert!(cred.signers.contains(&new_signer));
+
+    // Old signature cleared
+    let sigs = get_multi_sig_signatures(&env, cred_id);
+    assert_eq!(sigs.len(), 0);
+
+    // New signer can now sign
+    let result = add_multi_sig_signature(&env, cred_id, new_signer.clone());
+    assert!(!result); // Still need one more
+    assert_eq!(get_multi_sig_signatures(&env, cred_id).len(), 1);
+}
+
+/// Test: Cannot rotate if new signer is already in the list
+#[test]
+fn test_rotate_signer_duplicate_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
+
+    let cred_id = create_multi_sig_credential(
+        &env,
+        admin.clone(),
+        signers,
+        2,
+        recipient.clone(),
+        String::from_str(&env, "Test Cert"),
+        String::from_str(&env, "Test"),
+        String::from_str(&env, "cert-rot-001"),
+        String::from_str(&env, "ipfs://QmRot"),
+    );
+
+    // Try to rotate signer1 -> signer2 (signer2 already exists)
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        rotate_signer_in_multi_sig(
+            &env,
+            cred_id,
+            admin.clone(),
+            signer1.clone(),
+            signer2.clone(),
+        );
+    }));
+    assert!(result.is_err());
+}
+
+/// Test: Non-admin cannot manage signers
+#[test]
+fn test_signer_management_only_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let non_admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+    let new_signer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
+
+    let cred_id = create_multi_sig_credential(
+        &env,
+        admin.clone(),
+        signers,
+        2,
+        recipient.clone(),
+        String::from_str(&env, "Test Cert"),
+        String::from_str(&env, "Test"),
+        String::from_str(&env, "cert-admin-001"),
+        String::from_str(&env, "ipfs://QmAdmin"),
+    );
+
+    // Non-admin tries to add signer
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        add_signer_to_multi_sig(&env, cred_id, non_admin.clone(), new_signer.clone());
+    }));
+    assert!(result.is_err());
+
+    // Non-admin tries to remove signer
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        remove_signer_from_multi_sig(&env, cred_id, non_admin.clone(), signer1.clone());
+    }));
+    assert!(result.is_err());
+
+    // Non-admin tries to rotate signer
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        rotate_signer_in_multi_sig(
+            &env,
+            cred_id,
+            non_admin.clone(),
+            signer1.clone(),
+            new_signer.clone(),
+        );
     }));
     assert!(result.is_err());
 }

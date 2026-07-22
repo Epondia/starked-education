@@ -486,6 +486,244 @@ pub fn get_multi_sig_signatures(env: &Env, credential_id: u64) -> Vec<Address> {
         .unwrap_or_else(|| Vec::new(env))
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  Multi-Signature Signer Management
+// ═══════════════════════════════════════════════════════════════════
+
+/// Add a new signer to an existing multi-sig credential (admin only, pending state only)
+///
+/// The credential must not yet be activated. The new signer must not already
+/// be in the signer list. After adding, the credential's threshold remains
+/// unchanged, so if it was previously met, the credential won't automatically
+/// deactivate — but a re-check ensures the threshold is still valid relative
+/// to the new signer count.
+pub fn add_signer_to_multi_sig(
+    env: &Env,
+    credential_id: u64,
+    admin: Address,
+    new_signer: Address,
+) {
+    admin.require_auth();
+
+    let stored_admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not set"));
+
+    if admin != stored_admin {
+        panic!("Only admin can manage signers");
+    }
+
+    let mut credential: MultiSigCredential = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigCred(credential_id))
+        .unwrap_or_else(|| panic!("Multi-sig credential not found"));
+
+    if credential.activated {
+        panic!("Cannot modify signers after credential is activated");
+    }
+
+    if is_authorized_signer(&credential.signers, &new_signer) {
+        panic!("Signer is already in the authorized list");
+    }
+
+    credential.signers.push_back(new_signer.clone());
+
+    // Validate threshold is still valid with new signer count
+    let new_signer_count = credential.signers.len() as u32;
+    if credential.threshold > new_signer_count {
+        panic!("Threshold exceeds signer count after adding");
+    }
+
+    env.storage()
+        .persistent()
+        .set(&MultiSigCredentialKey::MultiSigCred(credential_id), &credential);
+
+    // Emit signer added event
+    env.events().publish(
+        (
+            Symbol::new(env, "multi_sig_cred"),
+            Symbol::new(env, "signer_added"),
+        ),
+        (credential_id, new_signer),
+    );
+}
+
+/// Remove a signer from an existing multi-sig credential (admin only, pending state only)
+///
+/// Cannot remove if it would drop the signer count below the threshold.
+/// If the signer to remove has already signed, their signature is also removed.
+pub fn remove_signer_from_multi_sig(
+    env: &Env,
+    credential_id: u64,
+    admin: Address,
+    signer_to_remove: Address,
+) {
+    admin.require_auth();
+
+    let stored_admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not set"));
+
+    if admin != stored_admin {
+        panic!("Only admin can manage signers");
+    }
+
+    let mut credential: MultiSigCredential = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigCred(credential_id))
+        .unwrap_or_else(|| panic!("Multi-sig credential not found"));
+
+    if credential.activated {
+        panic!("Cannot modify signers after credential is activated");
+    }
+
+    if !is_authorized_signer(&credential.signers, &signer_to_remove) {
+        panic!("Signer is not in the authorized list");
+    }
+
+    let new_signer_count = (credential.signers.len() - 1) as u32;
+    if credential.threshold > new_signer_count && new_signer_count > 0 {
+        panic!("Cannot remove signer: threshold would exceed remaining signer count");
+    }
+
+    // Remove from signer list
+    let mut new_signers: Vec<Address> = Vec::new(env);
+    for i in 0..credential.signers.len() {
+        let signer = credential.signers.get(i).unwrap();
+        if signer != signer_to_remove {
+            new_signers.push_back(signer);
+        }
+    }
+    credential.signers = new_signers;
+
+    // Also remove their signature if they had signed
+    let mut signatures: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigSignatures(credential_id))
+        .unwrap_or_else(|| Vec::new(env));
+
+    let mut cleaned_signatures: Vec<Address> = Vec::new(env);
+    for i in 0..signatures.len() {
+        let sig = signatures.get(i).unwrap();
+        if sig != signer_to_remove {
+            cleaned_signatures.push_back(sig);
+        }
+    }
+
+    env.storage().persistent().set(
+        &MultiSigCredentialKey::MultiSigSignatures(credential_id),
+        &cleaned_signatures,
+    );
+
+    env.storage()
+        .persistent()
+        .set(&MultiSigCredentialKey::MultiSigCred(credential_id), &credential);
+
+    // Emit signer removed event
+    env.events().publish(
+        (
+            Symbol::new(env, "multi_sig_cred"),
+            Symbol::new(env, "signer_removed"),
+        ),
+        (credential_id, signer_to_remove),
+    );
+}
+
+/// Rotate (replace) a signer on an existing multi-sig credential (admin only, pending state only)
+///
+/// Replaces `old_signer` with `new_signer`. If the old signer had already signed,
+/// their signature is removed (the new signer must sign separately).
+/// The new signer must not already be in the signer list.
+pub fn rotate_signer_in_multi_sig(
+    env: &Env,
+    credential_id: u64,
+    admin: Address,
+    old_signer: Address,
+    new_signer: Address,
+) {
+    admin.require_auth();
+
+    let stored_admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not set"));
+
+    if admin != stored_admin {
+        panic!("Only admin can manage signers");
+    }
+
+    let mut credential: MultiSigCredential = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigCred(credential_id))
+        .unwrap_or_else(|| panic!("Multi-sig credential not found"));
+
+    if credential.activated {
+        panic!("Cannot modify signers after credential is activated");
+    }
+
+    if !is_authorized_signer(&credential.signers, &old_signer) {
+        panic!("Old signer is not in the authorized list");
+    }
+
+    if is_authorized_signer(&credential.signers, &new_signer) {
+        panic!("New signer is already in the authorized list");
+    }
+
+    // Replace in signer list
+    let mut new_signers: Vec<Address> = Vec::new(env);
+    for i in 0..credential.signers.len() {
+        let signer = credential.signers.get(i).unwrap();
+        if signer == old_signer {
+            new_signers.push_back(new_signer.clone());
+        } else {
+            new_signers.push_back(signer);
+        }
+    }
+    credential.signers = new_signers;
+
+    // Remove old signer's signature if present
+    let mut signatures: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigSignatures(credential_id))
+        .unwrap_or_else(|| Vec::new(env));
+
+    let mut cleaned_signatures: Vec<Address> = Vec::new(env);
+    for i in 0..signatures.len() {
+        let sig = signatures.get(i).unwrap();
+        if sig != old_signer {
+            cleaned_signatures.push_back(sig);
+        }
+    }
+
+    env.storage().persistent().set(
+        &MultiSigCredentialKey::MultiSigSignatures(credential_id),
+        &cleaned_signatures,
+    );
+
+    env.storage()
+        .persistent()
+        .set(&MultiSigCredentialKey::MultiSigCred(credential_id), &credential);
+
+    // Emit signer rotated event
+    env.events().publish(
+        (
+            Symbol::new(env, "multi_sig_cred"),
+            Symbol::new(env, "signer_rotated"),
+        ),
+        (credential_id, old_signer, new_signer),
+    );
+}
+
 /// Check if the threshold for a multi-sig credential has been met
 pub fn is_multi_sig_threshold_met(env: &Env, credential_id: u64) -> bool {
     let credential: MultiSigCredential = env
