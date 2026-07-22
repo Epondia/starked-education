@@ -23,8 +23,6 @@ export interface CircuitBreakerConfig {
   timeoutWindow?: number;
   /** Maximum number of requests allowed in HALF_OPEN state (default: 3) */
   halfOpenMaxRequests?: number;
-  /** Time in ms to consider a successful request as resetting consecutive failures (default: 60000) */
-  successResetWindow?: number;
   /** Name of the circuit breaker for metrics/reporting */
   name?: string;
 }
@@ -70,14 +68,12 @@ export class CircuitBreaker {
   private halfOpenMaxRequests: number;
   private failureThreshold: number;
   private timeoutWindow: number;
-  private successResetWindow: number;
 
   constructor(config: CircuitBreakerConfig = {}) {
     this.name = config.name || 'default';
     this.failureThreshold = config.failureThreshold ?? 5;
     this.timeoutWindow = config.timeoutWindow ?? 30000;
     this.halfOpenMaxRequests = config.halfOpenMaxRequests ?? 3;
-    this.successResetWindow = config.successResetWindow ?? 60000;
   }
 
   /**
@@ -220,6 +216,7 @@ export class CircuitBreaker {
    * Get current circuit breaker metrics
    */
   getMetrics(): CircuitBreakerMetrics {
+    this.transitionState();
     return {
       state: this.state,
       failureCount: this.failureCount,
@@ -234,9 +231,10 @@ export class CircuitBreaker {
   }
 
   /**
-   * Get current circuit state
+   * Get current circuit state (triggers state transition first)
    */
   getState(): CircuitState {
+    this.transitionState();
     return this.state;
   }
 

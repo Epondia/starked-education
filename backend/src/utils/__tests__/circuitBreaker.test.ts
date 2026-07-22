@@ -106,7 +106,7 @@ describe('CircuitBreaker', () => {
 
       try {
         await breaker.execute(jest.fn());
-        fail('Should have thrown');
+        throw new Error('Should have thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(CircuitBreakerOpenError);
         expect(error).not.toBeInstanceOf(Error); // It IS an Error but this checks it's the specific type
