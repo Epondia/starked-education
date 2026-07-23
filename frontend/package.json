@@ -40,9 +40,9 @@
     "framer-motion": "^10.16.4",
     "i18next": "^23.7.6",
     "i18next-browser-languagedetector": "^7.2.0",
-    "i18next-fs-backend": "^2.3.1",
+    "i18next-fs-backend": "^2.6.6",
     "i18next-http-backend": "^2.4.2",
-    "i18next-http-middleware": "^3.9.6",
+    "i18next-http-middleware": "^3.9.7",
     "lucide-react": "^0.263.1",
     "matter-js": "^0.20.0",
     "next": "^14.0.0",
@@ -103,5 +103,8 @@
     "web3"
   ],
   "author": "jobbykings",
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "protobufjs": "7.6.5"
+  }
 }
