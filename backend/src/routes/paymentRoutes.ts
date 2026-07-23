@@ -9,17 +9,12 @@ import { authenticateToken, requireRole } from "../middleware/auth";
 import { UserRole } from "../models/User";
 import { validatePayment } from "../middleware/validation";
 import { rateLimit } from "express-rate-limit";
+import { paymentLimiter } from "../middleware/rateLimiter";
 
 const router: Router = express.Router();
 
-// Rate limiting for payment endpoints
-const paymentLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // limit each IP to 20 payment requests per windowMs
-  message: "Too many payment attempts, please try again later.",
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// Issue #17: 10 payment requests per minute per authenticated user.
+// Backed by a shared Redis store; falls back to IP-keying for anonymous traffic.
 
 const refundLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour

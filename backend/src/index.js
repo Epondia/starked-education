@@ -118,6 +118,12 @@ app.use((req, res, next) => {
 const healthRoutes = require('./routes/health').default || require('./routes/health');
 app.use('/health', healthRoutes);
 
+// Issue #17: Apply the global rate limit baseline AFTER /health so probes
+// bypass the limiter entirely (no Redis traffic from liveness/readiness checks).
+// Endpoint-specific limiters (loginLimiter, registerLimiter, paymentLimiter,
+// adminTierLimiter, etc.) take precedence over the global baseline.
+app.use(globalLimiter);
+
 // Apply API version extraction middleware globally
 app.use(versionExtractor);
 

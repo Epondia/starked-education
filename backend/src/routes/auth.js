@@ -3,7 +3,13 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { authenticateToken, requireAdmin, requirePermission } = require('../middleware/auth');
 const { UserRole, PERMISSIONS } = require('../utils/roles');
-const { authLimiter, readLimiter, moderateLimiter } = require('../middleware/rateLimiter');
+const {
+  authLimiter,
+  loginLimiter,
+  registerLimiter,
+  readLimiter,
+  moderateLimiter,
+} = require('../middleware/rateLimiter');
 const securityService = require('../services/securityService');
 const Joi = require('joi');
 const { validateRequestSchema } = require('../middleware/validateRequestSchema');
@@ -68,7 +74,7 @@ function generateToken(user) {
  * Register new user
  * POST /api/auth/register
  */
-router.post('/register', authLimiter, validateRequestSchema(registerSchema), async (req, res) => {
+router.post('/register', registerLimiter, validateRequestSchema(registerSchema), async (req, res) => {
   try {
     const { username, email, password, role = UserRole.STUDENT } = req.body;
 
@@ -129,7 +135,7 @@ router.post('/register', authLimiter, validateRequestSchema(registerSchema), asy
  * User login
  * POST /api/auth/login
  */
-router.post('/login', authLimiter, validateRequestSchema(loginSchema), async (req, res) => {
+router.post('/login', loginLimiter, validateRequestSchema(loginSchema), async (req, res) => {
   try {
     const { username, password } = req.body;
 
