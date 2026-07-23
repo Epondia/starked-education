@@ -27,13 +27,13 @@ export const authMiddleware = async (
     const token = req.header('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
-      return    auditLogService.logFailedAuth(
-      'anonymous',
-      { reason: 'No token provided' },
-      req.ip,
-      req.headers['user-agent']
-    ).catch(() => {});
-    res.status(401).json({ error: 'Access denied. No token provided.' });
+      auditLogService.logFailedAuth(
+        'anonymous',
+        { reason: 'No token provided' },
+        req.ip,
+        req.headers['user-agent']
+      ).catch(() => {});
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
     }
 
     const jwtSecret = process.env.JWT_SECRET;
@@ -59,7 +59,7 @@ export const authMiddleware = async (
       req.ip,
       req.headers['user-agent']
     ).catch(() => {});
-    res.status(401).json({ error: 'Invalid token.' });
+    return res.status(401).json({ error: 'Invalid token.' });
   }
 };
 
