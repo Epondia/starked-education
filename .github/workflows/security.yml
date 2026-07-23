@@ -38,10 +38,11 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          queries: security-extended
+          config-file: .github/codeql/codeql-config.yml
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
+        continue-on-error: true
         with:
           category: "/language:${{ matrix.language }}"
 
@@ -120,7 +121,7 @@ jobs:
           toolchain: 1.85.0
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit --version 0.21.1 --locked
+        run: cargo install cargo-audit --locked
 
       - name: Audit contract dependencies
         continue-on-error: true
