@@ -7,7 +7,6 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 bun.lockb
-package-lock.json
 pnpm-lock.yaml
 .next/
 out/
@@ -45,7 +44,7 @@ tsc_errors.txt
 # Rust / Soroban
 # =====================================
 target/
-Cargo.lock               # ← usually safe to commit in contracts, but ignore if you prefer
+# Cargo.lock — committed for deterministic builds
 *.wasm
 *.wasm.map
 *.optimized.wasm
