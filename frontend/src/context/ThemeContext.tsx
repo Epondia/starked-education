@@ -56,10 +56,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const isSystemPreference = storedTheme === 'system';
   const isDark = resolvedTheme === 'dark';
 
-  // Apply theme to DOM
+  // Prevent flash of wrong theme by setting class before hydration
   useEffect(() => {
     applyTheme(resolvedTheme);
-    setMounted(true);
   }, [resolvedTheme]);
 
   // Listen for system theme changes
@@ -104,11 +103,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setStoredTheme(nextTheme);
     persistTheme(nextTheme);
   }, [resolvedTheme, persistTheme]);
-
-  // Prevent flash of wrong theme by setting class before hydration
-  useEffect(() => {
-    applyTheme(resolvedTheme);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <ThemeContext.Provider

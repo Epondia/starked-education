@@ -38,7 +38,7 @@ export function SettingsPanel({
   const [settings, setSettings] = useState<Settings>(initialSettings);
   const [hasChanges, setHasChanges] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const { resolvedTheme, isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
 
   useEffect(() => {
     // Load settings from localStorage on mount
