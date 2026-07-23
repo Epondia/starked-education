@@ -175,6 +175,10 @@ v1Router.use('/translate', translationRoutes);
 const crossProtocolBridgeRoutes = resolveRoute(require('./routes/crossProtocolBridge'));
 v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
 
+// Audit Log routes (security auditing)
+const auditLogRoutes = resolveRoute(require('./routes/auditLogRoutes'));
+v1Router.use('/audit-log', auditLogRoutes);
+
 // Admin dashboard routes
 const adminRoutes = require('./routes/admin');
 v1Router.use('/admin', adminRoutes);
@@ -239,6 +243,7 @@ async function startServer() {
       console.log(`🚀 StarkEd Education Backend running on port ${PORT}`);
       console.log(`📚 Quiz Management API available at /api/v1/quizzes`);
       console.log(`📊 Event Logger API available at /api/v1/events`);
+      console.log(`🔒 Audit Log API available at /api/v1/audit-log`);
       console.log(`🔄 Sync API available at /api/v1/sync`);
       console.log(`📁 Content Management API available at /api/v1/content`);
       console.log(`💰 Transaction Queue API available at /api/v1/transactions`);

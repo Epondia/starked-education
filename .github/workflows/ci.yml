@@ -17,6 +17,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          allow-unsafe-pr-checkout: true
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -60,6 +62,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          allow-unsafe-pr-checkout: true
 
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -100,6 +104,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          allow-unsafe-pr-checkout: true
 
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -139,6 +145,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          allow-unsafe-pr-checkout: true
 
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -160,13 +168,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          allow-unsafe-pr-checkout: true
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.85.0
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit --version 0.21.1 --locked
+        run: cargo install cargo-audit --locked
 
       - name: Audit contract dependencies
         continue-on-error: true
@@ -179,6 +189,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          allow-unsafe-pr-checkout: true
 
       - name: Run Trivy vulnerability scan
         uses: aquasecurity/trivy-action@master

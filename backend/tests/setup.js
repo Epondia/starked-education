@@ -25,6 +25,18 @@ jest.mock('../src/services/ipfs', () => ({
   updateFileMetadata: jest.fn()
 }));
 
+// Mock PostgreSQL database for all tests — individual test files can override
+// the mock implementation for their specific needs via jest.mock(...).
+jest.mock('../src/utils/database', () => ({
+  query: jest.fn().mockResolvedValue({ rows: [] }),
+  getPool: jest.fn(),
+  getClient: jest.fn(),
+  closePool: jest.fn(),
+  safeQuery: jest.fn().mockResolvedValue(null),
+  checkBackupStatus: jest.fn().mockResolvedValue({ status: 'healthy', lastBackup: new Date().toISOString() }),
+  checkDatabaseConnectivity: jest.fn().mockResolvedValue({ status: 'healthy', latencyMs: 1 }),
+}));
+
 const app = require('../src/index');
 
 jest.setTimeout(60000);

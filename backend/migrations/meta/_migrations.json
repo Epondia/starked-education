@@ -1,0 +1,7 @@
+{
+  "applied": [
+    "001_init_schema.sql",
+    "002_add_analytics_indexes.sql",
+    "003_add_audit_logs.sql"
+  ]
+}
