@@ -15,6 +15,11 @@ jobs:
   # ─── CodeQL Static Analysis (SAST) ───────────────────────────────
   codeql:
     name: CodeQL (${{ matrix.language }})
+    # Only run on push to main/develop and weekly schedule — not on PRs.
+    # The "Code scanning results" check compares against the base branch
+    # and fails when no baseline exists, blocking unrelated PRs.  Once a
+    # baseline is established on main, PR scanning can be re-enabled.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -41,7 +46,6 @@ jobs:
           config-file: .github/codeql/codeql-config.yml
 
       - name: Perform CodeQL Analysis
-        continue-on-error: true
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
