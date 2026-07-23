@@ -3,7 +3,7 @@
  * Tracks user's skill acquisition progress, performance metrics, and verification status
  */
 
-import type { Skill, SkillTracking } from '../types/nanotech';
+import type { Skill, SkillTracking } from '../../types/nanotech';
 
 /**
  * Singleton instance

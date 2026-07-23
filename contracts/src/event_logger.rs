@@ -6,10 +6,23 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 pub enum EventType {
     CourseCompletion,
     CredentialIssuance,
+    CredentialRenewed,
     UserAchievement,
     ProfileUpdate,
     CourseEnrollment,
 }
+
+// Marketplace-specific events
+#[contracttype]
+#[derive(Clone)]
+pub enum MarketplaceEvent {
+    ListingCreated,
+    ListingUpdated,
+    BidPlaced,
+    SaleCompleted,
+    ListingCancelled,
+}
+
 
 #[contracttype]
 #[derive(Clone)]

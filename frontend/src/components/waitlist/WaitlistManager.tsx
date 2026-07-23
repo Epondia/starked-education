@@ -23,8 +23,8 @@ import {
   Bell,
   Settings,
   Loader2,
-  ExternalLink,
-  Info
+  ExternalLink,  Info,
+  BarChart3
 } from 'lucide-react';
 
 interface WaitlistEntry {

@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 import { EnrollmentService } from '../services/EnrollmentService';
 import { PaymentService } from '../services/PaymentService';
 import { NotificationService } from '../services/notificationService';
+import { getEmailService } from '../services/emailService';
 import { 
   Enrollment, 
   EnrollmentFilter, 
@@ -340,6 +341,33 @@ export class EnrollmentController {
           enrollment.userId,
           certificate
         );
+
+        // Send credential issued email
+        try {
+          const emailService = getEmailService();
+          const certData: any = certificate || {};
+          await emailService.sendEmail({
+            userId: enrollment.userId,
+            userEmail: (req as any).user?.email || enrollment.userId,
+            templateData: {
+              type: 'credentialIssued',
+              data: {
+                studentName: (req as any).user?.username || 'Learner',
+                credentialName: certData?.name || 'Course Credential',
+                credentialId: String(certData?.id || id),
+                courseName: enrollment.courseId,
+                issueDate: new Date().toISOString(),
+                txHash: String(certData?.txHash || ''),
+                credentialUrl: `${process.env.FRONTEND_URL || ''}/credentials/${certData?.id || id}`,
+                verifyUrl: `${process.env.FRONTEND_URL || ''}/verify/${certData?.id || id}`,
+                unsubscribeUrl: `${process.env.FRONTEND_URL || ''}/settings/notifications`,
+                privacyUrl: `${process.env.FRONTEND_URL || ''}/privacy`,
+              },
+            },
+          });
+        } catch (emailError) {
+          console.error('Failed to queue credential email:', emailError);
+        }
       }
 
       res.json({

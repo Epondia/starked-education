@@ -40,7 +40,7 @@ describe('Course API Tests', () => {
   });
 
   describe('Version Control Endpoints', () => {
-    describe('POST /api/courses/:contentId/versions', () => {
+    describe('POST /api/v1/courses/:contentId/versions', () => {
       it('should create a new version successfully', async () => {
         const mockVersion = userData.versions.validVersion;
         const createdVersion = { ...mockVersion, id: 'ver_123', createdAt: new Date() };
@@ -48,7 +48,7 @@ describe('Course API Tests', () => {
         VersionControlService.createVersion.mockResolvedValue(createdVersion);
 
         const response = await request(app)
-          .post('/api/courses/content_123/versions')
+          .post('/api/v1/courses/content_123/versions')
           .send(mockVersion);
 
         expect(response.status).toBe(201);
@@ -61,7 +61,7 @@ describe('Course API Tests', () => {
         VersionControlService.createVersion.mockRejectedValue(new Error('Creation failed'));
 
         const response = await request(app)
-          .post('/api/courses/content_123/versions')
+          .post('/api/v1/courses/content_123/versions')
           .send(userData.versions.validVersion);
 
         expect(response.status).toBe(500);
@@ -73,7 +73,7 @@ describe('Course API Tests', () => {
         const invalidVersion = userData.versions.invalidVersion;
 
         const response = await request(app)
-          .post('/api/courses/content_123/versions')
+          .post('/api/v1/courses/content_123/versions')
           .send(invalidVersion);
 
         expect(response.status).toBe(500);
@@ -81,7 +81,7 @@ describe('Course API Tests', () => {
       });
     });
 
-    describe('GET /api/courses/:contentId/versions', () => {
+    describe('GET /api/v1/courses/:contentId/versions', () => {
       it('should retrieve version history', async () => {
         const mockHistory = {
           versions: [
@@ -97,7 +97,7 @@ describe('Course API Tests', () => {
         VersionControlService.getVersionHistory.mockResolvedValue(mockHistory);
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions?page=1&limit=10');
+          .get('/api/v1/courses/content_123/versions?page=1&limit=10');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -120,7 +120,7 @@ describe('Course API Tests', () => {
         VersionControlService.getVersionHistory.mockResolvedValue(mockHistory);
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions?page=2&limit=5');
+          .get('/api/v1/courses/content_123/versions?page=2&limit=5');
 
         expect(response.status).toBe(200);
         expect(response.body.data.page).toBe(2);
@@ -131,14 +131,14 @@ describe('Course API Tests', () => {
         VersionControlService.getVersionHistory.mockRejectedValue(new Error('Database error'));
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions');
+          .get('/api/v1/courses/content_123/versions');
 
         expect(response.status).toBe(500);
         expect(response.body.success).toBe(false);
       });
     });
 
-    describe('GET /api/courses/:contentId/versions/current', () => {
+    describe('GET /api/v1/courses/:contentId/versions/current', () => {
       it('should retrieve current version', async () => {
         const mockCurrentVersion = userData.helpers.generateVersion({
           version: 3,
@@ -148,7 +148,7 @@ describe('Course API Tests', () => {
         VersionControlService.getCurrentVersion.mockResolvedValue(mockCurrentVersion);
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions/current');
+          .get('/api/v1/courses/content_123/versions/current');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -160,21 +160,21 @@ describe('Course API Tests', () => {
         VersionControlService.getCurrentVersion.mockResolvedValue(null);
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions/current');
+          .get('/api/v1/courses/content_123/versions/current');
 
         expect(response.status).toBe(404);
         expect(response.body.success).toBe(false);
       });
     });
 
-    describe('GET /api/courses/:contentId/versions/:versionNumber', () => {
+    describe('GET /api/v1/courses/:contentId/versions/:versionNumber', () => {
       it('should retrieve specific version', async () => {
         const mockVersion = userData.helpers.generateVersion({ version: 2 });
 
         VersionControlService.getVersion.mockResolvedValue(mockVersion);
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions/2');
+          .get('/api/v1/courses/content_123/versions/2');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -186,7 +186,7 @@ describe('Course API Tests', () => {
         VersionControlService.getVersion.mockRejectedValue(new Error('Invalid version'));
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions/invalid');
+          .get('/api/v1/courses/content_123/versions/invalid');
 
         expect(response.status).toBe(500);
         expect(response.body.success).toBe(false);
@@ -196,14 +196,14 @@ describe('Course API Tests', () => {
         VersionControlService.getVersion.mockResolvedValue(null);
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions/999');
+          .get('/api/v1/courses/content_123/versions/999');
 
         expect(response.status).toBe(404);
         expect(response.body.success).toBe(false);
       });
     });
 
-    describe('POST /api/courses/versions/compare/:version1Id/:version2Id', () => {
+    describe('POST /api/v1/courses/versions/compare/:version1Id/:version2Id', () => {
       it('should compare two versions successfully', async () => {
         const version1 = userData.helpers.generateVersion({ version: 1 });
         const version2 = userData.helpers.generateVersion({ version: 2 });
@@ -229,7 +229,7 @@ describe('Course API Tests', () => {
         VersionControlService.compareVersions.mockResolvedValue(mockComparison);
 
         const response = await request(app)
-          .post('/api/courses/versions/compare/ver_1/ver_2');
+          .post('/api/v1/courses/versions/compare/ver_1/ver_2');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -241,14 +241,14 @@ describe('Course API Tests', () => {
         VersionControlService.compareVersions.mockRejectedValue(new Error('Comparison failed'));
 
         const response = await request(app)
-          .post('/api/courses/versions/compare/ver_1/ver_2');
+          .post('/api/v1/courses/versions/compare/ver_1/ver_2');
 
         expect(response.status).toBe(500);
         expect(response.body.success).toBe(false);
       });
     });
 
-    describe('POST /api/courses/:contentId/versions/restore', () => {
+    describe('POST /api/v1/courses/:contentId/versions/restore', () => {
       it('should restore content to specific version', async () => {
         const restoreData = {
           versionId: 'ver_1',
@@ -265,7 +265,7 @@ describe('Course API Tests', () => {
         VersionControlService.restoreVersion.mockResolvedValue(mockRestoredContent);
 
         const response = await request(app)
-          .post('/api/courses/content_123/versions/restore')
+          .post('/api/v1/courses/content_123/versions/restore')
           .send(restoreData);
 
         expect(response.status).toBe(200);
@@ -282,7 +282,7 @@ describe('Course API Tests', () => {
         };
 
         const response = await request(app)
-          .post('/api/courses/content_123/versions/restore')
+          .post('/api/v1/courses/content_123/versions/restore')
           .send(invalidRestoreData);
 
         expect(response.status).toBe(500);
@@ -290,7 +290,7 @@ describe('Course API Tests', () => {
       });
     });
 
-    describe('PUT /api/courses/:contentId/versions/settings', () => {
+    describe('PUT /api/v1/courses/:contentId/versions/settings', () => {
       it('should update version control settings', async () => {
         const settingsData = {
           autoVersioning: true,
@@ -306,7 +306,7 @@ describe('Course API Tests', () => {
         VersionControlService.updateVersionSettings.mockResolvedValue(mockUpdatedSettings);
 
         const response = await request(app)
-          .put('/api/courses/content_123/versions/settings')
+          .put('/api/v1/courses/content_123/versions/settings')
           .send(settingsData);
 
         expect(response.status).toBe(200);
@@ -324,7 +324,7 @@ describe('Course API Tests', () => {
         VersionControlService.updateVersionSettings.mockRejectedValue(new Error('Invalid settings'));
 
         const response = await request(app)
-          .put('/api/courses/content_123/versions/settings')
+          .put('/api/v1/courses/content_123/versions/settings')
           .send(invalidSettings);
 
         expect(response.status).toBe(500);
@@ -332,7 +332,7 @@ describe('Course API Tests', () => {
       });
     });
 
-    describe('GET /api/courses/:contentId/versions/export', () => {
+    describe('GET /api/v1/courses/:contentId/versions/export', () => {
       it('should export versions as JSON', async () => {
         const mockExportData = {
           versions: [userData.versions.validVersion],
@@ -345,7 +345,7 @@ describe('Course API Tests', () => {
         VersionControlService.exportVersions.mockResolvedValue(mockExportData);
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions/export?format=json');
+          .get('/api/v1/courses/content_123/versions/export?format=json');
 
         expect(response.status).toBe(200);
         expect(response.headers['content-type']).toBe('application/json');
@@ -358,7 +358,7 @@ describe('Course API Tests', () => {
         VersionControlService.exportVersions.mockResolvedValue(mockCSVData);
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions/export?format=csv');
+          .get('/api/v1/courses/content_123/versions/export?format=csv');
 
         expect(response.status).toBe(200);
         expect(response.headers['content-type']).toBe('text/csv');
@@ -367,14 +367,14 @@ describe('Course API Tests', () => {
 
       it('should handle unsupported export format', async () => {
         const response = await request(app)
-          .get('/api/courses/content_123/versions/export?format=xml');
+          .get('/api/v1/courses/content_123/versions/export?format=xml');
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
       });
     });
 
-    describe('GET /api/courses/:contentId/versions/statistics', () => {
+    describe('GET /api/v1/courses/:contentId/versions/statistics', () => {
       it('should retrieve version statistics', async () => {
         const mockStatistics = {
           totalVersions: 5,
@@ -397,7 +397,7 @@ describe('Course API Tests', () => {
         VersionControlService.getVersionStatistics.mockResolvedValue(mockStatistics);
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions/statistics');
+          .get('/api/v1/courses/content_123/versions/statistics');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -409,7 +409,7 @@ describe('Course API Tests', () => {
         VersionControlService.getVersionStatistics.mockRejectedValue(new Error('Statistics error'));
 
         const response = await request(app)
-          .get('/api/courses/content_123/versions/statistics');
+          .get('/api/v1/courses/content_123/versions/statistics');
 
         expect(response.status).toBe(500);
         expect(response.body.success).toBe(false);
@@ -418,7 +418,7 @@ describe('Course API Tests', () => {
   });
 
   describe('Course Management Endpoints', () => {
-    describe('POST /api/courses', () => {
+    describe('POST /api/v1/courses', () => {
       it('should create a new course successfully', async () => {
         const mockCourse = userData.courses.validCourse;
         const createdCourse = { ...mockCourse, id: 'course_123', createdAt: new Date() };
@@ -426,7 +426,7 @@ describe('Course API Tests', () => {
         courseController.createCourse.mockResolvedValue(createdCourse);
 
         const response = await request(app)
-          .post('/api/courses')
+          .post('/api/v1/courses')
           .send(mockCourse);
 
         expect(response.status).toBe(201);
@@ -438,7 +438,7 @@ describe('Course API Tests', () => {
         const invalidCourse = userData.courses.invalidCourse;
 
         const response = await request(app)
-          .post('/api/courses')
+          .post('/api/v1/courses')
           .send(invalidCourse);
 
         expect(response.status).toBe(400);
@@ -446,7 +446,7 @@ describe('Course API Tests', () => {
       });
     });
 
-    describe('GET /api/courses', () => {
+    describe('GET /api/v1/courses', () => {
       it('should retrieve courses with pagination', async () => {
         const mockCourses = [
           userData.courses.validCourse,
@@ -463,7 +463,7 @@ describe('Course API Tests', () => {
         courseController.getCourses.mockResolvedValue(mockResult);
 
         const response = await request(app)
-          .get('/api/courses?page=1&limit=10&category=blockchain');
+          .get('/api/v1/courses?page=1&limit=10&category=blockchain');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -475,7 +475,7 @@ describe('Course API Tests', () => {
         courseController.getCourses.mockResolvedValue(mockResult);
 
         const response = await request(app)
-          .get('/api/courses?level=beginner&price=free');
+          .get('/api/v1/courses?level=beginner&price=free');
 
         expect(response.status).toBe(200);
         expect(courseController.getCourses).toHaveBeenCalledWith({
@@ -487,14 +487,14 @@ describe('Course API Tests', () => {
       });
     });
 
-    describe('GET /api/courses/:courseId', () => {
+    describe('GET /api/v1/courses/:courseId', () => {
       it('should retrieve specific course', async () => {
         const mockCourse = userData.courses.validCourse;
 
         courseController.getCourse.mockResolvedValue(mockCourse);
 
         const response = await request(app)
-          .get('/api/courses/course_123');
+          .get('/api/v1/courses/course_123');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -505,14 +505,14 @@ describe('Course API Tests', () => {
         courseController.getCourse.mockResolvedValue(null);
 
         const response = await request(app)
-          .get('/api/courses/nonexistent');
+          .get('/api/v1/courses/nonexistent');
 
         expect(response.status).toBe(404);
         expect(response.body.success).toBe(false);
       });
     });
 
-    describe('PUT /api/courses/:courseId', () => {
+    describe('PUT /api/v1/courses/:courseId', () => {
       it('should update course successfully', async () => {
         const updateData = { title: 'Updated Course Title' };
         const updatedCourse = { ...userData.courses.validCourse, ...updateData };
@@ -520,7 +520,7 @@ describe('Course API Tests', () => {
         courseController.updateCourse.mockResolvedValue(updatedCourse);
 
         const response = await request(app)
-          .put('/api/courses/course_123')
+          .put('/api/v1/courses/course_123')
           .send(updateData);
 
         expect(response.status).toBe(200);
@@ -532,7 +532,7 @@ describe('Course API Tests', () => {
         const invalidUpdate = { title: 'a' }; // too short
 
         const response = await request(app)
-          .put('/api/courses/course_123')
+          .put('/api/v1/courses/course_123')
           .send(invalidUpdate);
 
         expect(response.status).toBe(400);
@@ -540,12 +540,12 @@ describe('Course API Tests', () => {
       });
     });
 
-    describe('DELETE /api/courses/:courseId', () => {
+    describe('DELETE /api/v1/courses/:courseId', () => {
       it('should delete course successfully', async () => {
         courseController.deleteCourse.mockResolvedValue({ deleted: true });
 
         const response = await request(app)
-          .delete('/api/courses/course_123');
+          .delete('/api/v1/courses/course_123');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -555,14 +555,14 @@ describe('Course API Tests', () => {
         courseController.deleteCourse.mockRejectedValue(new Error('Cannot delete course'));
 
         const response = await request(app)
-          .delete('/api/courses/course_123');
+          .delete('/api/v1/courses/course_123');
 
         expect(response.status).toBe(500);
         expect(response.body.success).toBe(false);
       });
     });
 
-    describe('POST /api/courses/:courseId/enroll', () => {
+    describe('POST /api/v1/courses/:courseId/enroll', () => {
       it('should enroll student in course', async () => {
         const enrollmentData = {
           studentId: 'student_123',
@@ -578,7 +578,7 @@ describe('Course API Tests', () => {
         courseController.enrollStudent.mockResolvedValue(mockEnrollment);
 
         const response = await request(app)
-          .post('/api/courses/course_123/enroll')
+          .post('/api/v1/courses/course_123/enroll')
           .send(enrollmentData);
 
         expect(response.status).toBe(201);
@@ -590,7 +590,7 @@ describe('Course API Tests', () => {
         courseController.enrollStudent.mockRejectedValue(new Error('Already enrolled'));
 
         const response = await request(app)
-          .post('/api/courses/course_123/enroll')
+          .post('/api/v1/courses/course_123/enroll')
           .send({ studentId: 'student_123' });
 
         expect(response.status).toBe(400);
@@ -598,19 +598,19 @@ describe('Course API Tests', () => {
       });
     });
 
-    describe('DELETE /api/courses/:courseId/enroll/:studentId', () => {
+    describe('DELETE /api/v1/courses/:courseId/enroll/:studentId', () => {
       it('should unenroll student from course', async () => {
         courseController.unenrollStudent.mockResolvedValue({ unenrolled: true });
 
         const response = await request(app)
-          .delete('/api/courses/course_123/enroll/student_123');
+          .delete('/api/v1/courses/course_123/enroll/student_123');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
       });
     });
 
-    describe('GET /api/courses/:courseId/progress/:studentId', () => {
+    describe('GET /api/v1/courses/:courseId/progress/:studentId', () => {
       it('should retrieve course progress', async () => {
         const mockProgress = {
           courseId: 'course_123',
@@ -625,7 +625,7 @@ describe('Course API Tests', () => {
         courseController.getCourseProgress.mockResolvedValue(mockProgress);
 
         const response = await request(app)
-          .get('/api/courses/course_123/progress/student_123');
+          .get('/api/v1/courses/course_123/progress/student_123');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -633,7 +633,7 @@ describe('Course API Tests', () => {
       });
     });
 
-    describe('PUT /api/courses/:courseId/progress/:studentId', () => {
+    describe('PUT /api/v1/courses/:courseId/progress/:studentId', () => {
       it('should update course progress', async () => {
         const progressData = {
           completedSections: ['section1', 'section2', 'section3'],
@@ -650,7 +650,7 @@ describe('Course API Tests', () => {
         courseController.updateCourseProgress.mockResolvedValue(updatedProgress);
 
         const response = await request(app)
-          .put('/api/courses/course_123/progress/student_123')
+          .put('/api/v1/courses/course_123/progress/student_123')
           .send(progressData);
 
         expect(response.status).toBe(200);
@@ -663,7 +663,7 @@ describe('Course API Tests', () => {
   describe('Edge Cases and Error Handling', () => {
     it('should handle malformed request bodies', async () => {
       const response = await request(app)
-        .post('/api/courses')
+        .post('/api/v1/courses')
         .set('Content-Type', 'application/json')
         .send('{"invalid": json}');
 
@@ -679,8 +679,8 @@ describe('Course API Tests', () => {
         .mockResolvedValueOnce({ ...version2, id: 'ver_2' });
 
       const [response1, response2] = await Promise.all([
-        request(app).post('/api/courses/content_123/versions').send(version1),
-        request(app).post('/api/courses/content_123/versions').send(version2)
+        request(app).post('/api/v1/courses/content_123/versions').send(version1),
+        request(app).post('/api/v1/courses/content_123/versions').send(version2)
       ]);
 
       expect(response1.status).toBe(201);
@@ -693,7 +693,7 @@ describe('Course API Tests', () => {
 
       const responses = await Promise.all(
         Array(10).fill().map(() =>
-          request(app).post('/api/courses/content_123/versions').send(userData.versions.validVersion)
+          request(app).post('/api/v1/courses/content_123/versions').send(userData.versions.validVersion)
         )
       );
 
@@ -716,7 +716,7 @@ describe('Course API Tests', () => {
       courseController.createCourse.mockRejectedValue(new Error('Content too large'));
 
       const response = await request(app)
-        .post('/api/courses')
+        .post('/api/v1/courses')
         .send(largeContent);
 
       expect(response.status).toBe(400);

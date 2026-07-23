@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 import { PaymentService } from '../services/PaymentService';
 import { StellarPaymentService } from '../services/StellarPaymentService';
 import { NotificationService } from '../services/notificationService';
+import { getEmailService } from '../services/emailService';
 import { 
   Payment, 
   PaymentIntent, 
@@ -141,6 +142,52 @@ export class PaymentController {
         transaction.userId,
         transaction
       );
+
+      // Send payment receipt email
+      try {
+        const emailService = getEmailService();
+        await emailService.sendEmail({
+          userId: transaction.userId,
+          userEmail: (req as any).user?.email || transaction.userId,
+          templateData: {
+            type: 'paymentReceipt',
+            data: {
+              studentName: (req as any).user?.username || 'Learner',
+              transactionId: transaction.id || paymentIntentId,
+              amount: transaction.amount?.toString() || '0',
+              currency: transaction.currency || 'USD',
+              courseName: transaction.courseId || 'Course',
+              paymentMethod: 'Stellar',
+              paymentDate: new Date().toISOString(),
+              txHash: signedTransactionXDR?.substring(0, 64) || '',
+              receiptUrl: `${process.env.FRONTEND_URL || ''}/receipts/${transaction.id || paymentIntentId}`,
+              unsubscribeUrl: `${process.env.FRONTEND_URL || ''}/settings/notifications`,
+              privacyUrl: `${process.env.FRONTEND_URL || ''}/privacy`,
+            },
+          },
+        });
+
+        // Send enrollment confirmation email
+        await emailService.sendEmail({
+          userId: transaction.userId,
+          userEmail: (req as any).user?.email || transaction.userId,
+          templateData: {
+            type: 'enrollmentConfirmation',
+            data: {
+              studentName: (req as any).user?.username || 'Learner',
+              courseName: transaction.courseId || 'Course',
+              instructorName: (req as any).user?.instructorName || 'StarkEd Instructor',
+              enrollmentId: transaction.enrollmentId || paymentIntentId,
+              startDate: new Date().toISOString(),
+              courseUrl: `${process.env.FRONTEND_URL || ''}/courses/${transaction.courseId || ''}`,
+              unsubscribeUrl: `${process.env.FRONTEND_URL || ''}/settings/notifications`,
+              privacyUrl: `${process.env.FRONTEND_URL || ''}/privacy`,
+            },
+          },
+        });
+      } catch (emailError) {
+        console.error('Failed to queue payment receipt email:', emailError);
+      }
 
       res.json({
         success: true,

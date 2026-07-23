@@ -4,13 +4,13 @@
  * Monitors neural activity, maps neural pathways, and detects learning patterns
  */
 
-import type { NeuralPattern } from '../types/nanotech';
+import type { NeuralPattern } from '../../types/nanotech';
 import {
   generateNeuralPattern,
   evolveNeuralPattern,
   calculatePatternSimilarity,
   detectLearningState
-} from '../utils/neuralSimulation';
+} from '../../utils/neuralSimulation';
 
 /**
  * Singleton instance

@@ -158,7 +158,7 @@ class PerformanceMonitor {
             const timingData = {
               domContentLoaded: navEntry.domContentLoadedEventEnd - navEntry.domContentLoadedEventStart,
               loadComplete: navEntry.loadEventEnd - navEntry.loadEventStart,
-              domInteractive: navEntry.domInteractive - navEntry.navigationStart,
+              domInteractive: navEntry.domInteractive - navEntry.activationStart,
               firstPaint: this.getFirstPaint(),
               firstContentfulPaint: this.getFirstContentfulPaint(),
             };

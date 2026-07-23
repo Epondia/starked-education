@@ -13,11 +13,11 @@ describe('Search routes', () => {
 
         app = express();
         app.use(express.json());
-        app.use('/api/search', createSearchRouter(service));
+        app.use('/api/v1/search', createSearchRouter(service));
     });
 
     it('returns search results with analytics and facets', async () => {
-        const response = await request(app).get('/api/search').query({ q: 'voice search', sessionId: 'route-session' });
+        const response = await request(app).get('/api/v1/search').query({ q: 'voice search', sessionId: 'route-session' });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -28,7 +28,7 @@ describe('Search routes', () => {
 
     it('persists saved searches and alerts', async () => {
         const savedResponse = await request(app)
-            .post('/api/search/saved-searches')
+            .post('/api/v1/search/saved-searches')
             .send({
                 name: 'AI searches',
                 query: 'AI',
@@ -37,7 +37,7 @@ describe('Search routes', () => {
             });
 
         const alertResponse = await request(app)
-            .post('/api/search/alerts')
+            .post('/api/v1/search/alerts')
             .send({
                 query: 'AI',
                 filters: { categories: ['Artificial Intelligence'] },
@@ -46,8 +46,8 @@ describe('Search routes', () => {
                 channel: 'in-app'
             });
 
-        const savedList = await request(app).get('/api/search/saved-searches').query({ sessionId: 'route-session' });
-        const alertList = await request(app).get('/api/search/alerts').query({ sessionId: 'route-session' });
+        const savedList = await request(app).get('/api/v1/search/saved-searches').query({ sessionId: 'route-session' });
+        const alertList = await request(app).get('/api/v1/search/alerts').query({ sessionId: 'route-session' });
 
         expect(savedResponse.status).toBe(201);
         expect(alertResponse.status).toBe(201);
@@ -56,7 +56,7 @@ describe('Search routes', () => {
     });
 
     it('returns 404 for similar results when the source course does not exist', async () => {
-        const response = await request(app).get('/api/search/similar/missing-course');
+        const response = await request(app).get('/api/v1/search/similar/missing-course');
 
         expect(response.status).toBe(404);
         expect(response.body.success).toBe(false);

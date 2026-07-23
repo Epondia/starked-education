@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * app/globals.css  (App Router)
+ *
+ * Theme switching is handled by next-themes which toggles `.dark` on <html>
+ * (Tailwind darkMode: 'class').  We do NOT use prefers-color-scheme media
+ * queries here — next-themes does that automatically when defaultTheme="system".
+ *
+ * Full design tokens live in styles/globals.css (Pages Router entry).
+ * This file re-declares only what the App Router pages need directly.
+ */
+
+/* ─── Design tokens — light ──────────────────────────────────────── */
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
@@ -30,19 +42,23 @@
   --shadow-color: rgba(0, 0, 0, 0.3);
 }
 
+/* ─── Base ───────────────────────────────────────────────────────── */
 body {
   color: var(--text-primary);
   background: var(--bg-primary);
   transition: color 0.2s ease, background-color 0.2s ease;
 }
 
-/* Custom animations */
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
+/* ─── Reduced-motion guard ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  :root { --theme-transition: 0.01ms; }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior:          auto !important;
+    animation-duration:       0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration:      0.01ms !important;
   }
 }
 
@@ -59,11 +75,13 @@ body {
   background: var(--bg-secondary);
 }
 
+/* ─── Scrollbar (theme-aware) ────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: hsl(var(--muted)); }
 ::-webkit-scrollbar-thumb {
   background: var(--text-muted);
   border-radius: 3px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }

@@ -300,10 +300,10 @@ class StateTomographyService {
       totalChangelogEntries: this.stateChangelog.length
     };
 
-    for (const [, versions] of this.stateVersions) {
+    this.stateVersions.forEach((versions: any) => {
       stats.totalStatesStored++;
       stats.totalVersions += versions.length;
-    }
+    });
 
     return stats;
   }

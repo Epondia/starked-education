@@ -17,7 +17,7 @@ describe('Transaction Queue Reliability Tests', () => {
       const authToken = 'Bearer valid-token';
       
       const response = await request(app)
-        .post('/api/transactions/submit')
+        .post('/api/v1/transactions/submit')
         .set('Authorization', authToken)
         .send({
           type: 'credential_issuance',
@@ -54,7 +54,7 @@ describe('Transaction Queue Reliability Tests', () => {
       }));
 
       const response = await request(app)
-        .post('/api/transactions/retry-tx-id/retry')
+        .post('/api/v1/transactions/retry-tx-id/retry')
         .set('Authorization', 'Bearer valid-token')
         .expect(200);
 
@@ -75,7 +75,7 @@ describe('Transaction Queue Reliability Tests', () => {
       }));
 
       const response = await request(app)
-        .post('/api/transactions/submit')
+        .post('/api/v1/transactions/submit')
         .set('Authorization', 'Bearer valid-token')
         .send({
           type: 'credential_issuance',
@@ -113,7 +113,7 @@ describe('Transaction Queue Reliability Tests', () => {
 
       // Submit transaction
       const submitResponse = await request(app)
-        .post('/api/transactions/submit')
+        .post('/api/v1/transactions/submit')
         .set('Authorization', 'Bearer valid-token')
         .send({
           type: 'credential_issuance',
@@ -130,13 +130,13 @@ describe('Transaction Queue Reliability Tests', () => {
 
       // Check status
       const statusResponse = await request(app)
-        .get('/api/transactions/consistency-tx/status')
+        .get('/api/v1/transactions/consistency-tx/status')
         .set('Authorization', 'Bearer valid-token')
         .expect(200);
 
       // Cancel transaction
       const cancelResponse = await request(app)
-        .delete('/api/transactions/consistency-tx')
+        .delete('/api/v1/transactions/consistency-tx')
         .set('Authorization', 'Bearer valid-token')
         .expect(200);
 

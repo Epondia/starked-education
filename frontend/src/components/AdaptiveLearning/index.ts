@@ -9,19 +9,11 @@ export { RealTimeAdaptationEngine } from './RealTimeAdaptationEngine';
 
 // Types
 export type { LearningStyle } from './LearningStyleDetector';
-export type { LayoutConfiguration } from './DynamicLayoutAdapter';
 export type { AccessibilityMode } from './AccessibilityAutoSwitch';
 export type { DifficultyLevel } from './DifficultyAdjustmentEngine';
 
-// Re-exports for easier importing
-export type {
-  ShareableContent
-} from './SocialSharing';
-
+// Re-exports from RealTimeAdaptationEngine (only what is actually exported)
 export type {
   AdaptationTrigger,
   AdaptationPriority,
-  AdaptationEvent,
-  AdaptationRule,
-  AdaptationContext
 } from './RealTimeAdaptationEngine';

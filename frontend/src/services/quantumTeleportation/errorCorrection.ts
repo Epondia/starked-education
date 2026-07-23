@@ -92,10 +92,10 @@ class ErrorCorrectionService {
     let totalMessages = 0;
     let totalErrors = 0;
 
-    for (const [, stats] of this.messageHistory) {
+    this.messageHistory.forEach((stats: any) => {
       totalMessages += stats.sent;
       totalErrors += stats.errors;
-    }
+    });
 
     return calculateErrorRate(totalMessages, totalErrors);
   }
@@ -160,10 +160,10 @@ class ErrorCorrectionService {
     let totalMessages = 0;
     let totalErrors = 0;
 
-    for (const [, stats] of this.messageHistory) {
+    this.messageHistory.forEach((stats: any) => {
       totalMessages += stats.sent;
       totalErrors += stats.errors;
-    }
+    });
 
     return {
       totalMessages,

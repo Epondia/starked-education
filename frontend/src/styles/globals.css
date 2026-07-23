@@ -2,9 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Design tokens — light ──────────────────────────────────────── */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
+  --foreground-rgb: 15, 23, 42;
+  --background-start-rgb: 248, 250, 252;
   --background-end-rgb: 255, 255, 255;
   --bg-primary: #ffffff;
   --bg-secondary: #f9fafb;
@@ -75,10 +76,11 @@ body {
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
-    opacity: .5;
+    opacity: 0.5;
   }
 }

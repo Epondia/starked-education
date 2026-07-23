@@ -476,7 +476,7 @@ describe('Federated Learning System', () => {
       };
 
       const response = await request(app)
-        .post('/api/federated-learning/initialize')
+        .post('/api/v1/federated-learning/initialize')
         .send({ modelArchitecture })
         .expect(200);
 
@@ -496,7 +496,7 @@ describe('Federated Learning System', () => {
       };
 
       const response = await request(app)
-        .post('/api/federated-learning/participants/register')
+        .post('/api/v1/federated-learning/participants/register')
         .send(participantData)
         .expect(200);
 
@@ -506,7 +506,7 @@ describe('Federated Learning System', () => {
 
     test('should get system health via API', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/health')
+        .get('/api/v1/federated-learning/health')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -516,7 +516,7 @@ describe('Federated Learning System', () => {
 
     test('should get system configuration via API', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/config')
+        .get('/api/v1/federated-learning/config')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -533,7 +533,7 @@ describe('Federated Learning System', () => {
       };
 
       const response = await request(app)
-        .post('/api/federated-learning/privacy/apply')
+        .post('/api/v1/federated-learning/privacy/apply')
         .send(dpRequest)
         .expect(200);
 
@@ -544,7 +544,7 @@ describe('Federated Learning System', () => {
 
     test('should get privacy budget status via API', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/privacy/budget')
+        .get('/api/v1/federated-learning/privacy/budget')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -554,7 +554,7 @@ describe('Federated Learning System', () => {
 
     test('should get analytics dashboard data via API', async () => {
       const response = await request(app)
-        .get('/api/federated-learning/analytics/dashboard')
+        .get('/api/v1/federated-learning/analytics/dashboard')
         .query({ timeRange: '1h' })
         .expect(200);
 
@@ -567,7 +567,7 @@ describe('Federated Learning System', () => {
     test('should handle invalid requests gracefully', async () => {
       // Test missing required fields
       const response = await request(app)
-        .post('/api/federated-learning/participants/register')
+        .post('/api/v1/federated-learning/participants/register')
         .send({}) // Missing required fields
         .expect(400);
 
@@ -578,7 +578,7 @@ describe('Federated Learning System', () => {
     test('should handle API errors gracefully', async () => {
       // Test invalid computation ID
       const response = await request(app)
-        .post('/api/federated-learning/mpc/invalid-id/distribute-shares')
+        .post('/api/v1/federated-learning/mpc/invalid-id/distribute-shares')
         .send({ values: [1, 2, 3] })
         .expect(500);
 
@@ -591,7 +591,7 @@ describe('Federated Learning System', () => {
     test('should complete full federated learning workflow', async () => {
       // 1. Initialize system
       const initResponse = await request(app)
-        .post('/api/federated-learning/initialize')
+        .post('/api/v1/federated-learning/initialize')
         .send({
           modelArchitecture: {
             layers: [{ type: 'dense', inputShape: [10], units: 10 }],
@@ -605,7 +605,7 @@ describe('Federated Learning System', () => {
       const participants = ['university1', 'university2', 'university3'];
       for (const participant of participants) {
         await request(app)
-          .post('/api/federated-learning/participants/register')
+          .post('/api/v1/federated-learning/participants/register')
           .send({
             institutionId: participant,
             publicKey: `key-${participant}`,
@@ -615,7 +615,7 @@ describe('Federated Learning System', () => {
 
       // 3. Start round
       const roundResponse = await request(app)
-        .post('/api/federated-learning/rounds/start')
+        .post('/api/v1/federated-learning/rounds/start')
         .send({ epochs: 1 });
 
       expect(roundResponse.body.success).toBe(true);
@@ -629,7 +629,7 @@ describe('Federated Learning System', () => {
 
       for (const participant of participants) {
         await request(app)
-          .post(`/api/federated-learning/rounds/${roundId}/updates`)
+          .post(`/api/v1/federated-learning/rounds/${roundId}/updates`)
           .send({
             participantId: participant,
             modelUpdate,
@@ -639,14 +639,14 @@ describe('Federated Learning System', () => {
 
       // 5. Check system health
       const healthResponse = await request(app)
-        .get('/api/federated-learning/health');
+        .get('/api/v1/federated-learning/health');
 
       expect(healthResponse.body.success).toBe(true);
       expect(healthResponse.body.data.status).toBe('healthy');
 
       // 6. Get analytics
       const analyticsResponse = await request(app)
-        .get('/api/federated-learning/analytics/dashboard');
+        .get('/api/v1/federated-learning/analytics/dashboard');
 
       expect(analyticsResponse.body.success).toBe(true);
       expect(analyticsResponse.body.data.summary).toBeDefined();

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Brain, Activity, Shield, Zap, Settings, AlertTriangle, CheckCircle, TrendingUp } from 'lucide-react';
+import type { LearningSession, NeuralData, LearningMetrics, LearningContent } from '@/types/neural';
 import { EEGSensor } from './EEGSensor';
 import { NeurostimulationPanel } from './NeurostimulationPanel';
 import { CognitiveMonitor } from './CognitiveMonitor';

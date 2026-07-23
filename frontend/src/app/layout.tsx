@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { ThemeProvider } from 'next-themes';
 import './globals.css';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { performanceMonitor } from '@/lib/performance-monitor';
+import { GlobalShell } from '@/components/PWA/GlobalShell';
+import { CommandPalette } from '@/components/ui/command-palette';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -11,15 +14,18 @@ export const metadata: Metadata = {
   description: 'Learn blockchain development with courses powered by Stellar',
 };
 
+// RTL locales
+const RTL_LOCALES = new Set(['ar', 'he', 'fa', 'ur']);
+
 export default function RootLayout({
   children,
+  params,
 }: {
   children: React.ReactNode;
+  params?: { locale?: string };
 }) {
-  // Initialize performance monitoring
-  if (typeof window !== 'undefined') {
-    performanceMonitor;
-  }
+  const locale = params?.locale ?? 'en';
+  const dir = RTL_LOCALES.has(locale) ? 'rtl' : 'ltr';
 
   return (
     <html lang="en" suppressHydrationWarning>

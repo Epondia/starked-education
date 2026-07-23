@@ -281,9 +281,9 @@ describe('Optimization System Tests', () => {
   });
 
   describe('API Endpoints', () => {
-    test('GET /api/optimization/health should return health status', async () => {
+    test('GET /api/v1/optimization/health should return health status', async () => {
       const response = await request(app)
-        .get('/api/optimization/health')
+        .get('/api/v1/optimization/health')
         .expect(200);
 
       expect(response.body).toHaveProperty('success', true);
@@ -291,18 +291,18 @@ describe('Optimization System Tests', () => {
       expect(response.body.health).toHaveProperty('status', 'healthy');
     });
 
-    test('POST /api/optimization/initialize should initialize services', async () => {
+    test('POST /api/v1/optimization/initialize should initialize services', async () => {
       const response = await request(app)
-        .post('/api/optimization/initialize')
+        .post('/api/v1/optimization/initialize')
         .expect(200);
 
       expect(response.body).toHaveProperty('success', true);
       expect(response.body).toHaveProperty('message');
     });
 
-    test('POST /api/optimization/learning-paths/optimize should validate input', async () => {
+    test('POST /api/v1/optimization/learning-paths/optimize should validate input', async () => {
       const response = await request(app)
-        .post('/api/optimization/learning-paths/optimize')
+        .post('/api/v1/optimization/learning-paths/optimize')
         .send({})
         .expect(400);
 
@@ -310,9 +310,9 @@ describe('Optimization System Tests', () => {
       expect(response.body.error).toContain('Missing required fields');
     });
 
-    test('POST /api/optimization/resources/optimize should validate input', async () => {
+    test('POST /api/v1/optimization/resources/optimize should validate input', async () => {
       const response = await request(app)
-        .post('/api/optimization/resources/optimize')
+        .post('/api/v1/optimization/resources/optimize')
         .send({})
         .expect(400);
 
@@ -320,18 +320,18 @@ describe('Optimization System Tests', () => {
       expect(response.body.error).toContain('Missing required fields');
     });
 
-    test('GET /api/optimization/analytics should return analytics data', async () => {
+    test('GET /api/v1/optimization/analytics should return analytics data', async () => {
       const response = await request(app)
-        .get('/api/optimization/analytics')
+        .get('/api/v1/optimization/analytics')
         .expect(200);
 
       expect(response.body).toHaveProperty('success', true);
       expect(response.body).toHaveProperty('analytics');
     });
 
-    test('GET /api/optimization/visualizations should return visualizations', async () => {
+    test('GET /api/v1/optimization/visualizations should return visualizations', async () => {
       const response = await request(app)
-        .get('/api/optimization/visualizations')
+        .get('/api/v1/optimization/visualizations')
         .expect(200);
 
       expect(response.body).toHaveProperty('success', true);
@@ -339,9 +339,9 @@ describe('Optimization System Tests', () => {
       expect(Array.isArray(response.body.visualizations)).toBe(true);
     });
 
-    test('GET /api/optimization/realtime should return real-time data', async () => {
+    test('GET /api/v1/optimization/realtime should return real-time data', async () => {
       const response = await request(app)
-        .get('/api/optimization/realtime')
+        .get('/api/v1/optimization/realtime')
         .expect(200);
 
       expect(response.body).toHaveProperty('success', true);
@@ -353,7 +353,7 @@ describe('Optimization System Tests', () => {
   describe('Error Handling', () => {
     test('Should handle invalid visualization ID', async () => {
       const response = await request(app)
-        .get('/api/optimization/visualizations/invalid-id')
+        .get('/api/v1/optimization/visualizations/invalid-id')
         .expect(404);
 
       expect(response.body).toHaveProperty('error');
@@ -362,7 +362,7 @@ describe('Optimization System Tests', () => {
 
     test('Should handle invalid session ID', async () => {
       const response = await request(app)
-        .get('/api/optimization/sessions/invalid-session')
+        .get('/api/v1/optimization/sessions/invalid-session')
         .expect(404);
 
       expect(response.body).toHaveProperty('error');

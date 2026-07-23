@@ -43,9 +43,10 @@ jest.mock('@/lib/safetyConstraints', () => ({
   }))
 }));
 
+const mockUserId = 'test-user-123';
+const mockOnLearningComplete = jest.fn();
+
 describe('NeuralInterfaceDashboard', () => {
-  const mockUserId = 'test-user-123';
-  const mockOnLearningComplete = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import '../styles/features.css';
 
-const AssessmentInterface = ({ assessmentId, onComplete }) => {
+const AssessmentInterface = ({ assessmentId, onComplete }: { assessmentId: string; onComplete: (result: string) => void }) => {
   const [isFlagged, setIsFlagged] = useState(false);
-  const [anomalies, setAnomalies] = useState([]);
+  const [anomalies, setAnomalies] = useState<any[]>([]);
   const [sessionStatus, setSessionStatus] = useState('initializing');
-  const videoRef = useRef(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [timeLeft, setTimeLeft] = useState(3600); // 1 hour
 
   useEffect(() => {
@@ -36,7 +36,7 @@ const AssessmentInterface = ({ assessmentId, onComplete }) => {
     }
   }, [timeLeft]);
 
-  const formatTime = (seconds) => {
+  const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
