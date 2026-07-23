@@ -8,8 +8,6 @@ name: "StarkEd CodeQL Configuration"
 #   - Pre-existing issues that need systematic remediation tracked
 #     separately from individual PRs
 
-disable-default-queries: true
-
 queries:
   - uses: security-extended
 
@@ -58,4 +56,3 @@ paths-ignore:
   - "**/*.spec.js"
   - "backend/migrations/**"
   - "contracts/target/**"
-  - "backend/src/services/codeExecutionService.ts"
