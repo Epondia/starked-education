@@ -100,7 +100,7 @@ function requestLogger(req, res, next) {
   // Record start time
   const startTime = process.hrtime();
 
-  // Extract request info
+  // Extract request info (userId captured at response time since auth hasn't run yet)
   const requestInfo = {
     requestId,
     method: req.method,
@@ -109,7 +109,6 @@ function requestLogger(req, res, next) {
     ip: req.ip || req.connection?.remoteAddress,
     userAgent: req.get('user-agent') || 'unknown',
     referer: req.get('referer') || undefined,
-    userId: req.user?.id || 'anonymous',
     timestamp: new Date().toISOString(),
   };
 
@@ -133,7 +132,7 @@ function requestLogger(req, res, next) {
     const duration = process.hrtime(startTime);
     const durationMs = (duration[0] * 1000) + (duration[1] / 1000000);
 
-    // Build response log
+    // Build response log - capture userId at response time (after auth middleware)
     const logLevel = getLogLevelFromStatus(res.statusCode);
     const responseInfo = {
       type: 'response',
@@ -142,7 +141,8 @@ function requestLogger(req, res, next) {
       url: requestInfo.url,
       statusCode: res.statusCode,
       durationMs: Math.round(durationMs * 100) / 100,
-      contentLength: res.get('content-length') || chunk?.length || 0,
+      contentLength: parseInt(res.get('content-length')) || 0,
+      userId: req.user?.id || 'anonymous',
       timestamp: new Date().toISOString(),
     };
 
