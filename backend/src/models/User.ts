@@ -43,3 +43,25 @@ export interface UserStats {
   totalAchievements: number;
   reputation: number;
 }
+
+/**
+ * Email notification preferences per event type.
+ * Security emails (passwordChanged, newLoginAlert) cannot be opted out.
+ */
+export interface EmailPreferences {
+  enrollmentConfirmation: boolean;
+  credentialIssued: boolean;
+  paymentReceipt: boolean;
+  assignmentGraded: boolean;
+  passwordChanged: boolean;
+  newLoginAlert: boolean;
+}
+
+export const DEFAULT_EMAIL_PREFERENCES: EmailPreferences = {
+  enrollmentConfirmation: true,
+  credentialIssued: true,
+  paymentReceipt: true,
+  assignmentGraded: true,
+  passwordChanged: true,
+  newLoginAlert: true,
+};

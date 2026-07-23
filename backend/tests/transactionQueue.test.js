@@ -119,7 +119,7 @@ describe('Transaction Queue API', () => {
     }));
   });
 
-  describe('POST /api/transactions/submit', () => {
+  describe('POST /api/v1/transactions/submit', () => {
     const validTransaction = {
       type: 'credential_issuance',
       payload: {
@@ -148,7 +148,7 @@ describe('Transaction Queue API', () => {
 
     it('should submit a transaction successfully', async () => {
       const response = await request(app)
-        .post('/api/transactions/submit')
+        .post('/api/v1/transactions/submit')
         .set('Authorization', `Bearer ${authToken}`)
         .send(validTransaction)
         .expect(201);
@@ -165,7 +165,7 @@ describe('Transaction Queue API', () => {
       };
 
       const response = await request(app)
-        .post('/api/transactions/submit')
+        .post('/api/v1/transactions/submit')
         .set('Authorization', `Bearer ${authToken}`)
         .send(invalidTransaction)
         .expect(400);
@@ -176,7 +176,7 @@ describe('Transaction Queue API', () => {
 
     it('should reject requests without authentication', async () => {
       const response = await request(app)
-        .post('/api/transactions/submit')
+        .post('/api/v1/transactions/submit')
         .send(validTransaction)
         .expect(401);
 
@@ -194,7 +194,7 @@ describe('Transaction Queue API', () => {
       };
 
       const response = await request(app)
-        .post('/api/transactions/submit')
+        .post('/api/v1/transactions/submit')
         .set('Authorization', `Bearer ${authToken}`)
         .send(invalidTransaction)
         .expect(400);
@@ -204,10 +204,10 @@ describe('Transaction Queue API', () => {
     });
   });
 
-  describe('GET /api/transactions/:transactionId/status', () => {
+  describe('GET /api/v1/transactions/:transactionId/status', () => {
     it('should return transaction status', async () => {
       const response = await request(app)
-        .get('/api/transactions/test-tx-id/status')
+        .get('/api/v1/transactions/test-tx-id/status')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -223,7 +223,7 @@ describe('Transaction Queue API', () => {
       TransactionQueue.mockImplementation(() => mockQueue);
 
       const response = await request(app)
-        .get('/api/transactions/non-existent/status')
+        .get('/api/v1/transactions/non-existent/status')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(404);
 
@@ -232,10 +232,10 @@ describe('Transaction Queue API', () => {
     });
   });
 
-  describe('GET /api/transactions/queue/stats', () => {
+  describe('GET /api/v1/transactions/queue/stats', () => {
     it('should return queue statistics', async () => {
       const response = await request(app)
-        .get('/api/transactions/queue/stats')
+        .get('/api/v1/transactions/queue/stats')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -247,10 +247,10 @@ describe('Transaction Queue API', () => {
     });
   });
 
-  describe('GET /api/transactions/user/:userId', () => {
+  describe('GET /api/v1/transactions/user/:userId', () => {
     it('should return user transactions', async () => {
       const response = await request(app)
-        .get('/api/transactions/test-user-id')
+        .get('/api/v1/transactions/test-user-id')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -261,7 +261,7 @@ describe('Transaction Queue API', () => {
 
     it('should support pagination', async () => {
       const response = await request(app)
-        .get('/api/transactions/test-user-id?page=2&limit=10')
+        .get('/api/v1/transactions/test-user-id?page=2&limit=10')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -271,10 +271,10 @@ describe('Transaction Queue API', () => {
     });
   });
 
-  describe('DELETE /api/transactions/:transactionId', () => {
+  describe('DELETE /api/v1/transactions/:transactionId', () => {
     it('should cancel a transaction', async () => {
       const response = await request(app)
-        .delete('/api/transactions/test-tx-id')
+        .delete('/api/v1/transactions/test-tx-id')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -289,7 +289,7 @@ describe('Transaction Queue API', () => {
       TransactionQueue.mockImplementation(() => mockQueue);
 
       const response = await request(app)
-        .delete('/api/transactions/test-tx-id')
+        .delete('/api/v1/transactions/test-tx-id')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(404);
 
@@ -298,10 +298,10 @@ describe('Transaction Queue API', () => {
     });
   });
 
-  describe('POST /api/transactions/:transactionId/retry', () => {
+  describe('POST /api/v1/transactions/:transactionId/retry', () => {
     it('should retry a failed transaction', async () => {
       const response = await request(app)
-        .post('/api/transactions/test-tx-id/retry')
+        .post('/api/v1/transactions/test-tx-id/retry')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -311,7 +311,7 @@ describe('Transaction Queue API', () => {
     });
   });
 
-  describe('POST /api/transactions/bulk', () => {
+  describe('POST /api/v1/transactions/bulk', () => {
     const bulkTransactions = {
       transactions: [
         {
@@ -338,7 +338,7 @@ describe('Transaction Queue API', () => {
 
     it('should submit bulk transactions', async () => {
       const response = await request(app)
-        .post('/api/transactions/bulk')
+        .post('/api/v1/transactions/bulk')
         .set('Authorization', `Bearer ${authToken}`)
         .send(bulkTransactions)
         .expect(201);
@@ -352,7 +352,7 @@ describe('Transaction Queue API', () => {
 
     it('should reject empty transactions array', async () => {
       const response = await request(app)
-        .post('/api/transactions/bulk')
+        .post('/api/v1/transactions/bulk')
         .set('Authorization', `Bearer ${authToken}`)
         .send({ transactions: [] })
         .expect(400);
@@ -367,7 +367,7 @@ describe('Transaction Queue API', () => {
       };
 
       const response = await request(app)
-        .post('/api/transactions/bulk')
+        .post('/api/v1/transactions/bulk')
         .set('Authorization', `Bearer ${authToken}`)
         .send(tooManyTransactions)
         .expect(400);
@@ -377,10 +377,10 @@ describe('Transaction Queue API', () => {
     });
   });
 
-  describe('GET /api/transactions/analytics', () => {
+  describe('GET /api/v1/transactions/analytics', () => {
     it('should return transaction analytics', async () => {
       const response = await request(app)
-        .get('/api/transactions/analytics')
+        .get('/api/v1/transactions/analytics')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -391,7 +391,7 @@ describe('Transaction Queue API', () => {
 
     it('should support time range parameter', async () => {
       const response = await request(app)
-        .get('/api/transactions/analytics?timeRange=7d')
+        .get('/api/v1/transactions/analytics?timeRange=7d')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -400,10 +400,10 @@ describe('Transaction Queue API', () => {
     });
   });
 
-  describe('GET /api/transactions/network/status', () => {
+  describe('GET /api/v1/transactions/network/status', () => {
     it('should return network status', async () => {
       const response = await request(app)
-        .get('/api/transactions/network/status')
+        .get('/api/v1/transactions/network/status')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -413,7 +413,7 @@ describe('Transaction Queue API', () => {
     });
   });
 
-  describe('POST /api/transactions/webhook/stellar', () => {
+  describe('POST /api/v1/transactions/webhook/stellar', () => {
     it('should handle Stellar webhook', async () => {
       const webhookData = {
         transactionHash: 'test-hash',
@@ -422,7 +422,7 @@ describe('Transaction Queue API', () => {
       };
 
       const response = await request(app)
-        .post('/api/transactions/webhook/stellar')
+        .post('/api/v1/transactions/webhook/stellar')
         .send(webhookData)
         .expect(200);
 

@@ -11,7 +11,7 @@ import { getSafetyMonitorService } from './safetyMonitor';
 import { getKnowledgeEncoderService } from './knowledgeEncoder';
 import { getLearningProfileService } from './learningProfile';
 
-import type { Skill, LearningSession } from '../types/nanotech';
+import type { Skill, LearningSession } from '../../types/nanotech';
 
 /**
  * Singleton instance

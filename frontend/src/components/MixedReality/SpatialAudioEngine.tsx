@@ -241,8 +241,8 @@ export function SpatialAudioEngine({
     pannerNode.coneOuterGain = config.cone.outerGain;
     
     // Set position
-    pannerNode.setPosition(config.position.x, config.position.y, config.position.z);
-    pannerNode.setOrientation(0, 0, 0, 0, 0, -1, 0, 1);
+    (pannerNode as any).setPosition(config.position.x, config.position.y, config.position.z);
+    (pannerNode as any).setOrientation(0, 0, 0, 0, 0, -1, 0, 1);
     
     // Create filter node for effects
     const filterNode = context.createBiquadFilter();
@@ -335,13 +335,13 @@ export function SpatialAudioEngine({
     audioListener.forwardX.value = listener.orientation.x;
     audioListener.forwardY.value = listener.orientation.y;
     audioListener.forwardZ.value = listener.orientation.z;
-    audioListener.upX.value = listener.upX;
-    audioListener.upY.value = listener.upY;
-    audioListener.upZ.value = listener.upZ;
+    (audioListener as any).upX.value = listener.upX;
+    (audioListener as any).upY.value = listener.upY;
+    (audioListener as any).upZ.value = listener.upZ;
     
     // Set doppler factor
-    audioListener.dopplerFactor = listener.dopplerFactor;
-    audioListener.speedOfSound = listener.speedOfSound;
+    (audioListener as any).dopplerFactor = listener.dopplerFactor;
+    (audioListener as any).speedOfSound = listener.speedOfSound;
   };
 
   // Update audio nodes

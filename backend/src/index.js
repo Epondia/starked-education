@@ -1,4 +1,8 @@
 const { createServer } = require('http');
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const dotenv = require('dotenv');
 
 const { connectRedis } = require('./utils/redis');
 const { initWebsocketService } = require('./services/websocketService');
@@ -23,6 +27,9 @@ const {
 const { globalLimiter } = require('./middleware/rateLimiter');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
 
+// Import versioning middleware
+const { versionExtractor, createVersionedRouter, SUPPORTED_VERSIONS, DEFAULT_VERSION } = require('./middleware/versioning');
+
 // Load environment variables
 dotenv.config();
 
@@ -32,6 +39,15 @@ const logger = require('./utils/logger');
 // Connect to Redis
 connectRedis();
 
+// Register email queue handler for async email delivery
+try {
+  const { registerEmailQueueHandler } = require('./services/emailService');
+  registerEmailQueueHandler();
+  console.log('📧 Email queue handler registered');
+} catch (err) {
+  console.warn('Warning: Could not register email queue handler:', err.message);
+}
+
 // Helper for default-exported route modules
 const resolveRoute = (routeModule) => routeModule.default || routeModule;
 
@@ -40,14 +56,24 @@ const quizRoutes = resolveRoute(require('./routes/quizRoutes'));
 const eventLoggerRoutes = resolveRoute(require('./routes/eventLoggerRoutes'));
 const syncRoutes = resolveRoute(require('./routes/syncRoutes'));
 const rbacRoutes = resolveRoute(require('./routes/rbacRoutes'));
+const authRoutes = require('./routes/auth');
 const contentRoutes = require('./routes/content');
+const courseRoutes = require('./routes/courses');
+const searchRoutes = require('./routes/search');
 const transactionRoutes = require('./routes/transactions');
 const notificationRoutes = resolveRoute(require('./routes/notificationRoutes'));
 
 // Your branch routes
 const collaborationRoutes = resolveRoute(require('./routes/collaborationRoutes'));
 const holographicRoutes = resolveRoute(require('./routes/holographicRoutes'));
-const secureCommRoutes = resolveRoute(require('./routes/secureCommRoutes'));
+let secureCommRoutes;
+try {
+  secureCommRoutes = resolveRoute(require('./routes/secureCommRoutes'));
+} catch (err) {
+  console.warn('Warning: Could not load secureCommRoutes:', err.message);
+  const express = require('express');
+  secureCommRoutes = express.Router();
+}
 
 // Upstream routes
 const acoRoutes = require('./routes/aco');
@@ -56,7 +82,7 @@ const swarmLearningRoutes = require('./routes/swarmLearning');
 const smartWalletRoutes = resolveRoute(require('./routes/smartWallet'));
 
 // AGI Tutor routes
-const agiTutorRoutes = require('./routes/agiTutorRoutes');
+const agiTutorRoutes = resolveRoute(require('./routes/agiTutorRoutes'));
 
 // Analytics routes
 const analyticsRoutes = require('./routes/analytics');
@@ -89,51 +115,82 @@ app.use(express.urlencoded({ extended: true }));
 const requestLogger = require('./middleware/requestLogger');
 app.use(requestLogger);
 
-// API routes
-app.use('/api/quizzes', quizRoutes);
-app.use('/api/events', eventLoggerRoutes);
-app.use('/api/sync', syncRoutes);
-app.use('/api/content', contentRoutes);
-app.use('/api/rbac', rbacRoutes);
-app.use('/api/transactions', transactionRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/collaboration', collaborationRoutes);
-app.use('/api/holographic', holographicRoutes);
-app.use('/api/aco', acoRoutes);
-app.use('/api/federated-learning', federatedLearningRoutes);
-app.use('/api/swarm-learning', swarmLearningRoutes);
-app.use('/api/smart-wallet', smartWalletRoutes);
-app.use('/api/secure-comm', secureCommRoutes);
-app.use('/api/agi-tutor', agiTutorRoutes);
-app.use('/api/analytics', analyticsRoutes);
+// Health check routes - mounted before auth middleware so load balancers can access without credentials
+const healthRoutes = require('./routes/health').default || require('./routes/health');
+app.use('/health', healthRoutes);
+
+// Apply API version extraction middleware globally
+app.use(versionExtractor);
+
+// Create versioned routers
+const v1Router = createVersionedRouter('v1');
+
+// ── v1 API Routes ──────────────────────────────────────────────
+// All existing routes are mounted under /api/v1/
+v1Router.use('/quizzes', quizRoutes);
+v1Router.use('/events', eventLoggerRoutes);
+v1Router.use('/sync', syncRoutes);
+v1Router.use('/auth', authRoutes);
+v1Router.use('/content', contentRoutes);
+v1Router.use('/courses', courseRoutes);
+v1Router.use('/search', searchRoutes);
+v1Router.use('/rbac', rbacRoutes);
+v1Router.use('/transactions', transactionRoutes);
+v1Router.use('/notifications', notificationRoutes);
+v1Router.use('/collaboration', collaborationRoutes);
+v1Router.use('/holographic', holographicRoutes);
+v1Router.use('/aco', acoRoutes);
+v1Router.use('/federated-learning', federatedLearningRoutes);
+v1Router.use('/swarm-learning', swarmLearningRoutes);
+v1Router.use('/smart-wallet', smartWalletRoutes);
+v1Router.use('/secure-comm', secureCommRoutes);
+v1Router.use('/agi-tutor', agiTutorRoutes);
+v1Router.use('/analytics', analyticsRoutes);
 
 // Autonomous Agents routes
 const autonomousAgentsRoutes = require('./routes/autonomousAgents');
-app.use('/api/autonomous-agents', autonomousAgentsRoutes);
+v1Router.use('/autonomous-agents', autonomousAgentsRoutes);
 
 // Gamification routes
 const gamificationRoutes = require('./routes/gamification');
-app.use('/api/gamification', gamificationRoutes);
+v1Router.use('/gamification', gamificationRoutes);
 
-// Bridge routes
-const bridgeRoutes = require('./routes/bridge');
-app.use('/api/bridge', bridgeRoutes);
+// Bridge routes — module not yet implemented, use empty router
+console.warn('Warning: Bridge routes module not found, using empty router');
+const bridgeRoutes = express.Router();
+v1Router.use('/bridge', bridgeRoutes);
 
 // Time-Locked Credential routes
-const timeLockCredentialsRoutes = require('./routes/timeLockCredentials');
-app.use('/api/time-lock', timeLockCredentialsRoutes);
+const timeLockCredentialsRoutes = resolveRoute(require('./routes/timeLockCredentials'));
+v1Router.use('/time-lock', timeLockCredentialsRoutes);
 
 // VRF (Verifiable Random Function) routes
-const vrfRoutes = require('./routes/vrf');
-app.use('/api/vrf', vrfRoutes);
+const vrfRoutes = resolveRoute(require('./routes/vrf'));
+v1Router.use('/vrf', vrfRoutes);
 
 // Real-time Translation routes
-const translationRoutes = require('./routes/translation');
-app.use('/api/translate', translationRoutes);
+const translationRoutes = resolveRoute(require('./routes/translation'));
+v1Router.use('/translate', translationRoutes);
 
 // Cross-Protocol Bridge routes
-const crossProtocolBridgeRoutes = require('./routes/crossProtocolBridge');
-app.use('/api/cross-protocol-bridge', crossProtocolBridgeRoutes);
+const crossProtocolBridgeRoutes = resolveRoute(require('./routes/crossProtocolBridge'));
+v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
+
+// Admin dashboard routes
+const adminRoutes = require('./routes/admin');
+v1Router.use('/admin', adminRoutes);
+
+// Mount v1 router at /api/v1
+app.use('/api/v1', v1Router);
+
+// Mount v2 router (empty — ready for future endpoints)
+const v2Router = createVersionedRouter('v2');
+app.use('/api/v2', v2Router);
+
+// Schemas helper for versioned responses
+const { createVersionedResponse } = require('./utils/schemas');
+const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const { ValidationError } = require('./utils/errors');
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -147,32 +204,30 @@ app.get('/', (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({
+  const version = req.apiVersion || DEFAULT_VERSION;
+  res.json(createVersionedResponse({
     status: 'healthy',
-    timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-  });
+    supportedVersions: SUPPORTED_VERSIONS,
+  }, version));
 });
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Endpoint not found',
-    path: req.originalUrl,
-  });
+// Unsupported version handler (only rejects truly unsupported versions)
+app.use('/api/v:version*', (req, res, next) => {
+  const version = `v${req.params.version}`;
+  if (!SUPPORTED_VERSIONS.includes(version)) {
+    return next(new ValidationError(`Unsupported API version: ${version}`, { supportedVersions: SUPPORTED_VERSIONS }));
+  } else {
+    next();
+  }
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
   logger.error('Unhandled error:', { error: err.message, stack: err.stack, requestId: req.requestId });
 
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-  });
-});
+// Global error handler - must be last
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 
@@ -184,17 +239,17 @@ async function startServer() {
 
     server.listen(PORT, () => {
       console.log(`🚀 StarkEd Education Backend running on port ${PORT}`);
-      console.log(`📚 Quiz Management API available at /api/quizzes`);
-      console.log(`📊 Event Logger API available at /api/events`);
-      console.log(`🔄 Sync API available at /api/sync`);
-      console.log(`📁 Content Management API available at /api/content`);
-      console.log(`💰 Transaction Queue API available at /api/transactions`);
-      console.log(`🤝 Collaboration API available at /api/collaboration`);
-      console.log(`🔮 Holographic Storage API available at /api/holographic`);
-      console.log(`🧠 ACO API available at /api/aco`);
-      console.log(`🌐 Federated Learning API available at /api/federated-learning`);
-      console.log(`🧠 AGI Tutor API available at /api/agi-tutor`);
-      console.log(`🔐 Quantum-Resistant Secure Communication API available at /api/secure-comm`);
+      console.log(`📚 Quiz Management API available at /api/v1/quizzes`);
+      console.log(`📊 Event Logger API available at /api/v1/events`);
+      console.log(`🔄 Sync API available at /api/v1/sync`);
+      console.log(`📁 Content Management API available at /api/v1/content`);
+      console.log(`💰 Transaction Queue API available at /api/v1/transactions`);
+      console.log(`🤝 Collaboration API available at /api/v1/collaboration`);
+      console.log(`🔮 Holographic Storage API available at /api/v1/holographic`);
+      console.log(`🧠 ACO API available at /api/v1/aco`);
+      console.log(`🌐 Federated Learning API available at /api/v1/federated-learning`);
+      console.log(`🧠 AGI Tutor API available at /api/v1/agi-tutor`);
+      console.log(`🔐 Quantum-Resistant Secure Communication API available at /api/v1/secure-comm`);
       console.log(`🏥 Health check available at /api/health`);
       console.log(`✅ Transaction Queue System initialized successfully`);
     });

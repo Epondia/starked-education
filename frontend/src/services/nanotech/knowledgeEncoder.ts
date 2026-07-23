@@ -3,14 +3,14 @@
  * Manages skill knowledge encoding, compression, fragmentation, and transmission
  */
 
-import type { EncodedKnowledge, Skill } from '../types/nanotech';
+import type { EncodedKnowledge, Skill } from '../../types/nanotech';
 import {
   encodeSkill,
   verifyEncodedKnowledge,
   fragmentKnowledge,
   reconstructKnowledge,
   calculateCompressionRatio
-} from '../utils/knowledgeEncoding';
+} from '../../utils/knowledgeEncoding';
 
 /**
  * Singleton instance

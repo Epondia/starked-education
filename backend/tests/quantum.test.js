@@ -11,7 +11,7 @@ describe('Quantum Computing API', () => {
   describe('Health Check', () => {
     test('should return quantum service health status', async () => {
       const response = await request(app)
-        .get('/api/quantum/health')
+        .get('/api/v1/quantum/health')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -23,7 +23,7 @@ describe('Quantum Computing API', () => {
   describe('Quantum Algorithm Integration', () => {
     test('should get available quantum providers', async () => {
       const response = await request(app)
-        .get('/api/quantum/providers')
+        .get('/api/v1/quantum/providers')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -33,7 +33,7 @@ describe('Quantum Computing API', () => {
 
     test('should connect to quantum provider', async () => {
       const response = await request(app)
-        .post('/api/quantum/providers/connect')
+        .post('/api/v1/quantum/providers/connect')
         .send({
           provider: 'ibmq',
           config: {
@@ -51,7 +51,7 @@ describe('Quantum Computing API', () => {
 
     test('should execute quantum circuit', async () => {
       const response = await request(app)
-        .post('/api/quantum/execute')
+        .post('/api/v1/quantum/execute')
         .send({
           circuit: {
             num_qubits: 2,
@@ -74,7 +74,7 @@ describe('Quantum Computing API', () => {
   describe('Quantum Optimization', () => {
     test('should get available optimizers', async () => {
       const response = await request(app)
-        .get('/api/quantum/optimization/optimizers')
+        .get('/api/v1/quantum/optimization/optimizers')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -84,7 +84,7 @@ describe('Quantum Computing API', () => {
 
     test('should solve optimization problem', async () => {
       const response = await request(app)
-        .post('/api/quantum/optimization/solve')
+        .post('/api/v1/quantum/optimization/solve')
         .send({
           problem: {
             problem_id: 'test_maxcut',
@@ -110,7 +110,7 @@ describe('Quantum Computing API', () => {
 
     test('should compare optimizers', async () => {
       const response = await request(app)
-        .post('/api/quantum/optimization/compare')
+        .post('/api/v1/quantum/optimization/compare')
         .send({
           problem: {
             problem_id: 'test_compare',
@@ -135,7 +135,7 @@ describe('Quantum Computing API', () => {
   describe('Quantum Machine Learning', () => {
     test('should get available ML algorithms', async () => {
       const response = await request(app)
-        .get('/api/quantum/ml/algorithms')
+        .get('/api/v1/quantum/ml/algorithms')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -145,7 +145,7 @@ describe('Quantum Computing API', () => {
 
     test('should create ML model', async () => {
       const response = await request(app)
-        .post('/api/quantum/ml/models')
+        .post('/api/v1/quantum/ml/models')
         .send({
           model_id: 'test_qnn_model',
           model_type: 'classification',
@@ -166,7 +166,7 @@ describe('Quantum Computing API', () => {
     test('should train ML model', async () => {
       // First create a model
       await request(app)
-        .post('/api/quantum/ml/models')
+        .post('/api/v1/quantum/ml/models')
         .send({
           model_id: 'test_train_model',
           model_type: 'classification',
@@ -177,7 +177,7 @@ describe('Quantum Computing API', () => {
 
       // Then train it
       const response = await request(app)
-        .post('/api/quantum/ml/models/test_train_model/train')
+        .post('/api/v1/quantum/ml/models/test_train_model/train')
         .send({
           algorithm_name: 'qnn',
           features: [[0, 1, 0, 1], [1, 0, 1, 0], [0, 0, 1, 1], [1, 1, 0, 0]],
@@ -192,7 +192,7 @@ describe('Quantum Computing API', () => {
     test('should make predictions', async () => {
       // Create and train model first
       await request(app)
-        .post('/api/quantum/ml/models')
+        .post('/api/v1/quantum/ml/models')
         .send({
           model_id: 'test_predict_model',
           model_type: 'classification',
@@ -202,7 +202,7 @@ describe('Quantum Computing API', () => {
         });
 
       await request(app)
-        .post('/api/quantum/ml/models/test_predict_model/train')
+        .post('/api/v1/quantum/ml/models/test_predict_model/train')
         .send({
           algorithm_name: 'qnn',
           features: [[0, 1, 0, 1], [1, 0, 1, 0]],
@@ -211,7 +211,7 @@ describe('Quantum Computing API', () => {
 
       // Make predictions
       const response = await request(app)
-        .post('/api/quantum/ml/models/test_predict_model/predict')
+        .post('/api/v1/quantum/ml/models/test_predict_model/predict')
         .send({
           features: [[0, 1, 0, 1]]
         })
@@ -226,7 +226,7 @@ describe('Quantum Computing API', () => {
   describe('Quantum Circuit Design', () => {
     test('should get available circuit designers', async () => {
       const response = await request(app)
-        .get('/api/quantum/circuits/designers')
+        .get('/api/v1/quantum/circuits/designers')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -236,7 +236,7 @@ describe('Quantum Computing API', () => {
 
     test('should design quantum circuit', async () => {
       const response = await request(app)
-        .post('/api/quantum/circuits/design')
+        .post('/api/v1/quantum/circuits/design')
         .send({
           circuit_id: 'test_circuit',
           circuit_type: 'feature_map',
@@ -261,7 +261,7 @@ describe('Quantum Computing API', () => {
     test('should optimize circuit', async () => {
       // First design a circuit
       await request(app)
-        .post('/api/quantum/circuits/design')
+        .post('/api/v1/quantum/circuits/design')
         .send({
           circuit_id: 'test_optimize_circuit',
           circuit_type: 'ansatz',
@@ -273,7 +273,7 @@ describe('Quantum Computing API', () => {
 
       // Then optimize it
       const response = await request(app)
-        .post('/api/quantum/circuits/test_optimize_circuit/optimize')
+        .post('/api/v1/quantum/circuits/test_optimize_circuit/optimize')
         .send({
           optimization_level: 2
         })
@@ -286,7 +286,7 @@ describe('Quantum Computing API', () => {
 
     test('should list circuits', async () => {
       const response = await request(app)
-        .get('/api/quantum/circuits')
+        .get('/api/v1/quantum/circuits')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -298,7 +298,7 @@ describe('Quantum Computing API', () => {
   describe('Quantum Resource Management', () => {
     test('should list resources', async () => {
       const response = await request(app)
-        .get('/api/quantum/resources')
+        .get('/api/v1/quantum/resources')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -308,7 +308,7 @@ describe('Quantum Computing API', () => {
 
     test('should get resource utilization', async () => {
       const response = await request(app)
-        .get('/api/quantum/resources/utilization')
+        .get('/api/v1/quantum/resources/utilization')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -318,7 +318,7 @@ describe('Quantum Computing API', () => {
 
     test('should submit quantum job', async () => {
       const response = await request(app)
-        .post('/api/quantum/jobs')
+        .post('/api/v1/quantum/jobs')
         .send({
           job_id: 'test_job',
           user_id: 'test_user',
@@ -347,7 +347,7 @@ describe('Quantum Computing API', () => {
   describe('Hybrid Computing', () => {
     test('should get available hybrid strategies', async () => {
       const response = await request(app)
-        .get('/api/quantum/hybrid/strategies')
+        .get('/api/v1/quantum/hybrid/strategies')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -357,7 +357,7 @@ describe('Quantum Computing API', () => {
 
     test('should execute hybrid task', async () => {
       const response = await request(app)
-        .post('/api/quantum/hybrid/execute')
+        .post('/api/v1/quantum/hybrid/execute')
         .send({
           task_id: 'test_hybrid_task',
           task_type: 'classification',
@@ -380,7 +380,7 @@ describe('Quantum Computing API', () => {
   describe('Error Correction', () => {
     test('should get available error correction codes', async () => {
       const response = await request(app)
-        .get('/api/quantum/error-correction/codes')
+        .get('/api/v1/quantum/error-correction/codes')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -390,7 +390,7 @@ describe('Quantum Computing API', () => {
 
     test('should apply error correction', async () => {
       const response = await request(app)
-        .post('/api/quantum/error-correction/apply')
+        .post('/api/v1/quantum/error-correction/apply')
         .send({
           circuit: {
             num_qubits: 3,
@@ -418,7 +418,7 @@ describe('Quantum Computing API', () => {
 
     test('should get error correction performance', async () => {
       const response = await request(app)
-        .get('/api/quantum/error-correction/performance')
+        .get('/api/v1/quantum/error-correction/performance')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -430,7 +430,7 @@ describe('Quantum Computing API', () => {
   describe('Error Handling', () => {
     test('should handle invalid quantum provider', async () => {
       const response = await request(app)
-        .post('/api/quantum/providers/connect')
+        .post('/api/v1/quantum/providers/connect')
         .send({
           provider: 'invalid_provider',
           config: {}
@@ -442,7 +442,7 @@ describe('Quantum Computing API', () => {
 
     test('should handle invalid optimization problem', async () => {
       const response = await request(app)
-        .post('/api/quantum/optimization/solve')
+        .post('/api/v1/quantum/optimization/solve')
         .send({
           problem: {
             problem_id: 'invalid',
@@ -457,7 +457,7 @@ describe('Quantum Computing API', () => {
 
     test('should handle missing ML model', async () => {
       const response = await request(app)
-        .post('/api/quantum/ml/models/nonexistent_model/train')
+        .post('/api/v1/quantum/ml/models/nonexistent_model/train')
         .send({
           algorithm_name: 'qnn',
           features: [[0, 1]],
@@ -476,7 +476,7 @@ describe('Quantum Computing API', () => {
       for (let i = 0; i < 10; i++) {
         promises.push(
           request(app)
-            .get('/api/quantum/providers')
+            .get('/api/v1/quantum/providers')
         );
       }
 
@@ -490,7 +490,7 @@ describe('Quantum Computing API', () => {
 
     test('should handle large optimization problems', async () => {
       const response = await request(app)
-        .post('/api/quantum/optimization/solve')
+        .post('/api/v1/quantum/optimization/solve')
         .send({
           problem: {
             problem_id: 'large_problem',

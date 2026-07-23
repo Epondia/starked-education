@@ -21,13 +21,13 @@ describe('Profile API Tests', () => {
     jest.clearAllMocks();
   });
 
-  describe('GET /api/users/profile/:address', () => {
+  describe('GET /api/v1/users/profile/:address', () => {
     it('should return user profile for valid address', async () => {
       const mockProfile = userData.users.validUser;
       userService.getProfile.mockResolvedValue(mockProfile);
 
       const response = await request(app)
-        .get(`/api/users/profile/${mockProfile.address}`);
+        .get(`/api/v1/users/profile/${mockProfile.address}`);
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(mockProfile);
@@ -38,7 +38,7 @@ describe('Profile API Tests', () => {
       userService.getProfile.mockResolvedValue(null);
 
       const response = await request(app)
-        .get('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP');
+        .get('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP');
 
       expect(response.status).toBe(404);
       expect(response.body.error).toBe('Profile not found');
@@ -48,7 +48,7 @@ describe('Profile API Tests', () => {
       userService.getProfile.mockRejectedValue(new Error('Database error'));
 
       const response = await request(app)
-        .get('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP');
+        .get('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP');
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Internal server error');
@@ -56,7 +56,7 @@ describe('Profile API Tests', () => {
 
     it('should validate address parameter', async () => {
       const response = await request(app)
-        .get('/api/users/profile/invalid-address');
+        .get('/api/v1/users/profile/invalid-address');
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -65,13 +65,13 @@ describe('Profile API Tests', () => {
 
     it('should reject empty address parameter', async () => {
       const response = await request(app)
-        .get('/api/users/profile/');
+        .get('/api/v1/users/profile/');
 
       expect(response.status).toBe(404);
     });
   });
 
-  describe('PUT /api/users/profile/:address', () => {
+  describe('PUT /api/v1/users/profile/:address', () => {
     it('should update user profile successfully', async () => {
       const mockProfile = userData.users.validUser;
       const updateData = {
@@ -84,7 +84,7 @@ describe('Profile API Tests', () => {
       userService.updateProfile.mockResolvedValue(updatedProfile);
 
       const response = await request(app)
-        .put(`/api/users/profile/${mockProfile.address}`)
+        .put(`/api/v1/users/profile/${mockProfile.address}`)
         .send(updateData);
 
       expect(response.status).toBe(200);
@@ -94,7 +94,7 @@ describe('Profile API Tests', () => {
 
     it('should validate username length', async () => {
       const response = await request(app)
-        .put('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
+        .put('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
         .send({ username: 'ab' }); // Too short
 
       expect(response.status).toBe(400);
@@ -104,7 +104,7 @@ describe('Profile API Tests', () => {
 
     it('should validate email format', async () => {
       const response = await request(app)
-        .put('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
+        .put('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
         .send({ email: 'invalid-email' });
 
       expect(response.status).toBe(400);
@@ -114,7 +114,7 @@ describe('Profile API Tests', () => {
 
     it('should validate bio length', async () => {
       const response = await request(app)
-        .put('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
+        .put('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
         .send({ bio: 'a'.repeat(501) }); // Too long
 
       expect(response.status).toBe(400);
@@ -124,7 +124,7 @@ describe('Profile API Tests', () => {
 
     it('should validate address parameter', async () => {
       const response = await request(app)
-        .put('/api/users/profile/invalid-address')
+        .put('/api/v1/users/profile/invalid-address')
         .send({ username: 'validuser' });
 
       expect(response.status).toBe(400);
@@ -139,7 +139,7 @@ describe('Profile API Tests', () => {
       userService.updateProfile.mockResolvedValue(updatedProfile);
 
       const response = await request(app)
-        .put(`/api/users/profile/${mockProfile.address}`)
+        .put(`/api/v1/users/profile/${mockProfile.address}`)
         .send(partialUpdate);
 
       expect(response.status).toBe(200);
@@ -150,7 +150,7 @@ describe('Profile API Tests', () => {
       userService.updateProfile.mockRejectedValue(new Error('Database error'));
 
       const response = await request(app)
-        .put('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
+        .put('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
         .send({ username: 'testuser' });
 
       expect(response.status).toBe(500);
@@ -158,7 +158,7 @@ describe('Profile API Tests', () => {
     });
   });
 
-  describe('GET /api/users/settings/:userId', () => {
+  describe('GET /api/v1/users/settings/:userId', () => {
     it('should return user settings', async () => {
       const mockSettings = {
         theme: 'dark',
@@ -172,7 +172,7 @@ describe('Profile API Tests', () => {
       userService.getSettings.mockResolvedValue(mockSettings);
 
       const response = await request(app)
-        .get('/api/users/settings/user-123');
+        .get('/api/v1/users/settings/user-123');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(mockSettings);
@@ -181,7 +181,7 @@ describe('Profile API Tests', () => {
 
     it('should validate userId parameter', async () => {
       const response = await request(app)
-        .get('/api/users/settings/');
+        .get('/api/v1/users/settings/');
 
       expect(response.status).toBe(404);
     });
@@ -190,14 +190,14 @@ describe('Profile API Tests', () => {
       userService.getSettings.mockRejectedValue(new Error('Database error'));
 
       const response = await request(app)
-        .get('/api/users/settings/user-123');
+        .get('/api/v1/users/settings/user-123');
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Internal server error');
     });
   });
 
-  describe('PUT /api/users/settings/:userId', () => {
+  describe('PUT /api/v1/users/settings/:userId', () => {
     it('should update user settings successfully', async () => {
       const settingsData = {
         theme: 'light',
@@ -209,7 +209,7 @@ describe('Profile API Tests', () => {
       userService.updateSettings.mockResolvedValue(updatedSettings);
 
       const response = await request(app)
-        .put('/api/users/settings/user-123')
+        .put('/api/v1/users/settings/user-123')
         .send(settingsData);
 
       expect(response.status).toBe(200);
@@ -219,7 +219,7 @@ describe('Profile API Tests', () => {
 
     it('should validate settings object', async () => {
       const response = await request(app)
-        .put('/api/users/settings/user-123')
+        .put('/api/v1/users/settings/user-123')
         .send('invalid-settings'); // Not an object
 
       expect(response.status).toBe(400);
@@ -228,7 +228,7 @@ describe('Profile API Tests', () => {
 
     it('should validate userId parameter', async () => {
       const response = await request(app)
-        .put('/api/users/settings/')
+        .put('/api/v1/users/settings/')
         .send({ theme: 'dark' });
 
       expect(response.status).toBe(404);
@@ -238,7 +238,7 @@ describe('Profile API Tests', () => {
       userService.updateSettings.mockRejectedValue(new Error('Database error'));
 
       const response = await request(app)
-        .put('/api/users/settings/user-123')
+        .put('/api/v1/users/settings/user-123')
         .send({ theme: 'dark' });
 
       expect(response.status).toBe(500);
@@ -246,7 +246,7 @@ describe('Profile API Tests', () => {
     });
   });
 
-  describe('GET /api/users/profile/:address/achievements', () => {
+  describe('GET /api/v1/users/profile/:address/achievements', () => {
     it('should return user achievements', async () => {
       const mockAchievements = [
         {
@@ -269,7 +269,7 @@ describe('Profile API Tests', () => {
       userService.getAchievements.mockResolvedValue(mockAchievements);
 
       const response = await request(app)
-        .get('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP/achievements');
+        .get('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP/achievements');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(mockAchievements);
@@ -280,7 +280,7 @@ describe('Profile API Tests', () => {
       userService.getAchievements.mockResolvedValue([]);
 
       const response = await request(app)
-        .get('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP/achievements');
+        .get('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP/achievements');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual([]);
@@ -290,14 +290,14 @@ describe('Profile API Tests', () => {
       userService.getAchievements.mockRejectedValue(new Error('Database error'));
 
       const response = await request(app)
-        .get('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP/achievements');
+        .get('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP/achievements');
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Internal server error');
     });
   });
 
-  describe('GET /api/users/profile/:address/stats', () => {
+  describe('GET /api/v1/users/profile/:address/stats', () => {
     it('should return user profile statistics', async () => {
       const mockStats = {
         totalCourses: 5,
@@ -313,7 +313,7 @@ describe('Profile API Tests', () => {
       userService.getProfileStats.mockResolvedValue(mockStats);
 
       const response = await request(app)
-        .get('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP/stats');
+        .get('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP/stats');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(mockStats);
@@ -324,7 +324,7 @@ describe('Profile API Tests', () => {
       userService.getProfileStats.mockRejectedValue(new Error('Database error'));
 
       const response = await request(app)
-        .get('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP/stats');
+        .get('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP/stats');
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Internal server error');
@@ -334,7 +334,7 @@ describe('Profile API Tests', () => {
   describe('Edge Cases and Error Handling', () => {
     it('should handle malformed JSON in request body', async () => {
       const response = await request(app)
-        .put('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
+        .put('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
         .set('Content-Type', 'application/json')
         .send('{"invalid": json}');
 
@@ -343,7 +343,7 @@ describe('Profile API Tests', () => {
 
     it('should handle extremely long usernames', async () => {
       const response = await request(app)
-        .put('/api/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
+        .put('/api/v1/users/profile/GD5DJ3B7MHLRWGS7QKXYYEJZRGFQMVJ7T7S6DLPNHP5TGB7FZ7NBHJVP')
         .send({ username: 'a'.repeat(1000) });
 
       expect(response.status).toBe(400);
@@ -358,7 +358,7 @@ describe('Profile API Tests', () => {
       userService.updateProfile.mockResolvedValue(updatedProfile);
 
       const response = await request(app)
-        .put(`/api/users/profile/${mockProfile.address}`)
+        .put(`/api/v1/users/profile/${mockProfile.address}`)
         .send({ bio: bioWithSpecialChars });
 
       expect(response.status).toBe(200);
@@ -375,8 +375,8 @@ describe('Profile API Tests', () => {
         .mockResolvedValueOnce({ ...mockProfile, ...updateData2 });
 
       const [response1, response2] = await Promise.all([
-        request(app).put(`/api/users/profile/${mockProfile.address}`).send(updateData1),
-        request(app).put(`/api/users/profile/${mockProfile.address}`).send(updateData2)
+        request(app).put(`/api/v1/users/profile/${mockProfile.address}`).send(updateData1),
+        request(app).put(`/api/v1/users/profile/${mockProfile.address}`).send(updateData2)
       ]);
 
       expect(response1.status).toBe(200);

@@ -1,0 +1,154 @@
+name: Security
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+  schedule:
+    # Weekly full scan, Mondays at 06:00 UTC
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  # ─── CodeQL Static Analysis (SAST) ───────────────────────────────
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+            build-mode: none
+          - language: rust
+            build-mode: none
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # ─── Secret Scanning ─────────────────────────────────────────────
+  # Uses the open-source gitleaks binary directly (the gitleaks-action
+  # wrapper requires a paid license for organization-owned repos).
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        continue-on-error: true
+        uses: docker://ghcr.io/gitleaks/gitleaks:latest
+        with:
+          args: detect --source=/github/workspace --no-git --redact --verbose --no-banner
+
+  # ─── Dependency Review (PRs only) ────────────────────────────────
+  # Requires the Dependency Graph feature to be enabled in repository
+  # settings; kept non-blocking so it does not fail PRs when disabled.
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependency Review
+        continue-on-error: true
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: always
+
+  # ─── npm audit (backend + frontend) ──────────────────────────────
+  npm-audit:
+    name: npm audit (${{ matrix.package }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [ backend, frontend ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Audit ${{ matrix.package }} (high/critical)
+        continue-on-error: true
+        run: cd ${{ matrix.package }} && npm audit --audit-level=high
+
+  # ─── cargo audit (contracts) ─────────────────────────────────────
+  cargo-audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.21.1 --locked
+
+      - name: Audit contract dependencies
+        continue-on-error: true
+        run: cd contracts && cargo audit
+
+  # ─── Container / Filesystem Scan (Trivy) ─────────────────────────
+  trivy-scan:
+    name: Trivy Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'

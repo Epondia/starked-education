@@ -3,6 +3,13 @@ import logger from './logger';
 
 let client: RedisClientType | null = null;
 
+/**
+ * Returns the currently connected Redis client (may be null if not connected).
+ * Used by services that want to read/write cached values without re-establishing
+ * the connection. Keeps the connect-side effects owned by `connectRedis`.
+ */
+export const getRedisClient = (): RedisClientType | null => client;
+
 export const connectRedis = async (): Promise<RedisClientType | null> => {
   if (client) return client;
 

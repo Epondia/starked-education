@@ -8,15 +8,15 @@ describe('Collaboration API Tests', () => {
   let optionId;
 
   beforeEach(async () => {
-    const classroomsResponse = await request(app).get('/api/collaboration/classrooms');
+    const classroomsResponse = await request(app).get('/api/v1/collaboration/classrooms');
     classroomId = classroomsResponse.body.data[0].id;
 
-    const detailResponse = await request(app).get(`/api/collaboration/classrooms/${classroomId}`);
+    const detailResponse = await request(app).get(`/api/v1/collaboration/classrooms/${classroomId}`);
     workspaceId = detailResponse.body.data.workspace.id;
   });
 
   it('should list seeded classrooms', async () => {
-    const response = await request(app).get('/api/collaboration/classrooms');
+    const response = await request(app).get('/api/v1/collaboration/classrooms');
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -26,7 +26,7 @@ describe('Collaboration API Tests', () => {
 
   it('should join a classroom and track attendance', async () => {
     const response = await request(app)
-      .post(`/api/collaboration/classrooms/${classroomId}/join`)
+      .post(`/api/v1/collaboration/classrooms/${classroomId}/join`)
       .send({
         userId: 'student_join_test',
         name: 'Realtime Student'
@@ -40,7 +40,7 @@ describe('Collaboration API Tests', () => {
 
   it('should create and respond to a poll', async () => {
     const createResponse = await request(app)
-      .post(`/api/collaboration/classrooms/${classroomId}/polls`)
+      .post(`/api/v1/collaboration/classrooms/${classroomId}/polls`)
       .send({
         question: 'Which realtime feature matters most?',
         options: ['Chat', 'Whiteboard', 'Breakout rooms'],
@@ -52,7 +52,7 @@ describe('Collaboration API Tests', () => {
     optionId = createResponse.body.data.options[0].id;
 
     const response = await request(app)
-      .post(`/api/collaboration/classrooms/${classroomId}/polls/${pollId}/respond`)
+      .post(`/api/v1/collaboration/classrooms/${classroomId}/polls/${pollId}/respond`)
       .send({
         optionId,
         userId: 'student_poll_test'
@@ -65,7 +65,7 @@ describe('Collaboration API Tests', () => {
 
   it('should queue and deliver signaling events for WebRTC negotiation', async () => {
     const createSignalResponse = await request(app)
-      .post(`/api/collaboration/classrooms/${classroomId}/signals`)
+      .post(`/api/v1/collaboration/classrooms/${classroomId}/signals`)
       .send({
         type: 'offer',
         fromUserId: 'student_a',
@@ -77,7 +77,7 @@ describe('Collaboration API Tests', () => {
     expect(createSignalResponse.body.data.type).toBe('offer');
 
     const pullResponse = await request(app)
-      .get(`/api/collaboration/classrooms/${classroomId}/signals?userId=student_b`);
+      .get(`/api/v1/collaboration/classrooms/${classroomId}/signals?userId=student_b`);
 
     expect(pullResponse.status).toBe(200);
     expect(pullResponse.body.data).toHaveLength(1);
@@ -86,14 +86,14 @@ describe('Collaboration API Tests', () => {
 
   it('should accept quality and interruption reports', async () => {
     await request(app)
-      .post(`/api/collaboration/classrooms/${classroomId}/join`)
+      .post(`/api/v1/collaboration/classrooms/${classroomId}/join`)
       .send({
         userId: 'student_media_test',
         name: 'Media Learner'
       });
 
     const qualityResponse = await request(app)
-      .post(`/api/collaboration/classrooms/${classroomId}/media-quality`)
+      .post(`/api/v1/collaboration/classrooms/${classroomId}/media-quality`)
       .send({
         userId: 'student_media_test',
         packetLossPct: 9,
@@ -106,7 +106,7 @@ describe('Collaboration API Tests', () => {
     expect(qualityResponse.body.success).toBe(true);
 
     const interruptionResponse = await request(app)
-      .post(`/api/collaboration/classrooms/${classroomId}/interruptions`)
+      .post(`/api/v1/collaboration/classrooms/${classroomId}/interruptions`)
       .send({
         userId: 'student_media_test',
         reason: 'offline',
@@ -116,7 +116,7 @@ describe('Collaboration API Tests', () => {
     expect(interruptionResponse.status).toBe(201);
 
     const healthResponse = await request(app)
-      .get(`/api/collaboration/classrooms/${classroomId}/media-health`);
+      .get(`/api/v1/collaboration/classrooms/${classroomId}/media-health`);
 
     expect(healthResponse.status).toBe(200);
     expect(healthResponse.body.data.latestReports.length).toBeGreaterThan(0);
@@ -125,7 +125,7 @@ describe('Collaboration API Tests', () => {
 
   it('should sync a collaborative document', async () => {
     const response = await request(app)
-      .post(`/api/collaboration/workspaces/${workspaceId}/documents/doc_live_sync/sync`)
+      .post(`/api/v1/collaboration/workspaces/${workspaceId}/documents/doc_live_sync/sync`)
       .send({
         title: 'Team Notes',
         userId: 'student_doc_test',
@@ -146,7 +146,7 @@ describe('Collaboration API Tests', () => {
 
   it('should create a study group and peer review assignment', async () => {
     const studyGroupResponse = await request(app)
-      .post('/api/collaboration/study-groups')
+      .post('/api/v1/collaboration/study-groups')
       .send({
         topic: 'Peer Learning Circle',
         focusArea: 'Reviewing drafts together',
@@ -159,7 +159,7 @@ describe('Collaboration API Tests', () => {
     expect(studyGroupResponse.body.data.members).toEqual(['student_1', 'student_2']);
 
     const peerReviewResponse = await request(app)
-      .post('/api/collaboration/peer-review')
+      .post('/api/v1/collaboration/peer-review')
       .send({
         workspaceId,
         submissionId: 'submission_1',

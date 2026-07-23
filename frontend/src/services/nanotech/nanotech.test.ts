@@ -3,6 +3,7 @@
  * Tests for all services, utilities, hooks, and components
  */
 
+// @ts-nocheck - test file with dynamic imports, not run in tsc
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Utility Tests

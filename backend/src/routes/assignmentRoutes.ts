@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import { AssignmentController } from '../controllers/assignmentController';
-import { authMiddleware } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
 import { uploadMiddleware } from '../middleware/upload';
 import { rateLimitMiddleware } from '../middleware/rateLimit';
 import { validateRequestSchema } from '../middleware/validation';
@@ -21,7 +21,7 @@ export function createAssignmentRoutes(controller: AssignmentController): Router
   const router = Router();
 
   // Apply authentication to all routes
-  router.use(authMiddleware);
+  router.use(authenticateToken);
 
   // Assignment Management Routes
   router.post(

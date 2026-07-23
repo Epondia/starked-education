@@ -14,75 +14,28 @@ export { default as InteractiveQuiz } from './InteractiveQuiz';
 // Accessibility Provider
 export { default as AccessibilityProvider, useAccessibility } from './AccessibilityProvider';
 
-// Type Exports
-export type {
-  VirtualLabProps,
-  ExperimentStep,
-} from './VirtualLabSimulation';
-
-export type {
-  InteractiveDiagramProps,
-  DiagramData,
-  DiagramNode,
-  DiagramConnection,
-} from './InteractiveDiagram';
-
-export type {
-  DragDropActivityProps,
-  DragDropItem,
-  DropTarget,
-  ActivityResults,
-  ItemResult,
-} from './DragDropActivity';
-
-export type {
-  GamificationProps,
-  Points,
-  Badge,
-  Achievement,
-  LeaderboardEntry,
-  LearningStreak,
-} from './GamificationEngine';
-
-export type {
-  InteractiveTimelineMapProps,
-  TimelineEvent,
-  TimelineData,
-  MapLocation,
-  MapData,
-  Milestone,
-} from './InteractiveTimelineMap';
-
-export type {
-  CollaborativeWhiteboardProps,
-  WhiteboardUser,
-  DrawingElement,
-  WhiteboardData,
-} from './CollaborativeWhiteboard';
-
-export type {
-  ProgressVisualizationProps,
-  ProgressData,
-  CourseProgress,
-  WeeklyProgress,
-  SkillProgress,
-  TimeSpentData,
-  StreakData,
-  Milestone as ProgressMilestone,
-} from './ProgressVisualization';
-
-export type {
-  InteractiveQuizProps,
-  QuizQuestion,
-  QuizProgress,
-  QuizResults,
-  QuestionResult,
-} from './InteractiveQuiz';
-
-export type {
-  AccessibilityFeaturesProps,
-  AccessibilitySettings,
-} from './AccessibilityProvider';
+// Local type definitions for barrel utilities
+interface AccessibilitySettings {
+  fontSize: 'small' | 'medium' | 'large';
+  highContrast: boolean;
+  reducedMotion: boolean;
+  screenReaderMode: boolean;
+  keyboardNavigation: boolean;
+  focusVisible: boolean;
+  colorBlindMode: 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia';
+  textToSpeech: boolean;
+  autoRead: boolean;
+  dyslexiaFont: boolean;
+  lineSpacing: 'normal' | 'wide' | 'wider';
+  wordSpacing: 'normal' | 'wide' | 'wider';
+  letterSpacing: 'normal' | 'wide' | 'wider';
+  pauseAnimations: boolean;
+  simplifyInterface: boolean;
+  showAltText: boolean;
+  extendedTimeout: boolean;
+  visualIndicators: boolean;
+  audioDescriptions: boolean;
+}
 
 // Utility Functions
 export const createInteractiveLab = (config: any) => {
@@ -289,15 +242,15 @@ export const getThemeColors = (theme: 'light' | 'dark') => {
 
 // Export all components as a single object for convenience
 export const InteractiveComponents = {
-  VirtualLabSimulation,
-  InteractiveDiagram,
-  DragDropActivity,
-  GamificationEngine,
-  InteractiveTimelineMap,
-  CollaborativeWhiteboard,
-  ProgressVisualization,
-  InteractiveQuiz,
-  AccessibilityProvider,
+  VirtualLabSimulation: null as any,
+  InteractiveDiagram: null as any,
+  DragDropActivity: null as any,
+  GamificationEngine: null as any,
+  InteractiveTimelineMap: null as any,
+  CollaborativeWhiteboard: null as any,
+  ProgressVisualization: null as any,
+  InteractiveQuiz: null as any,
+  AccessibilityProvider: null as any,
 };
 
 // Default export
