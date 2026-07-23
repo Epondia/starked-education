@@ -124,6 +124,12 @@ app.use(versionExtractor);
 // Create versioned routers
 const v1Router = createVersionedRouter('v1');
 
+// Apply baseline global rate limiting to ALL v1 API routes
+// This ensures every endpoint has at least baseline protection
+// Routes with more specific limiters (auth, transactions, etc.) will have both applied
+// See docs/RATE_LIMITING.md for complete rate limit tiers and configuration
+v1Router.use(globalLimiter);
+
 // ── v1 API Routes ──────────────────────────────────────────────
 // All existing routes are mounted under /api/v1/
 v1Router.use('/quizzes', quizRoutes);
