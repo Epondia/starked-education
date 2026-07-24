@@ -27,6 +27,9 @@ const {
 const { globalLimiter } = require('./middleware/rateLimiter');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
 
+// Import compression middleware
+const { compressionMiddleware } = require('./middleware/compression');
+
 // Import versioning middleware
 const { versionExtractor, createVersionedRouter, SUPPORTED_VERSIONS, DEFAULT_VERSION } = require('./middleware/versioning');
 
@@ -105,6 +108,10 @@ setSyncWebsocketEmitter((userId, event, data) => {
 // Middleware
 app.use(helmet());
 app.use(cors());
+
+// Response compression - early in pipeline to compress all outgoing responses
+app.use(compressionMiddleware());
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -190,6 +197,7 @@ app.use('/api/v2', v2Router);
 const { createVersionedResponse } = require('./utils/schemas');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { ValidationError } = require('./utils/errors');
+const { getCompressionStats } = require('./middleware/compression');
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -208,6 +216,7 @@ app.get('/api/health', (req, res) => {
     status: 'healthy',
     uptime: process.uptime(),
     supportedVersions: SUPPORTED_VERSIONS,
+    compression: getCompressionStats(),
   }, version));
 });
 
