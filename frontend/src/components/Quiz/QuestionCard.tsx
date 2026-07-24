@@ -71,7 +71,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const renderCode = () => (
     <div className="space-y-4">
       <div className="p-3 bg-gray-100 dark:bg-gray-900 rounded-md text-sm font-mono text-gray-600 dark:text-gray-400">
-        // Write your code solution here
+        {'// Write your code solution here'}
       </div>
       <textarea
         value={answer || question.codeTemplate || ''}

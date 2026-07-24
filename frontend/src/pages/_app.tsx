@@ -48,8 +48,7 @@ function MyApp({ Component, pageProps }: AppProps) {
     hasMounted.current = true;
   }, [router.asPath]);
 
-  return (
-    <PlausibleProvider domain="starked-education.com" trackLocalhost={true}>
+  return (            <PlausibleProvider domain="starked-education.com" src="https://plausible.io/js/script.js" trackLocalhost={true}>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="starked-theme">
         <ErrorBoundary key={router.asPath}>
           <WalletProvider>

@@ -45,7 +45,7 @@ const defaultShortcuts: Shortcut[] = [
   { keys: '?', description: 'Show Shortcuts', category: 'Search', action: () => {} },
 ]
 
-let shortcuts = [...defaultShortcuts]
+const shortcuts = [...defaultShortcuts]
 let overrides = loadOverrides()
 
 export function getShortcuts(): Shortcut[] {
