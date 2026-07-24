@@ -40,6 +40,9 @@ const { versionExtractor, createVersionedRouter, SUPPORTED_VERSIONS, DEFAULT_VER
 // Load environment variables
 dotenv.config();
 
+// Import logger
+const logger = require('./utils/logger');
+
 // Connect to Redis
 connectRedis();
 
@@ -123,11 +126,9 @@ app.use(compressionMiddleware());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  next();
-});
+// Structured request/response logging middleware
+const requestLogger = require('./middleware/requestLogger');
+app.use(requestLogger);
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
@@ -272,8 +273,9 @@ app.use('/api/v:version*', (req, res, next) => {
   }
 });
 
-// 404 handler - must be after all routes, before error handler
-app.use(notFoundHandler);
+// Global error handler
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error:', { error: err.message, stack: err.stack, requestId: req.requestId });
 
 // Global error handler - must be last
 app.use(errorHandler);
