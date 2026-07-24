@@ -4,6 +4,8 @@
   "description": "Frontend for StarkEd decentralized education platform",
   "private": true,
   "scripts": {
+    "generate-api-types": "openapi-typescript http://localhost:3001/api-docs.json --output src/types/api.ts",
+    "generate-api-types:local": "openapi-typescript ./api-docs.json --output src/types/api.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -89,6 +91,7 @@
     "husky": "^9.1.7",
     "jest": "^29.6.4",
     "jest-environment-jsdom": "^30.4.1",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.4.28",
     "prettier": "^3.0.2",
     "typescript": "^5.1.6"

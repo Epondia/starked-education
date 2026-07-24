@@ -91,6 +91,10 @@ const agiTutorRoutes = resolveRoute(require('./routes/agiTutorRoutes'));
 // Analytics routes
 const analyticsRoutes = require('./routes/analytics');
 
+// Initialize Swagger UI
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
+
 // Initialize Express app
 const app = express();
 const server = createServer(app);
@@ -123,6 +127,24 @@ app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
+});
+
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  explorer: true,
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'StarkEd API Documentation',
+  swaggerOptions: {
+    persistAuthorization: true,
+    displayRequestDuration: true,
+    filter: true,
+  },
+}));
+
+// Serve raw OpenAPI spec as JSON
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
 });
 
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
