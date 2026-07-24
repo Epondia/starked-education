@@ -13,6 +13,12 @@ pnpm-lock.yaml
 out/
 dist/
 build/
+
+# PWA / Service Worker generated files
+frontend/public/sw.js
+frontend/public/workbox-*.js
+frontend/public/swe-worker-*.js
+frontend/public/fallback-*.js
 .vercel/
 .vercel_build_output/
 coverage/

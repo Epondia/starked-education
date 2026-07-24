@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Box, Play, Pause, RotateCw, Zap, Target, Wind, Magnet, Dumbbell } from 'lucide-react';
+import { Box, Play, Pause, RotateCw, Zap, Target, Wind, Magnet, Dumbbell, Settings } from 'lucide-react';
 
 export type PhysicsEngineType = 'cannon' | 'ammo' | 'custom' | 'rapier';
 export type ForceType = 'gravity' | 'magnetic' | 'electric' | 'wind' | 'spring' | 'friction';

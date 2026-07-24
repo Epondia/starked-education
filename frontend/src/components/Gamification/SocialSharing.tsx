@@ -108,7 +108,7 @@ export function SocialSharing({
       const encodedText = encodeURIComponent(text);
       const encodedUrl = encodeURIComponent(shareUrl);
 
-      let finalUrl = platform.shareUrl
+      const finalUrl = platform.shareUrl
         .replace('{text}', encodedText)
         .replace('{url}', encodedUrl);
 

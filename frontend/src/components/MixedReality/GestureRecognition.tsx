@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Hand, MousePointer, Move, RotateCw, ZoomIn, HandMetal, Grab, Eye } from 'lucide-react';
+import { Hand, MousePointer, Move, RotateCw, ZoomIn, HandMetal, Grab, Eye, Settings } from 'lucide-react';
 
 export type GestureType = 
   | 'point' 
