@@ -11,9 +11,13 @@ const { initCollaborationService } = require('./services/initCollaboration');
 const { Redis } = require('ioredis');
 const SecureRealtimeCommunication = require('./services/secureRealtimeCommunication').default;
 
+// Import circuit breaker registry
+const { circuitBreakerRegistry } = require('./utils/circuitBreaker');
+
 const transactionQueue = require('./services/transactionQueue');
 const transactionProcessor = require('./workers/transactionProcessor');
 const transactionEvents = require('./events/transactionEvents');
+const emailWorker = require('./workers/emailWorker');
 
 // Import security middleware
 const {
@@ -27,11 +31,17 @@ const {
 const { globalLimiter } = require('./middleware/rateLimiter');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
 
+// Import compression middleware
+const { compressionMiddleware } = require('./middleware/compression');
+
 // Import versioning middleware
 const { versionExtractor, createVersionedRouter, SUPPORTED_VERSIONS, DEFAULT_VERSION } = require('./middleware/versioning');
 
 // Load environment variables
 dotenv.config();
+
+// Import logger
+const logger = require('./utils/logger');
 
 // Connect to Redis
 connectRedis();
@@ -84,6 +94,10 @@ const agiTutorRoutes = resolveRoute(require('./routes/agiTutorRoutes'));
 // Analytics routes
 const analyticsRoutes = require('./routes/analytics');
 
+// Initialize Swagger UI
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
+
 // Initialize Express app
 const app = express();
 const server = createServer(app);
@@ -105,24 +119,56 @@ setSyncWebsocketEmitter((userId, event, data) => {
 // Middleware
 app.use(helmet());
 app.use(cors());
+
+// Response compression - early in pipeline to compress all outgoing responses
+app.use(compressionMiddleware());
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  next();
+// Structured request/response logging middleware
+const requestLogger = require('./middleware/requestLogger');
+app.use(requestLogger);
+
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  explorer: true,
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'StarkEd API Documentation',
+  swaggerOptions: {
+    persistAuthorization: true,
+    displayRequestDuration: true,
+    filter: true,
+  },
+}));
+
+// Serve raw OpenAPI spec as JSON
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
 });
 
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
 const healthRoutes = require('./routes/health').default || require('./routes/health');
 app.use('/health', healthRoutes);
 
+// Issue #17: Apply the global rate limit baseline AFTER /health so probes
+// bypass the limiter entirely (no Redis traffic from liveness/readiness checks).
+// Endpoint-specific limiters (loginLimiter, registerLimiter, paymentLimiter,
+// adminTierLimiter, etc.) take precedence over the global baseline.
+app.use(globalLimiter);
+
 // Apply API version extraction middleware globally
 app.use(versionExtractor);
 
 // Create versioned routers
 const v1Router = createVersionedRouter('v1');
+
+// Apply baseline global rate limiting to ALL v1 API routes
+// This ensures every endpoint has at least baseline protection
+// Routes with more specific limiters (auth, transactions, etc.) will have both applied
+// See docs/RATE_LIMITING.md for complete rate limit tiers and configuration
+v1Router.use(globalLimiter);
 
 // ── v1 API Routes ──────────────────────────────────────────────
 // All existing routes are mounted under /api/v1/
@@ -179,6 +225,10 @@ v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
 const adminRoutes = require('./routes/admin');
 v1Router.use('/admin', adminRoutes);
 
+// Admin jobs monitoring dashboard (email queue + worker stats for #178)
+const adminJobsRoutes = resolveRoute(require('./routes/admin/jobs'));
+v1Router.use('/admin/jobs', adminJobsRoutes);
+
 // Mount v1 router at /api/v1
 app.use('/api/v1', v1Router);
 
@@ -190,6 +240,7 @@ app.use('/api/v2', v2Router);
 const { createVersionedResponse } = require('./utils/schemas');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { ValidationError } = require('./utils/errors');
+const { getCompressionStats } = require('./middleware/compression');
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -208,6 +259,7 @@ app.get('/api/health', (req, res) => {
     status: 'healthy',
     uptime: process.uptime(),
     supportedVersions: SUPPORTED_VERSIONS,
+    compression: getCompressionStats(),
   }, version));
 });
 
@@ -221,8 +273,9 @@ app.use('/api/v:version*', (req, res, next) => {
   }
 });
 
-// 404 handler - must be after all routes, before error handler
-app.use(notFoundHandler);
+// Global error handler
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error:', { error: err.message, stack: err.stack, requestId: req.requestId });
 
 // Global error handler - must be last
 app.use(errorHandler);
@@ -231,9 +284,29 @@ const PORT = process.env.PORT || 3001;
 
 async function startServer() {
   try {
+    // Initialize circuit breakers for external services
+    console.log('🔌 Initializing circuit breakers...');
+    circuitBreakerRegistry.getOrCreate('ipfs', {
+      failureThreshold: parseInt(process.env.CB_IPFS_FAILURE_THRESHOLD) || 5,
+      timeoutWindow: parseInt(process.env.CB_IPFS_TIMEOUT) || 30000,
+      halfOpenMaxRequests: parseInt(process.env.CB_IPFS_HALF_OPEN_MAX) || 3,
+    });
+    circuitBreakerRegistry.getOrCreate('stellar', {
+      failureThreshold: parseInt(process.env.CB_STELLAR_FAILURE_THRESHOLD) || 5,
+      timeoutWindow: parseInt(process.env.CB_STELLAR_TIMEOUT) || 30000,
+      halfOpenMaxRequests: parseInt(process.env.CB_STELLAR_HALF_OPEN_MAX) || 3,
+    });
+    circuitBreakerRegistry.getOrCreate('redis', {
+      failureThreshold: parseInt(process.env.CB_REDIS_FAILURE_THRESHOLD) || 5,
+      timeoutWindow: parseInt(process.env.CB_REDIS_TIMEOUT) || 30000,
+      halfOpenMaxRequests: parseInt(process.env.CB_REDIS_HALF_OPEN_MAX) || 3,
+    });
+    console.log('✅ Circuit breakers initialized');
+
     await transactionQueue.startProcessing();
     await transactionProcessor.start();
     await transactionEvents.startListening();
+    emailWorker.getEmailWorker().start();
 
     server.listen(PORT, () => {
       console.log(`🚀 StarkEd Education Backend running on port ${PORT}`);
@@ -259,6 +332,7 @@ async function startServer() {
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
+  emailWorker.getEmailWorker().stop();
   await transactionQueue.stopProcessing();
   await transactionProcessor.stop();
   await transactionEvents.stopListening();
