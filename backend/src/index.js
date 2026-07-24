@@ -30,6 +30,11 @@ const {
 } = require('./middleware/security');
 const { globalLimiter } = require('./middleware/rateLimiter');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  contentSecurityPolicy,
+  cspViolationReporter
+} = require('./middleware/contentSecurityPolicy');
 
 // Import compression middleware
 const { compressionMiddleware } = require('./middleware/compression');
@@ -118,11 +123,16 @@ setSyncWebsocketEmitter((userId, event, data) => {
 
 // Middleware
 app.use(helmet());
+app.use(contentSecurityPolicy());
 app.use(cors());
-
-// Response compression - early in pipeline to compress all outgoing responses
-app.use(compressionMiddleware());
-
+app.post(
+  '/api/v1/security/csp-report',
+  express.json({
+    limit: '16kb',
+    type: ['application/csp-report', 'application/reports+json', 'application/json']
+  }),
+  cspViolationReporter
+);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
