@@ -1,12 +1,14 @@
 #![cfg(test)]
+extern crate std;
 
 use super::*;
 use crate::user_profile::{
     Achievement, PrivacyLevel, UserProfileContract, UserProfileContractClient,
 };
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use std::panic::AssertUnwindSafe;
 
-fn create_test_env() -> (Env, UserProfileContractClient, Address, Address) {
+fn create_test_env<'a>() -> (Env, UserProfileContractClient<'a>, Address, Address) {
     let env = Env::default();
     let contract_id = env.register_contract(None, UserProfileContract);
     let client = UserProfileContractClient::new(&env, &contract_id);
@@ -40,11 +42,8 @@ fn test_create_profile() {
 
     assert_eq!(profile.owner, user);
     assert_eq!(profile.username, username);
-    assert_eq!(profile.email, email);
-    assert_eq!(profile.bio, bio);
-    assert_eq!(profile.avatar_url, avatar_url);
-    assert_eq!(profile.privacy_level, privacy_level);
-    assert_eq!(profile.achievements.len(), 0);
+    assert_eq!(PrivacyLevel::from_u32(profile.flags.privacy_level()), privacy_level);
+    assert_eq!(profile.achievement_count, 0);
 }
 
 #[test]
@@ -64,7 +63,6 @@ fn test_get_profile() {
 
     let profile = retrieved_profile.unwrap();
     assert_eq!(profile.username, username);
-    assert_eq!(profile.email, email);
 }
 
 #[test]
@@ -169,7 +167,7 @@ fn test_verify_achievement() {
     let username = String::from_str(&env, "testuser");
     let privacy_level = PrivacyLevel::Public;
 
-    env.mock_all_auths_multiple(&[&user, &admin]);
+    env.mock_all_auths();
 
     client.create_or_update_profile(&user, &username, &None, &None, &None, &privacy_level);
 
@@ -228,7 +226,7 @@ fn test_update_privacy_level() {
     assert_eq!(result, true);
 
     let profile = client.get_profile(&user).unwrap();
-    assert_eq!(profile.privacy_level, PrivacyLevel::Private);
+    assert_eq!(PrivacyLevel::from_u32(profile.flags.privacy_level()), PrivacyLevel::Private);
 }
 
 #[test]
@@ -265,10 +263,10 @@ fn test_username_uniqueness() {
     client.create_or_update_profile(&user1, &username, &None, &None, &None, &privacy_level);
 
     // Second user tries to use same username - should panic
-    let result = std::panic::catch_unwind(|| {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
         env.mock_all_auths();
         client.create_or_update_profile(&user2, &username, &None, &None, &None, &privacy_level);
-    });
+    }));
 
     assert!(result.is_err());
 }
