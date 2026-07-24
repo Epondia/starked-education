@@ -136,6 +136,35 @@ async function checkAllDependencies() {
 }
 
 /**
+ * Critical dependencies: failure of any of these indicates the service cannot
+ * reliably perform its core functions, so the aggregate status is "unhealthy".
+ * Other dependencies are peripheral; failure leaves the service in "degraded"
+ * mode but still operational.
+ */
+const CRITICAL_DEPENDENCIES: ReadonlyArray<string> = ['postgres', 'redis'];
+
+/**
+ * Compute the aggregated status from a dependency map.
+ * Returns 'unhealthy' if any critical dependency is down, 'degraded' if only
+ * non-critical dependencies are down, and 'healthy' when all are up.
+ */
+function aggregateStatus(
+  dependencies: Record<string, DependencyHealth>,
+): 'healthy' | 'degraded' | 'unhealthy' {
+  const allHealthy = Object.values(dependencies).every(
+    (dep: DependencyHealth) => dep.status === 'healthy',
+  );
+  if (allHealthy) {
+    return 'healthy';
+  }
+
+  const criticalUnhealthy = CRITICAL_DEPENDENCIES.some(
+    (name) => dependencies[name]?.status !== 'healthy',
+  );
+  return criticalUnhealthy ? 'unhealthy' : 'degraded';
+}
+
+/**
  * GET /health/live
  * Liveness probe - only checks if process is alive
  * Always returns 200
@@ -192,10 +221,6 @@ router.get('/ready', async (req: Request, res: Response) => {
 router.get('/', async (req: Request, res: Response) => {
   try {
     const dependencies = await checkAllDependencies();
-    
-    const allHealthy = Object.values(dependencies).every(
-      (dep: DependencyHealth) => dep.status === 'healthy'
-    );
 
     const memory = process.memoryUsage();
 
@@ -203,7 +228,7 @@ router.get('/', async (req: Request, res: Response) => {
     const circuitBreakers = circuitBreakerRegistry ? circuitBreakerRegistry.getStates() : {};
 
     res.status(200).json({
-      status: allHealthy ? 'healthy' : 'degraded',
+      status: aggregateStatus(dependencies),
       version: packageJson.version,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
@@ -236,11 +261,14 @@ router.get('/', async (req: Request, res: Response) => {
       )
     });
   } catch (error) {
-    // Even on error, return 200 for monitoring endpoint
+    // Even on error, return 200 for monitoring endpoint.
+    // If checkAllDependencies() throws, the realistic cause is that a
+    // critical dependency (db / redis) failed synchronously — surface as
+    // 'unhealthy' under the tiered-status contract.
     console.error('Health check error:', error);
-    
+
     res.status(200).json({
-      status: 'degraded',
+      status: 'unhealthy',
       version: packageJson.version,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
