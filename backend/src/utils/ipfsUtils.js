@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const path = require('path');
 const { ipfsConfig } = require('../config/ipfs');
 
 /**
@@ -12,26 +13,195 @@ const generateContentHash = (metadata) => {
 };
 
 /**
- * Validate file type and size
- * @param {Object} file - The file object
- * @returns {Object} - Validation result
+ * Get human-readable file size description for error messages
+ * @param {number} bytes - File size in bytes
+ * @returns {string} - Human readable size
  */
-const validateFile = (file) => {
-  const errors = [];
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes';
+  const units = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + units[i];
+};
+
+/**
+ * Read the first bytes of a buffer to check magic bytes
+ * @param {Buffer} buffer - The file buffer
+ * @param {number} maxBytes - Maximum number of bytes to return as hex
+ * @returns {string} - Hex string of magic bytes
+ */
+const getMagicBytes = (buffer, maxBytes = 4) => {
+  if (!buffer || buffer.length === 0) return '';
+  return buffer.slice(0, Math.min(maxBytes, buffer.length)).toString('hex').toUpperCase();
+};
+
+/**
+ * Scan file for malware/virus signatures
+ * Checks magic bytes, file extension, and hash blocklist
+ * @param {Object} file - The file object with buffer, originalname, etc.
+ * @returns {{ isClean: boolean, threats: string[] }}
+ */
+const scanForMalware = (file) => {
+  const threats = [];
+  const scanConfig = ipfsConfig.malwareScanning || {};
   
-  // Check file size
-  if (file.size > ipfsConfig.maxFileSize) {
-    errors.push(`File size ${file.size} exceeds maximum allowed size ${ipfsConfig.maxFileSize}`);
+  if (!scanConfig.enabled) {
+    return { isClean: true, threats: [] };
   }
   
-  // Check content type
-  if (!ipfsConfig.allowedContentTypes.includes(file.mimetype)) {
-    errors.push(`Content type ${file.mimetype} is not allowed`);
+  // Check magic bytes against blocklist
+  if (file.buffer && file.buffer.length > 0) {
+    const magicBytes = getMagicBytes(file.buffer);
+    const blocklist = scanConfig.magicByteBlocklist || [];
+    
+    for (const blockedMagic of blocklist) {
+      if (magicBytes.startsWith(blockedMagic.toUpperCase())) {
+        threats.push(
+          `File matched blocked magic bytes signature: ${blockedMagic}. ` +
+          `This file type is not allowed for security reasons.`
+        );
+      }
+    }
+  }
+  
+  // Check file hash against known malicious hashes
+  if (file.buffer && file.buffer.length > 0) {
+    const fileHash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+    const hashBlocklist = scanConfig.hashBlocklist || [];
+    
+    if (hashBlocklist.includes(fileHash)) {
+      threats.push(
+        `File hash matches a known malicious signature. Upload rejected for security.`
+      );
+    }
+  }
+  
+  // Check file extension against blocked extensions
+  if (file.originalname) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const blockedExtensions = scanConfig.blockedExtensions || [];
+    
+    if (blockedExtensions.includes(ext)) {
+      threats.push(
+        `File extension "${ext}" is blocked for security reasons. ` +
+        `Blocked extensions: ${blockedExtensions.join(', ')}`
+      );
+    }
+  }
+  
+  return {
+    isClean: threats.length === 0,
+    threats
+  };
+};
+
+/**
+ * Validate file type and size with descriptive error messages
+ * @param {Object} file - The file object
+ * @param {Object} options - Validation options
+ * @param {boolean} options.bypassValidation - If true, skip all validation (admin bypass)
+ * @returns {Object} - Validation result with descriptive errors
+ */
+const validateFile = (file, options = {}) => {
+  const errors = [];
+  
+  // Admin bypass check
+  if (options.bypassValidation === true) {
+    return {
+      isValid: true,
+      errors: [],
+      warnings: ['Validation bypassed by admin override. Exercise caution.'],
+      details: {
+        filename: file.originalname || 'unknown',
+        size: file.size || 0,
+        sizeFormatted: formatFileSize(file.size || 0),
+        contentType: file.mimetype || 'unknown'
+      }
+    };
+  }
+  
+  // Validate file object structure
+  if (!file) {
+    errors.push('No file provided. Please attach a file to the request.');
+    return { isValid: false, errors, details: {} };
+  }
+  
+  if (!file.buffer && !file.size) {
+    errors.push('File appears to be empty or corrupted. File has no content or size.');
+    return { isValid: false, errors, details: {} };
+  }
+  
+  const filename = file.originalname || 'unknown';
+  const fileSize = file.size || (file.buffer ? file.buffer.length : 0);
+  const mimeType = file.mimetype || 'unknown';
+  
+  // Check content type against allowlist
+  const allowedTypes = ipfsConfig.allowedContentTypes || [];
+  if (!allowedTypes.includes(mimeType)) {
+    errors.push(
+      `Content type "${mimeType}" is not allowed for IPFS upload. ` +
+      `Allowed types include: documents (PDF, DOCX, XLSX), images (JPG, PNG, GIF, WebP), ` +
+      `video (MP4, WebM), audio (MP3, WAV), code files (JSON, XML), ` +
+      `and archives (ZIP, TAR, GZ). ` +
+      `See /docs/ACCEPTED_FILE_TYPES.md for the complete list.`
+    );
+  }
+  
+  // Determine size limit for this file type
+  const typeLimits = ipfsConfig.typeSizeLimits || {};
+  const globalLimit = ipfsConfig.maxFileSize || 100 * 1024 * 1024; // 100MB default
+  const typeSpecificLimit = typeLimits[mimeType];
+  const effectiveLimit = typeSpecificLimit || globalLimit;
+  
+  // Check file size
+  if (fileSize > effectiveLimit) {
+    const limitFormatted = formatFileSize(effectiveLimit);
+    const actualFormatted = formatFileSize(fileSize);
+    const limitSource = typeSpecificLimit 
+      ? `specific limit for ${mimeType} files` 
+      : 'global maximum file size limit';
+    
+    errors.push(
+      `File size ${actualFormatted} exceeds the ${limitSource} of ${limitFormatted}. ` +
+      `Please reduce the file size or use a smaller file. ` +
+      `Tip: For large videos or archives, consider splitting them into smaller parts.`
+    );
+  }
+  
+  // Check for empty files
+  if (fileSize === 0) {
+    errors.push('File is empty (0 bytes). Please upload a file with content.');
+  }
+  
+  // Run malware scan
+  const scanResult = scanForMalware(file);
+  if (!scanResult.isClean) {
+    errors.push(...scanResult.threats);
+  }
+  
+  // File extension validation
+  if (filename) {
+    const ext = path.extname(filename).toLowerCase();
+    if (!ext) {
+      errors.push(
+        `File "${filename}" has no extension. ` +
+        `Please provide a file with a valid extension (e.g., .pdf, .jpg, .mp4).`
+      );
+    }
   }
   
   return {
     isValid: errors.length === 0,
-    errors
+    errors,
+    details: {
+      filename,
+      size: fileSize,
+      sizeFormatted: formatFileSize(fileSize),
+      contentType: mimeType,
+      effectiveLimit: formatFileSize(effectiveLimit),
+      limitType: typeSpecificLimit ? 'type-specific' : 'global',
+      malwareScanPerformed: (ipfsConfig.malwareScanning || {}).enabled || false
+    }
   };
 };
 
@@ -207,6 +377,9 @@ const createIpfsError = (message, operation, details = {}) => {
 
 module.exports = {
   generateContentHash,
+  formatFileSize,
+  getMagicBytes,
+  scanForMalware,
   validateFile,
   createMetadata,
   formatGatewayUrl,
