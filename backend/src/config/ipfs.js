@@ -39,20 +39,106 @@ const ipfsConfig = {
   },
   
   // Content types that are allowed for upload
+  // Documented accepted file types: see /docs/ACCEPTED_FILE_TYPES.md
   allowedContentTypes: [
+    // Documents
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain',
+    'text/csv',
+    'text/markdown',
+    'application/rtf',
+    // Images
     'image/jpeg',
     'image/png',
     'image/gif',
     'image/webp',
+    'image/svg+xml',
+    'image/bmp',
+    'image/tiff',
+    // Video
     'video/mp4',
     'video/webm',
+    'video/ogg',
+    'video/quicktime',
+    // Audio
     'audio/mpeg',
     'audio/wav',
-    'application/pdf',
-    'text/plain',
+    'audio/ogg',
+    'audio/mp4',
+    'audio/flac',
+    // Code & Data
     'application/json',
-    'text/markdown'
+    'application/xml',
+    'text/xml',
+    'text/javascript',
+    'text/html',
+    'text/css',
+    // Archives
+    'application/zip',
+    'application/x-rar-compressed',
+    'application/x-7z-compressed',
+    'application/x-tar',
+    'application/gzip'
   ],
+  
+  // Per-type maximum file sizes (bytes)
+  // If a type is not listed here, the global maxFileSize applies
+  typeSizeLimits: {
+    'image/jpeg': 50 * 1024 * 1024,    // 50MB
+    'image/png': 50 * 1024 * 1024,     // 50MB
+    'image/gif': 30 * 1024 * 1024,     // 30MB
+    'image/webp': 50 * 1024 * 1024,    // 50MB
+    'image/svg+xml': 10 * 1024 * 1024, // 10MB
+    'image/bmp': 50 * 1024 * 1024,     // 50MB
+    'image/tiff': 100 * 1024 * 1024,   // 100MB
+    'video/mp4': 500 * 1024 * 1024,    // 500MB
+    'video/webm': 500 * 1024 * 1024,   // 500MB
+    'video/ogg': 500 * 1024 * 1024,    // 500MB
+    'video/quicktime': 500 * 1024 * 1024, // 500MB
+    'audio/mpeg': 100 * 1024 * 1024,   // 100MB
+    'audio/wav': 100 * 1024 * 1024,    // 100MB
+    'audio/ogg': 100 * 1024 * 1024,    // 100MB
+    'audio/mp4': 100 * 1024 * 1024,    // 100MB
+    'audio/flac': 200 * 1024 * 1024,   // 200MB
+    'application/pdf': 100 * 1024 * 1024, // 100MB
+    'application/json': 50 * 1024 * 1024, // 50MB
+    'application/zip': 200 * 1024 * 1024, // 200MB
+    'application/x-rar-compressed': 200 * 1024 * 1024,
+    'application/x-7z-compressed': 200 * 1024 * 1024,
+    'application/x-tar': 200 * 1024 * 1024,
+    'application/gzip': 200 * 1024 * 1024
+  },
+  
+  // Malware / virus scanning configuration
+  malwareScanning: {
+    enabled: process.env.IPFS_MALWARE_SCAN_ENABLED === 'true',
+    // Block list of known malicious file hashes (SHA-256)
+    hashBlocklist: [
+      // Add known malicious hashes here
+      // Example: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    ],
+    // Block list of known malicious magic bytes / file signatures
+    magicByteBlocklist: [
+      // Executable files that could be disguised
+      '4D5A',       // MZ - Windows/DOS executable
+      '7F454C46'    // ELF - Linux executable
+    ],
+    // Dangerous file extensions that should never be accepted
+    blockedExtensions: [
+      '.exe', '.dll', '.so', '.dylib', '.sh', '.bash',
+      '.bat', '.cmd', '.ps1', '.vbs', '.scr', '.msi',
+      '.com', '.pif', '.reg', '.app', '.jar', '.war'
+    ]
+  },
+  
+  // Admin bypass configuration
+  adminBypassValidation: process.env.IPFS_ADMIN_BYPASS !== 'false', // Default: enabled
   
   // Metadata configuration
   metadata: {

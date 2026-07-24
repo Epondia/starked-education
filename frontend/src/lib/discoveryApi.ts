@@ -81,7 +81,55 @@ export const buildSearchQuery = (filters: DiscoveryFilters, sessionId: string, u
     return params.toString();
 };
 
+// ------------------------------------------------------------------
+// Course listing (cursor/offset-based — used by InfiniteScrollList)
+// ------------------------------------------------------------------
+
+export interface CourseListParams {
+    q?: string;
+    categories?: string[];
+    levels?: string[];
+    sort?: string;
+    /** Offset-based page (default 1) */
+    page?: number;
+    limit?: number;
+    /** Cursor-based pagination token (takes precedence over page) */
+    cursor?: string;
+}
+
+export interface CourseListResponse {
+    items: DiscoveryCourse[];
+    total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+    /** Opaque cursor for the next page; null when all results exhausted */
+    nextCursor: string | null;
+}
+
+export const buildCourseListQuery = (params: CourseListParams): string => {
+    const p = new URLSearchParams();
+    if (params.q) p.set('q', params.q);
+    if (params.categories?.length) p.set('categories', params.categories.join(','));
+    if (params.levels?.length) p.set('levels', params.levels.join(','));
+    if (params.sort) p.set('sort', params.sort);
+    if (params.cursor) {
+        p.set('cursor', params.cursor);
+    } else if (params.page) {
+        p.set('page', String(params.page));
+    }
+    if (params.limit) p.set('limit', String(params.limit));
+    return p.toString();
+};
+
 export const discoveryApi = {
+    /**
+     * Cursor-based course listing — the preferred API for infinite scroll.
+     * Pass `cursor: response.nextCursor` on each subsequent request.
+     */
+    listCourses: (params: CourseListParams) =>
+        request<CourseListResponse>(`/api/courses?${buildCourseListQuery(params)}`),
+
     search: (filters: DiscoveryFilters, sessionId: string, userId?: string) =>
         request<DiscoverySearchResponse>(`/api/search?${buildSearchQuery(filters, sessionId, userId)}`),
 

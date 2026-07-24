@@ -49,6 +49,12 @@ pub struct DynamicNFT {
     pub created_at: u64,
     pub last_evolved: u64,
     pub evolution_stage: EvolutionStage,
+    /// Issue #7: certificate tier. Only `Basic` NFTs are eligible for upgrade
+    /// to `Advanced`. Once upgraded, the NFT cannot be upgraded again.
+    pub tier: CertificateTier,
+    /// Issue #7: chain of upgrade records preserved for off-chain audit.
+    /// Always empty on freshly minted NFTs; populated after `upgrade_nft`.
+    pub upgrade_history: Vec<UpgradeRecord>,
 }
 
 /// Visual traits for NFT representation
@@ -140,6 +146,29 @@ pub struct EvolutionRequirement {
     pub visual_trait_changes: VisualTraits,
 }
 
+/// Certificate tier for course completion / advanced certificates (Issue #7).
+/// Basic is the default tier minted for ordinary course completions.
+/// Advanced is reached by burning a Basic NFT via `upgrade_nft`; further
+/// upgrade chains are intentionally disabled.
+#[contracttype]
+#[derive(Clone, PartialEq, Debug)]
+pub enum CertificateTier {
+    Basic = 0,
+    Advanced = 1,
+}
+
+/// Audit record of an upgrade burn-and-mint cycle preserved on the
+/// upgraded NFT so any observer can verify provenance off-chain.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct UpgradeRecord {
+    pub timestamp: u64,
+    pub from_token_id: u64,
+    pub from_tier: CertificateTier,
+    pub to_tier: CertificateTier,
+    pub certificate_title: String,
+}
+
 /// Storage keys for dynamic NFT system
 #[contracttype]
 pub enum DynamicNFTKey {
@@ -158,6 +187,10 @@ pub enum NFTEvent {
     Evolution(u64, EvolutionStage, EvolutionStage), // token_id, from_stage, to_stage
     AchievementUnlocked(u64, u64), // token_id, achievement_id
     Fusion(u64, u64, u64), // token1_id, token2_id, new_token_id
+    /// Issue #7: emitted when a Basic NFT is burned and replaced by an
+    /// Advanced certificate NFT.
+    /// (source_token_id, new_token_id, certificate_title)
+    Upgrade(u64, u64, String),
 }
 
 /// Initialize upgradeable contract with version
@@ -293,6 +326,9 @@ pub fn mint_dynamic_nft(
         created_at: timestamp,
         last_evolved: timestamp,
         evolution_stage: EvolutionStage::Novice,
+        // Issue #7: every fresh mint starts as a Basic tier certificate.
+        tier: CertificateTier::Basic,
+        upgrade_history: Vec::new(env),
     };
 
     // Store NFT
@@ -421,16 +457,22 @@ pub fn fuse_nfts(
         token_id: new_token_id,
         owner: recipient.clone(),
         creator: nft1.creator,
-        base_uri: format!("{}-fused", nft1.base_uri),
+        // Preserve the historical "-fused" suffix so off-chain consumers
+        // that look for it keep working.
+        base_uri: String::from_str(env, &format!("{}-fused", nft1.base_uri)),
         current_level: (nft1.current_level + nft2.current_level) / 2 + 1,
         experience_points: (nft1.experience_points + nft2.experience_points) / 2,
         achievements: combined_achievements,
         visual_traits: fused_traits,
         evolution_history: Vec::new(env),
-        metadata_ipfs: format!("fused-{}", timestamp),
+        metadata_ipfs: String::from_str(env, &format!("fused-{}", timestamp)),
         created_at: timestamp,
         last_evolved: timestamp,
         evolution_stage: determine_fusion_stage(&nft1.evolution_stage, &nft2.evolution_stage),
+        // Issue #7: fused NFTs are derived from existing Basic NFTs and
+        // start as Basic. Owners can still upgrade the result later.
+        tier: CertificateTier::Basic,
+        upgrade_history: Vec::new(env),
     };
 
     // Store new NFT
@@ -606,8 +648,132 @@ fn determine_fusion_stage(stage1: &EvolutionStage, stage2: &EvolutionStage) -> E
 }
 
 /// Burn (destroy) an NFT
-fn burn_nft(env: &Env, token_id: u64) {
+pub fn burn_nft(env: &Env, token_id: u64) {
     env.storage().persistent().remove(&DynamicNFTKey::Token(token_id));
+}
+
+/// Issue #7: Burn a Basic tier NFT and mint an Advanced certificate NFT
+/// in its place, inheriting achievements/XP/evolution history from the
+/// burned token. The newly-minted Advanced NFT records the upgrade in
+/// its `UpgradeRecord` chain so off-chain tooling can verify provenance.
+///
+/// # Panics
+/// - If the source token does not exist.
+/// - If `owner` is not the current owner of the source token.
+/// - If the source token is already at the `Advanced` tier.
+pub fn upgrade_nft(
+    env: &Env,
+    owner: Address,
+    token_id: u64,
+    new_metadata: String,
+    certificate_title: String,
+) -> u64 {
+    owner.require_auth();
+
+    let source: DynamicNFT = env
+        .storage()
+        .persistent()
+        .get(&DynamicNFTKey::Token(token_id))
+        .unwrap_or_else(|| panic!("NFT not found"));
+
+    if source.owner != owner {
+        panic!("Not the owner");
+    }
+
+    // Each NFT can only be upgraded once (no infinite chains).
+    if source.tier != CertificateTier::Basic {
+        panic!("NFT has already been upgraded");
+    }
+
+    let timestamp = env.ledger().timestamp();
+    let new_token_id = StorageUtils::get_next_id(env, EntityType::Credential);
+
+    // Audit record attached to the new Advanced NFT.
+    let upgrade_record = UpgradeRecord {
+        timestamp,
+        from_token_id: token_id,
+        from_tier: CertificateTier::Basic,
+        to_tier: CertificateTier::Advanced,
+        certificate_title: certificate_title.clone(),
+    };
+
+    let mut upgrade_history = Vec::new(env);
+    upgrade_history.push_back(upgrade_record);
+
+    // Combine the source NFT's data with the new certificate attributes.
+    // Achievements, XP and evolution history are preserved; visual traits
+    // get an explicit Advanced-tier indicator.
+    let upgraded_nft = DynamicNFT {
+        token_id: new_token_id,
+        owner: owner.clone(),
+        creator: source.creator.clone(),
+        base_uri: source.base_uri.clone(),
+        current_level: source.current_level + 1,
+        experience_points: source.experience_points,
+        achievements: source.achievements.clone(),
+        visual_traits: build_advanced_visual_traits(&source.visual_traits),
+        evolution_history: source.evolution_history.clone(),
+        metadata_ipfs: new_metadata,
+        created_at: source.created_at,
+        last_evolved: timestamp,
+        evolution_stage: source.evolution_stage.clone(),
+        tier: CertificateTier::Advanced,
+        upgrade_history,
+    };
+
+    // Remove the burned token from the owner's token list and append
+    // the upgrade NFT so balance tracking stays correct.
+    let mut owner_tokens = get_owner_tokens(env, owner.clone());
+    if let Some(position) = owner_tokens.iter().position(|id| id == token_id) {
+        owner_tokens.remove(position as u32);
+    }
+    owner_tokens.push_back(new_token_id);
+    env.storage()
+        .persistent()
+        .set(&DynamicNFTKey::OwnerTokens(owner.clone()), &owner_tokens);
+
+    // Burn is irreversible: remove the source NFT from persistent storage.
+    burn_nft(env, token_id);
+
+    // Persist the new Advanced NFT and refresh the total supply counter.
+    env.storage()
+        .persistent()
+        .set(&DynamicNFTKey::Token(new_token_id), &upgraded_nft);
+    env.storage()
+        .instance()
+        .set(&DynamicNFTKey::TokenCount, &new_token_id);
+
+    // Emit the Upgrade event for off-chain indexers / analytics.
+    env.events().publish(
+        (Symbol::new(env, "Upgrade"),),
+        (token_id, new_token_id, certificate_title),
+    );
+
+    new_token_id
+}
+
+/// Read the certificate tier for a given token without fetching the full NFT.
+pub fn get_nft_tier(env: &Env, token_id: u64) -> CertificateTier {
+    let nft = get_nft(env, token_id);
+    nft.tier
+}
+
+/// Build the visual trait set for an Advanced-tier certificate. Carries
+/// over the source NFT's palette and bumps the glow + adds a tier marker
+/// so the upgraded NFT reads visually distinct from a Basic NFT.
+fn build_advanced_visual_traits(traits: &VisualTraits) -> VisualTraits {
+    let mut special_effects = traits.special_effects.clone();
+    // 200 is reserved as the Advanced-tier visual marker.
+    special_effects.push_back(200u8);
+
+    VisualTraits {
+        background: traits.background,
+        border: traits.border + 1,
+        emblem: traits.emblem,
+        glow_effect: traits.glow_effect + 1,
+        special_effects,
+        rarity_tier: RarityTier::Epic,
+    }
 }
 
 /// Get NFT metadata URI

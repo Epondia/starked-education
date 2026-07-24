@@ -150,7 +150,7 @@ describe('Health Check Endpoints', () => {
   });
 
   describe('GET /health', () => {
-    it('should return 200 even when dependencies are unhealthy', async () => {
+    it('should return 200 with status "unhealthy" when a critical dependency is down', async () => {
       (database.checkDatabaseConnectivity as jest.Mock).mockResolvedValue({
         status: 'unhealthy',
         latencyMs: 2000,
@@ -160,6 +160,23 @@ describe('Health Check Endpoints', () => {
         status: 'unhealthy',
         latencyMs: 2000,
         error: 'Redis unavailable'
+      });
+      axios.get.mockRejectedValue(new Error('Network error'));
+
+      const response = await request(app).get('/health');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('status', 'unhealthy');
+    });
+
+    it('should return status "degraded" when only non-critical dependencies are unhealthy', async () => {
+      (database.checkDatabaseConnectivity as jest.Mock).mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 5
+      });
+      checkRedisConnectivity.mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 3
       });
       axios.get.mockRejectedValue(new Error('Network error'));
 
@@ -251,7 +268,7 @@ describe('Health Check Endpoints', () => {
       expect(response.body).toHaveProperty('status', 'healthy');
     });
 
-    it('should have status degraded when any dependency is unhealthy', async () => {
+    it('should have status "unhealthy" when a critical dependency is unhealthy', async () => {
       (database.checkDatabaseConnectivity as jest.Mock).mockResolvedValue({
         status: 'healthy',
         latencyMs: 5
@@ -266,7 +283,7 @@ describe('Health Check Endpoints', () => {
       const response = await request(app).get('/health');
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('status', 'degraded');
+      expect(response.body).toHaveProperty('status', 'unhealthy');
     });
   });
 
@@ -429,7 +446,7 @@ describe('Health Check Endpoints', () => {
       expect(response.status).toBe(200);
     });
 
-    it('should handle all checks failing gracefully', async () => {
+    it('should handle all checks failing gracefully with status "unhealthy"', async () => {
       (database.checkDatabaseConnectivity as jest.Mock).mockRejectedValue(
         new Error('Database error')
       );
@@ -441,7 +458,7 @@ describe('Health Check Endpoints', () => {
       const response = await request(app).get('/health');
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('status', 'degraded');
+      expect(response.body).toHaveProperty('status', 'unhealthy');
     });
   });
 });
