@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { ThemeProvider } from 'next-themes';
 import './globals.css';
+import { ThemeProvider } from '@/context/ThemeContext';
 import { performanceMonitor } from '@/lib/performance-monitor';
 import { GlobalShell } from '@/components/PWA/GlobalShell';
 import { CommandPalette } from '@/components/ui/command-palette';
@@ -27,31 +28,31 @@ export default function RootLayout({
   const dir = RTL_LOCALES.has(locale) ? 'rtl' : 'ltr';
 
   return (
-    /*
-     * suppressHydrationWarning is required because next-themes injects a
-     * `class` attribute on <html> on the client before React hydration
-     * completes, which would otherwise trigger a mismatch warning.
-     */
-    <html lang={locale} dir={dir} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Prevent flash of wrong theme - runs before React hydration */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var stored = localStorage.getItem('starked-theme-preference');
+                  var theme = 'light';
+                  if (stored === 'dark' || stored === 'light') {
+                    theme = stored;
+                  } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    theme = 'dark';
+                  }
+                  document.documentElement.classList.toggle('dark', theme === 'dark');
+                  document.documentElement.style.colorScheme = theme;
+                } catch(e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={inter.className}>
-        {/*
-         * ThemeProvider configuration:
-         *   attribute="class"      → Tailwind darkMode: 'class' strategy
-         *   defaultTheme="system"  → first visit follows OS preference
-         *   enableSystem           → listens for prefers-color-scheme changes
-         *   storageKey             → persists choice under 'starked-theme'
-         *   disableTransitionOnChange={false} → our CSS handles transitions
-         */}
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          storageKey="starked-theme"
-          disableTransitionOnChange={false}
-        >
-          <GlobalShell />
-          {children}
-        </ThemeProvider>
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );
