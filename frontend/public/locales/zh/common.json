@@ -302,5 +302,11 @@
     "github": "GitHub",
     "youtube": "YouTube",
     "medium": "Medium"
+  },
+  "languageSwitcher": {
+    "title": "选择您的语言",
+    "subtitle": "选择您喜欢的语言以获得最佳体验",
+    "searchPlaceholder": "搜索语言...",
+    "ariaSelect": "选择语言"
   }
 }
