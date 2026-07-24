@@ -32,6 +32,9 @@ const { checkRedisConnectivity } = require('../config/redis');
 // Elasticsearch check
 import ElasticsearchService from '../services/search/ElasticsearchService';
 
+// Circuit breaker metrics
+const { circuitBreakerRegistry } = require('../utils/circuitBreaker');
+
 // Package version
 const packageJson = require('../../../package.json');
 
@@ -196,6 +199,9 @@ router.get('/', async (req: Request, res: Response) => {
 
     const memory = process.memoryUsage();
 
+    // Get circuit breaker states
+    const circuitBreakers = circuitBreakerRegistry ? circuitBreakerRegistry.getStates() : {};
+
     res.status(200).json({
       status: allHealthy ? 'healthy' : 'degraded',
       version: packageJson.version,
@@ -207,6 +213,7 @@ router.get('/', async (req: Request, res: Response) => {
         heapTotal: memory.heapTotal,
         rss: memory.rss
       },
+      circuitBreakers,
       dependencies: Object.fromEntries(
         Object.entries(dependencies).map(([key, value]) => {
           const dep = value as DependencyHealth;
@@ -243,6 +250,7 @@ router.get('/', async (req: Request, res: Response) => {
         heapTotal: 0,
         rss: 0
       },
+      circuitBreakers: circuitBreakerRegistry ? circuitBreakerRegistry.getStates() : {},
       dependencies: {
         postgres: { status: 'unhealthy', latencyMs: 0, error: 'Check failed' },
         redis: { status: 'unhealthy', latencyMs: 0, error: 'Check failed' },

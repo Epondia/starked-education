@@ -9,6 +9,14 @@ const {
   parseCid,
   createIpfsError
 } = require('../utils/ipfsUtils');
+const { circuitBreakerRegistry } = require('../utils/circuitBreaker');
+
+// Create circuit breaker for IPFS operations
+const ipfsCircuitBreaker = circuitBreakerRegistry.getOrCreate('ipfs', {
+  failureThreshold: 5,
+  timeoutWindow: 30000,
+  halfOpenMaxRequests: 3,
+});
 
 class IpfsService {
   constructor() {
@@ -88,8 +96,8 @@ class IpfsService {
         };
       };
 
-      // Execute with retry mechanism
-      const result = await retryOperation(uploadPromise);
+      // Execute with retry mechanism, wrapped in circuit breaker
+      const result = await ipfsCircuitBreaker.execute(() => retryOperation(uploadPromise));
 
       // Cache the result if caching is enabled
       if (ipfsConfig.enableCache) {
@@ -199,7 +207,7 @@ class IpfsService {
         return Buffer.concat(chunks);
       };
 
-      const content = await retryOperation(retrievePromise);
+      const content = await ipfsCircuitBreaker.execute(() => retryOperation(retrievePromise));
 
       // Cache the content if enabled
       if (ipfsConfig.enableCache) {
@@ -249,9 +257,9 @@ class IpfsService {
         throw createIpfsError('Invalid CID format', 'pinContent', { cid });
       }
 
-      const result = await retryOperation(async () => {
+      const result = await ipfsCircuitBreaker.execute(() => retryOperation(async () => {
         return await this.client.pin.add(parsedCid.hash);
-      });
+      }));
 
       return {
         cid: result.toString(),
@@ -278,9 +286,9 @@ class IpfsService {
         throw createIpfsError('Invalid CID format', 'unpinContent', { cid });
       }
 
-      await retryOperation(async () => {
+      await ipfsCircuitBreaker.execute(() => retryOperation(async () => {
         return await this.client.pin.rm(parsedCid.hash);
-      });
+      }));
 
       // Clear from cache
       if (ipfsConfig.enableCache) {
@@ -309,11 +317,11 @@ class IpfsService {
    */
   async getNodeInfo() {
     try {
-      const [version, id, repo] = await Promise.all([
+      const [version, id, repo] = await ipfsCircuitBreaker.execute(() => Promise.all([
         this.client.version(),
         this.client.id(),
         this.client.repo.stat()
-      ]);
+      ]));
 
       return {
         version,
@@ -368,3 +376,4 @@ class IpfsService {
 const ipfsService = new IpfsService();
 
 module.exports = ipfsService;
+module.exports.ipfsCircuitBreaker = ipfsCircuitBreaker;

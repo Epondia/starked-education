@@ -1,5 +1,13 @@
 const redis = require('redis');
 const logger = require('../utils/logger');
+const { circuitBreakerRegistry } = require('../utils/circuitBreaker');
+
+// Create circuit breaker for Redis operations
+const redisCircuitBreaker = circuitBreakerRegistry.getOrCreate('redis', {
+  failureThreshold: 5,
+  timeoutWindow: 30000,
+  halfOpenMaxRequests: 3,
+});
 
 class RedisConfig {
   constructor() {
@@ -442,3 +450,4 @@ async function checkRedisConnectivity() {
 
 module.exports = redisConfig;
 module.exports.checkRedisConnectivity = checkRedisConnectivity;
+module.exports.redisCircuitBreaker = redisCircuitBreaker;
