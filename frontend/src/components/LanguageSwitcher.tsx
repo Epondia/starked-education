@@ -22,6 +22,7 @@ const languages: Language[] = [
   { code: 'ja', name: 'Japanese', nativeName: '日本語', flag: '🇯🇵' },
   { code: 'ko', name: 'Korean', nativeName: '한국어', flag: '🇰🇷' },
   { code: 'ar', name: 'Arabic', nativeName: 'العربية', flag: '🇸🇦', rtl: true },
+  { code: 'he', name: 'Hebrew', nativeName: 'עברית', flag: '🇮🇱', rtl: true },
 ];
 
 type LanguageSwitcherProps = {
@@ -80,7 +81,7 @@ export function LanguageSwitcher({
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-          aria-label="Select language"
+          aria-label={t('languageSwitcher.ariaSelect', 'Select language')}
         >
           <Globe className="h-4 w-4" />
           {selectedLanguage?.code.toUpperCase()}
@@ -115,10 +116,10 @@ export function LanguageSwitcher({
       <div className={`space-y-4 ${className}`}>
         <div className="text-center">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-            Select Your Language
+            {t('languageSwitcher.title', 'Select Your Language')}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Choose your preferred language for the best experience
+            {t('languageSwitcher.subtitle', 'Choose your preferred language for the best experience')}
           </p>
         </div>
         
@@ -161,7 +162,7 @@ export function LanguageSwitcher({
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-        aria-label="Select language"
+        aria-label={t('languageSwitcher.ariaSelect', 'Select language')}
       >
         <Globe className="h-4 w-4 text-gray-600 dark:text-gray-400" />
         {showFlag && selectedLanguage && (
@@ -179,7 +180,7 @@ export function LanguageSwitcher({
             <div className="relative">
               <input
                 type="text"
-                placeholder="Search languages..."
+                placeholder={t('languageSwitcher.searchPlaceholder', 'Search languages...')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full px-3 py-2 pl-9 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"

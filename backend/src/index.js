@@ -2,6 +2,9 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const { createServer } = require('http');
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
 const dotenv = require('dotenv');
 
 const { connectRedis } = require('./utils/redis');
@@ -11,9 +14,13 @@ const { initCollaborationService } = require('./services/initCollaboration');
 const { Redis } = require('ioredis');
 const SecureRealtimeCommunication = require('./services/secureRealtimeCommunication').default;
 
+// Import circuit breaker registry
+const { circuitBreakerRegistry } = require('./utils/circuitBreaker');
+
 const transactionQueue = require('./services/transactionQueue');
 const transactionProcessor = require('./workers/transactionProcessor');
 const transactionEvents = require('./events/transactionEvents');
+const emailWorker = require('./workers/emailWorker');
 
 // Import security middleware
 const {
@@ -27,14 +34,29 @@ const {
 const { globalLimiter } = require('./middleware/rateLimiter');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
 
+// Import compression middleware
+const { compressionMiddleware } = require('./middleware/compression');
+
 // Import versioning middleware
 const { versionExtractor, createVersionedRouter, SUPPORTED_VERSIONS, DEFAULT_VERSION } = require('./middleware/versioning');
 
 // Load environment variables
 dotenv.config();
 
+// Import logger
+const logger = require('./utils/logger');
+
 // Connect to Redis
 connectRedis();
+
+// Register email queue handler for async email delivery
+try {
+  const { registerEmailQueueHandler } = require('./services/emailService');
+  registerEmailQueueHandler();
+  console.log('📧 Email queue handler registered');
+} catch (err) {
+  console.warn('Warning: Could not register email queue handler:', err.message);
+}
 
 // Helper for default-exported route modules
 const resolveRoute = (routeModule) => routeModule.default || routeModule;
@@ -44,7 +66,10 @@ const quizRoutes = resolveRoute(require('./routes/quizRoutes'));
 const eventLoggerRoutes = resolveRoute(require('./routes/eventLoggerRoutes'));
 const syncRoutes = resolveRoute(require('./routes/syncRoutes'));
 const rbacRoutes = resolveRoute(require('./routes/rbacRoutes'));
+const authRoutes = require('./routes/auth');
 const contentRoutes = require('./routes/content');
+const courseRoutes = require('./routes/courses');
+const searchRoutes = require('./routes/search');
 const transactionRoutes = require('./routes/transactions');
 const notificationRoutes = resolveRoute(require('./routes/notificationRoutes'));
 
@@ -96,14 +121,44 @@ setSyncWebsocketEmitter((userId, event, data) => {
 // Middleware
 app.use(helmet());
 app.use(cors());
+
+// Response compression - early in pipeline to compress all outgoing responses
+app.use(compressionMiddleware());
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  next();
+// Structured request/response logging middleware
+const requestLogger = require('./middleware/requestLogger');
+app.use(requestLogger);
+
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  explorer: true,
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'StarkEd API Documentation',
+  swaggerOptions: {
+    persistAuthorization: true,
+    displayRequestDuration: true,
+    filter: true,
+  },
+}));
+
+// Serve raw OpenAPI spec as JSON
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
 });
+
+// Health check routes - mounted before auth middleware so load balancers can access without credentials
+const healthRoutes = require('./routes/health').default || require('./routes/health');
+app.use('/health', healthRoutes);
+
+// Issue #17: Apply the global rate limit baseline AFTER /health so probes
+// bypass the limiter entirely (no Redis traffic from liveness/readiness checks).
+// Endpoint-specific limiters (loginLimiter, registerLimiter, paymentLimiter,
+// adminTierLimiter, etc.) take precedence over the global baseline.
+app.use(globalLimiter);
 
 // Apply API version extraction middleware globally
 app.use(versionExtractor);
@@ -111,12 +166,21 @@ app.use(versionExtractor);
 // Create versioned routers
 const v1Router = createVersionedRouter('v1');
 
+// Apply baseline global rate limiting to ALL v1 API routes
+// This ensures every endpoint has at least baseline protection
+// Routes with more specific limiters (auth, transactions, etc.) will have both applied
+// See docs/RATE_LIMITING.md for complete rate limit tiers and configuration
+v1Router.use(globalLimiter);
+
 // ── v1 API Routes ──────────────────────────────────────────────
 // All existing routes are mounted under /api/v1/
 v1Router.use('/quizzes', quizRoutes);
 v1Router.use('/events', eventLoggerRoutes);
 v1Router.use('/sync', syncRoutes);
+v1Router.use('/auth', authRoutes);
 v1Router.use('/content', contentRoutes);
+v1Router.use('/courses', courseRoutes);
+v1Router.use('/search', searchRoutes);
 v1Router.use('/rbac', rbacRoutes);
 v1Router.use('/transactions', transactionRoutes);
 v1Router.use('/notifications', notificationRoutes);
@@ -138,24 +202,25 @@ v1Router.use('/autonomous-agents', autonomousAgentsRoutes);
 const gamificationRoutes = require('./routes/gamification');
 v1Router.use('/gamification', gamificationRoutes);
 
-// Bridge routes
-const bridgeRoutes = require('./routes/bridge');
+// Bridge routes — module not yet implemented, use empty router
+console.warn('Warning: Bridge routes module not found, using empty router');
+const bridgeRoutes = express.Router();
 v1Router.use('/bridge', bridgeRoutes);
 
 // Time-Locked Credential routes
-const timeLockCredentialsRoutes = require('./routes/timeLockCredentials');
+const timeLockCredentialsRoutes = resolveRoute(require('./routes/timeLockCredentials'));
 v1Router.use('/time-lock', timeLockCredentialsRoutes);
 
 // VRF (Verifiable Random Function) routes
-const vrfRoutes = require('./routes/vrf');
+const vrfRoutes = resolveRoute(require('./routes/vrf'));
 v1Router.use('/vrf', vrfRoutes);
 
 // Real-time Translation routes
-const translationRoutes = require('./routes/translation');
+const translationRoutes = resolveRoute(require('./routes/translation'));
 v1Router.use('/translate', translationRoutes);
 
 // Cross-Protocol Bridge routes
-const crossProtocolBridgeRoutes = require('./routes/crossProtocolBridge');
+const crossProtocolBridgeRoutes = resolveRoute(require('./routes/crossProtocolBridge'));
 v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
 
 // Admin dashboard routes
@@ -181,6 +246,9 @@ app.use('/api/v2', v2Router);
 
 // Schemas helper for versioned responses
 const { createVersionedResponse } = require('./utils/schemas');
+const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const { ValidationError } = require('./utils/errors');
+const { getCompressionStats } = require('./middleware/compression');
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -202,6 +270,7 @@ app.get('/api/health', (req, res) => {
     status: 'healthy',
     uptime: process.uptime(),
     supportedVersions: SUPPORTED_VERSIONS,
+    compression: getCompressionStats(),
   }, version));
 });
 
@@ -209,43 +278,46 @@ app.get('/api/health', (req, res) => {
 app.use('/api/v:version*', (req, res, next) => {
   const version = `v${req.params.version}`;
   if (!SUPPORTED_VERSIONS.includes(version)) {
-    res.status(400).json({
-      success: false,
-      message: `Unsupported API version: ${version}`,
-      supportedVersions: SUPPORTED_VERSIONS,
-    });
+    return next(new ValidationError(`Unsupported API version: ${version}`, { supportedVersions: SUPPORTED_VERSIONS }));
   } else {
     next();
   }
 });
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Endpoint not found',
-    path: req.originalUrl,
-  });
-});
-
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
+  logger.error('Unhandled error:', { error: err.message, stack: err.stack, requestId: req.requestId });
 
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-  });
-});
+// Global error handler - must be last
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 
 async function startServer() {
   try {
+    // Initialize circuit breakers for external services
+    console.log('🔌 Initializing circuit breakers...');
+    circuitBreakerRegistry.getOrCreate('ipfs', {
+      failureThreshold: parseInt(process.env.CB_IPFS_FAILURE_THRESHOLD) || 5,
+      timeoutWindow: parseInt(process.env.CB_IPFS_TIMEOUT) || 30000,
+      halfOpenMaxRequests: parseInt(process.env.CB_IPFS_HALF_OPEN_MAX) || 3,
+    });
+    circuitBreakerRegistry.getOrCreate('stellar', {
+      failureThreshold: parseInt(process.env.CB_STELLAR_FAILURE_THRESHOLD) || 5,
+      timeoutWindow: parseInt(process.env.CB_STELLAR_TIMEOUT) || 30000,
+      halfOpenMaxRequests: parseInt(process.env.CB_STELLAR_HALF_OPEN_MAX) || 3,
+    });
+    circuitBreakerRegistry.getOrCreate('redis', {
+      failureThreshold: parseInt(process.env.CB_REDIS_FAILURE_THRESHOLD) || 5,
+      timeoutWindow: parseInt(process.env.CB_REDIS_TIMEOUT) || 30000,
+      halfOpenMaxRequests: parseInt(process.env.CB_REDIS_HALF_OPEN_MAX) || 3,
+    });
+    console.log('✅ Circuit breakers initialized');
+
     await transactionQueue.startProcessing();
     await transactionProcessor.start();
     await transactionEvents.startListening();
+    emailWorker.getEmailWorker().start();
 
     server.listen(PORT, () => {
       console.log(`🚀 StarkEd Education Backend running on port ${PORT}`);
@@ -271,6 +343,7 @@ async function startServer() {
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
+  emailWorker.getEmailWorker().stop();
   await transactionQueue.stopProcessing();
   await transactionProcessor.stop();
   await transactionEvents.stopListening();

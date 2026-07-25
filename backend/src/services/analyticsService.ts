@@ -1,8 +1,7 @@
 import { DataAggregationService } from './dataAggregation';
 import { TrendAnalysisService } from './trendAnalysis';
 import { ReportService } from './reportService';
-// @ts-ignore
-import { redisClient } from '../utils/redis';
+import { getRedisClient } from '../utils/redis';
 
 export class AnalyticsService {
   private static CACHE_TTL = 3600; // 1 hour in seconds for user/course data
@@ -16,8 +15,9 @@ export class AnalyticsService {
 
     // Try cache first
     try {
-      if (redisClient?.isOpen) {
-        const cachedData = await redisClient.get(cacheKey);
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        const cachedData = await client.get(cacheKey);
         if (cachedData) {
           return JSON.parse(cachedData);
         }
@@ -36,8 +36,9 @@ export class AnalyticsService {
 
     // Cache for 5 minutes
     try {
-      if (redisClient?.isOpen) {
-        await redisClient.setEx(cacheKey, this.DASHBOARD_CACHE_TTL, JSON.stringify(result));
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        await client.setEx(cacheKey, this.DASHBOARD_CACHE_TTL, JSON.stringify(result));
       }
     } catch (error) {
       console.warn('Failed to cache dashboard stats:', error);
@@ -51,8 +52,9 @@ export class AnalyticsService {
    */
   static async invalidateDashboardCache() {
     try {
-      if (redisClient?.isOpen) {
-        await redisClient.del('analytics:dashboard:stats');
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        await client.del('analytics:dashboard:stats');
       }
     } catch (error) {
       console.warn('Failed to invalidate dashboard cache:', error);
@@ -66,8 +68,9 @@ export class AnalyticsService {
     const cacheKey = `analytics:course:${courseId}`;
 
     try {
-      if (redisClient?.isOpen) {
-        const cachedData = await redisClient.get(cacheKey);
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        const cachedData = await client.get(cacheKey);
         if (cachedData) {
           return JSON.parse(cachedData);
         }
@@ -84,8 +87,9 @@ export class AnalyticsService {
     };
 
     try {
-      if (redisClient?.isOpen) {
-        await redisClient.setEx(cacheKey, this.CACHE_TTL, JSON.stringify(result));
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        await client.setEx(cacheKey, this.CACHE_TTL, JSON.stringify(result));
       }
     } catch (error) {
       console.warn('Failed to cache analytics:', error);
@@ -121,8 +125,9 @@ export class AnalyticsService {
     const cacheKey = `analytics:time:${userId}`;
 
     try {
-      if (redisClient?.isOpen) {
-        const cachedData = await redisClient.get(cacheKey);
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        const cachedData = await client.get(cacheKey);
         if (cachedData) return JSON.parse(cachedData);
       }
     } catch (e) {
@@ -132,8 +137,9 @@ export class AnalyticsService {
     const data = await DataAggregationService.getUserTimeAnalysis(userId);
 
     try {
-      if (redisClient?.isOpen) {
-        await redisClient.setEx(cacheKey, 1800, JSON.stringify(data));
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        await client.setEx(cacheKey, 1800, JSON.stringify(data));
       }
     } catch (e) {
       /* ignore cache error */
@@ -149,8 +155,9 @@ export class AnalyticsService {
     const cacheKey = `analytics:quiz:${quizId}`;
 
     try {
-      if (redisClient?.isOpen) {
-        const cachedData = await redisClient.get(cacheKey);
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        const cachedData = await client.get(cacheKey);
         if (cachedData) return JSON.parse(cachedData);
       }
     } catch (e) {
@@ -160,8 +167,9 @@ export class AnalyticsService {
     const data = await DataAggregationService.getQuizPerformanceAnalytics(quizId);
 
     try {
-      if (redisClient?.isOpen) {
-        await redisClient.setEx(cacheKey, this.CACHE_TTL, JSON.stringify(data));
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        await client.setEx(cacheKey, this.CACHE_TTL, JSON.stringify(data));
       }
     } catch (e) {
       /* ignore cache error */
@@ -210,8 +218,9 @@ export class AnalyticsService {
     const cacheKey = `analytics:reports:user-activity:${period}:${role || 'all'}`;
 
     try {
-      if (redisClient?.isOpen) {
-        const cachedData = await redisClient.get(cacheKey);
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        const cachedData = await client.get(cacheKey);
         if (cachedData) return JSON.parse(cachedData);
       }
     } catch (e) {
@@ -221,8 +230,9 @@ export class AnalyticsService {
     const data = await DataAggregationService.getUserActivityReport(period, role);
 
     try {
-      if (redisClient?.isOpen) {
-        await redisClient.setEx(cacheKey, this.DASHBOARD_CACHE_TTL, JSON.stringify(data));
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        await client.setEx(cacheKey, this.DASHBOARD_CACHE_TTL, JSON.stringify(data));
       }
     } catch (e) {
       /* ignore cache error */
@@ -238,8 +248,9 @@ export class AnalyticsService {
     const cacheKey = `analytics:reports:course-performance:${period}:${courseId || 'all'}`;
 
     try {
-      if (redisClient?.isOpen) {
-        const cachedData = await redisClient.get(cacheKey);
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        const cachedData = await client.get(cacheKey);
         if (cachedData) return JSON.parse(cachedData);
       }
     } catch (e) {
@@ -249,8 +260,9 @@ export class AnalyticsService {
     const data = await DataAggregationService.getCoursePerformanceReport(period, courseId);
 
     try {
-      if (redisClient?.isOpen) {
-        await redisClient.setEx(cacheKey, this.DASHBOARD_CACHE_TTL, JSON.stringify(data));
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        await client.setEx(cacheKey, this.DASHBOARD_CACHE_TTL, JSON.stringify(data));
       }
     } catch (e) {
       /* ignore cache error */
@@ -271,5 +283,117 @@ export class AnalyticsService {
   }) {
     // No caching for logs since they change frequently
     return await DataAggregationService.getSystemLogs(params);
+  }
+
+  /**
+   * Get enrollment trend counts bucketed over time (day/week/month).
+   * Issue #26 — real aggregation pipeline. PII-safe: only counts and bucketed dates.
+   */
+  static async getEnrollmentTrends(opts: {
+    startDate?: Date;
+    endDate?: Date;
+    granularity?: 'day' | 'week' | 'month';
+    courseId?: string;
+  }) {
+    const granularity = opts.granularity ?? 'day';
+    const cacheKey = `analytics:trends:${granularity}:${opts.courseId ?? 'all'}:${
+      (opts.startDate ?? new Date(0)).toISOString()
+    }:${(opts.endDate ?? new Date()).toISOString()}`;
+
+    try {
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        const cached = await client.get(cacheKey);
+        if (cached) return JSON.parse(cached);
+      }
+    } catch {
+      /* cache miss tolerated */
+    }
+
+    const data = await DataAggregationService.getEnrollmentTrends(opts);
+
+    try {
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        await client.setEx(cacheKey, this.DASHBOARD_CACHE_TTL, JSON.stringify(data));
+      }
+    } catch {
+      /* cache failure tolerated */
+    }
+
+    return data;
+  }
+
+  /**
+   * Get course completion rates aggregated from real course_enrollment +
+   * course_completion events. PII-safe: counts only, no per-user identifiers.
+   */
+  static async getCompletionRates(opts: {
+    startDate?: Date;
+    endDate?: Date;
+    courseId?: string;
+  }) {
+    const cacheKey = `analytics:completion-rates:${opts.courseId ?? 'all'}:${
+      (opts.startDate ?? new Date(0)).toISOString()
+    }:${(opts.endDate ?? new Date()).toISOString()}`;
+
+    try {
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        const cached = await client.get(cacheKey);
+        if (cached) return JSON.parse(cached);
+      }
+    } catch {
+      /* cache miss tolerated */
+    }
+
+    const data = await DataAggregationService.getCompletionRates(opts);
+
+    try {
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        await client.setEx(cacheKey, this.DASHBOARD_CACHE_TTL, JSON.stringify(data));
+      }
+    } catch {
+      /* cache failure tolerated */
+    }
+
+    return data;
+  }
+
+  /**
+   * Aggregated, anonymized student performance snapshot over a date window.
+   * PII-safe: only population-level aggregates are returned.
+   */
+  static async getStudentPerformanceMetrics(opts: {
+    startDate?: Date;
+    endDate?: Date;
+  }) {
+    const cacheKey = `analytics:student-perf:${(opts.startDate ?? new Date(0)).toISOString()}:${
+      (opts.endDate ?? new Date()).toISOString()
+    }`;
+
+    try {
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        const cached = await client.get(cacheKey);
+        if (cached) return JSON.parse(cached);
+      }
+    } catch {
+      /* cache miss tolerated */
+    }
+
+    const data = await DataAggregationService.getStudentPerformanceMetrics(opts);
+
+    try {
+      const client = getRedisClient();
+      if (client?.isOpen) {
+        await client.setEx(cacheKey, this.DASHBOARD_CACHE_TTL, JSON.stringify(data));
+      }
+    } catch {
+      /* cache failure tolerated */
+    }
+
+    return data;
   }
 }
