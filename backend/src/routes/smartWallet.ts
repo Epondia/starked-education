@@ -18,6 +18,7 @@ import { authenticateToken } from '../middleware/auth';
 // validateRequestSchema undefined at module load when pulled in transitively
 // via src/index.js, so we use the no-op factory alias in utils/validation.ts.
 import { validateRequestSchema } from '../utils/validation';
+import type { ValidationSchema } from '../middleware/validateRequestSchema';
 
 const router = express.Router();
 
