@@ -2,9 +2,6 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const { createServer } = require('http');
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
 const dotenv = require('dotenv');
 
 const { connectRedis } = require('./utils/redis');
@@ -132,24 +129,6 @@ app.use(express.urlencoded({ extended: true }));
 const requestLogger = require('./middleware/requestLogger');
 app.use(requestLogger);
 
-// Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  explorer: true,
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'StarkEd API Documentation',
-  swaggerOptions: {
-    persistAuthorization: true,
-    displayRequestDuration: true,
-    filter: true,
-  },
-}));
-
-// Serve raw OpenAPI spec as JSON
-app.get('/api-docs.json', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerSpec);
-});
-
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
 const healthRoutes = require('./routes/health').default || require('./routes/health');
 app.use('/health', healthRoutes);
@@ -227,6 +206,12 @@ v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
 const adminRoutes = require('./routes/admin');
 v1Router.use('/admin', adminRoutes);
 
+// Schemas helper for versioned responses
+const { createVersionedResponse } = require('./utils/schemas');
+const { errorHandler } = require('./middleware/errorHandler');
+const { ValidationError } = require('./utils/errors');
+const { getCompressionStats } = require('./middleware/compression');
+
 // Health check under v1 for OpenAPI spec compatibility
 v1Router.get('/health', (req, res) => {
   const version = req.apiVersion || 'v1';
@@ -243,12 +228,6 @@ app.use('/api/v1', v1Router);
 // Mount v2 router (empty — ready for future endpoints)
 const v2Router = createVersionedRouter('v2');
 app.use('/api/v2', v2Router);
-
-// Schemas helper for versioned responses
-const { createVersionedResponse } = require('./utils/schemas');
-const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
-const { ValidationError } = require('./utils/errors');
-const { getCompressionStats } = require('./middleware/compression');
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -283,10 +262,6 @@ app.use('/api/v:version*', (req, res, next) => {
     next();
   }
 });
-
-// Global error handler
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', { error: err.message, stack: err.stack, requestId: req.requestId });
 
 // Global error handler - must be last
 app.use(errorHandler);

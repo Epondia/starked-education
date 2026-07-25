@@ -556,10 +556,10 @@ impl UserProfileContract {
                 let now = env.ledger().timestamp();
                 UserProfile {
                     owner: user.clone(),
-                    username: String::from_str(env, "unknown"),
-                    email_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
-                    bio_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
-                    avatar_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
+                    username: String::from_str(&env, "unknown"),
+                    email_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
+                    bio_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
+                    avatar_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
                     timestamps: PackedTimestamps::new(now, now),
                     achievement_count: 0,
                     credential_count: 0,
@@ -581,7 +581,7 @@ impl UserProfileContract {
             .storage()
             .instance()
             .get(&ProfileKey::UserCredentials(user.clone()))
-            .unwrap_or_else(|| Vec::new(env));
+            .unwrap_or_else(|| Vec::new(&env));
         if !Self::vec_contains_u64(&user_creds, credential_id) {
             user_creds.push_back(credential_id);
             env.storage()
@@ -595,7 +595,7 @@ impl UserProfileContract {
         env.storage()
             .instance()
             .get(&ProfileKey::UserCredentials(user))
-            .unwrap_or_else(|| Vec::new(env))
+            .unwrap_or_else(|| Vec::new(&env))
     }
 
     /// Check if a soroban-sdk Vec<u64> contains a given value.
