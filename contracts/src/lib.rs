@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, String, Symbol, Vec};
 
 pub mod governance;
 #[cfg(test)]
@@ -13,6 +13,9 @@ pub mod user_profile_test;
 pub mod marketplace;
 #[cfg(test)]
 pub mod marketplace_test;
+pub mod upgrade;
+#[cfg(test)]
+pub mod upgrade_test;
 pub mod utils;
 
 /// Core storage keys
@@ -24,6 +27,7 @@ pub enum DataKey {
     CourseCount,
     Course(u64),
     AchievementCount,
+    ContractVersion,
 }
 
 /// Credential with issuer/recipient data
@@ -77,6 +81,9 @@ impl StarkEdContract {
         env.storage()
             .instance()
             .set(&DataKey::AchievementCount, &0u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::ContractVersion, &1u32);
     }
 
     /// Issue a new credential
@@ -134,6 +141,22 @@ impl StarkEdContract {
         env.storage()
             .instance()
             .has(&DataKey::Credential(credential_id))
+    }
+
+    /// Batch verify multiple credentials in a single call
+    /// Returns a Vec<bool> where each element corresponds to the
+    /// verification result for the credential at that index.
+    /// Reduces gas costs compared to individual verification calls.
+    pub fn verify_credentials_batch(env: Env, credential_ids: Vec<u64>) -> Vec<bool> {
+        let mut results = Vec::new(&env);
+        for credential_id in credential_ids.iter() {
+            let verified = env
+                .storage()
+                .instance()
+                .has(&DataKey::Credential(credential_id));
+            results.push_back(verified);
+        }
+        results
     }
 
     /// Create a course
@@ -204,5 +227,59 @@ impl StarkEdContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("Not initialized"))
+    }
+
+    /// Get the current contract version
+    pub fn get_version(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::ContractVersion)
+            .unwrap_or(1)
+    }
+
+    /// Upgrade the contract to a new WASM hash (admin only)
+    ///
+    /// Uses Soroban's native upgrade mechanism to replace the contract
+    /// code while preserving all storage and the contract ID.
+    /// Increments the version counter on successful upgrade.
+    ///
+    /// IMPORTANT: The code AFTER `update_current_contract_wasm()` runs in
+    /// the NEW contract context. Future versions MUST preserve the version
+    /// bump and event emission logic to ensure proper upgrade tracking.
+    pub fn upgrade(env: Env, admin: Address, new_wasm_hash: BytesN<32>) {
+        admin.require_auth();
+
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("Not initialized"));
+
+        if admin != stored_admin {
+            panic!("Only admin can upgrade the contract");
+        }
+
+        // Get current version before upgrade
+        let current_version: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ContractVersion)
+            .unwrap_or(1);
+
+        // Perform the upgrade via Soroban's native mechanism.
+        // Everything after this call executes in the NEW contract code.
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+
+        // NOTE: The following code runs in the NEW WASM context.
+        // Future contract versions MUST keep this logic intact.
+        env.storage()
+            .instance()
+            .set(&DataKey::ContractVersion, &(current_version + 1));
+
+        // Emit upgrade event
+        env.events().publish(
+            (Symbol::new(&env, "contract"), Symbol::new(&env, "upgraded")),
+            (current_version, current_version + 1),
+        );
     }
 }

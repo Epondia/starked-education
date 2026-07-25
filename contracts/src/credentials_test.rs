@@ -5,8 +5,8 @@ use crate::credentials::{
     get_credential, get_credential_count, get_credential_status, get_multi_sig_credential,
     get_multi_sig_signatures, get_multi_sig_status, get_user_credentials,
     is_multi_sig_threshold_met, issue_credential, remove_signer_from_multi_sig,
-    renew_credential, revoke_credential, rotate_signer_in_multi_sig, verify_credential,
-    CredentialStatus,
+    renew_credential, revoke_credential, rotate_signer_in_multi_sig,
+    verify_credential, verify_credentials_batch, CredentialStatus,
 };
 use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol, Vec};
 
