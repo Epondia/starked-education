@@ -136,6 +136,36 @@ pub fn verify_credential(env: &Env, credential_id: u64) -> bool {
     status == CredentialStatus::Active
 }
 
+/// Batch verify multiple credentials in a single call
+///
+/// Iterates over a list of credential IDs and returns a Vec<bool> where
+/// each element corresponds to the verification result for that credential.
+/// This reduces gas costs compared to individual verification calls by
+/// minimizing cross-contract call overhead.
+///
+/// Unlike `verify_credential` which panics on nonexistent credentials,
+/// this function returns `false` for credentials that don't exist,
+/// are expired, or have been revoked.
+pub fn verify_credentials_batch(env: &Env, credential_ids: Vec<u64>) -> Vec<bool> {
+    let mut results = Vec::new(env);
+    for credential_id in credential_ids.iter() {
+        // Check if the credential exists at all; treat nonexistent as not-verified.
+        // This pre-check ensures `get_credential_status` won't panic on missing keys,
+        // at the cost of a second storage read for credentials that do exist.
+        let exists = env
+            .storage()
+            .persistent()
+            .has(&CredentialKey::Credential(credential_id));
+        if !exists {
+            results.push_back(false);
+            continue;
+        }
+        let status = get_credential_status(env, *credential_id);
+        results.push_back(status == CredentialStatus::Active);
+    }
+    results
+}
+
 /// Renew a credential — extends expiration, callable by original issuer only
 /// Emits CredentialRenewed event. Revoked credentials cannot be renewed.
 pub fn renew_credential(

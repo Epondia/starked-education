@@ -18,3 +18,10 @@ soroban-sdk = { version = "20.5.0", features = ["testutils"] }
 
 [features]
 testutils = ["soroban-sdk/testutils"]
+
+[profile.release]
+opt-level = "z"        # Optimize for size
+lto = true              # Link-time optimization
+codegen-units = 1       # Single codegen unit for better optimization
+strip = true            # Strip symbols
+panic = "abort"         # Abort on panic instead of unwind

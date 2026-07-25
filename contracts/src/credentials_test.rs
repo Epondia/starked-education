@@ -5,8 +5,8 @@ use crate::credentials::{
     get_credential, get_credential_count, get_credential_status, get_multi_sig_credential,
     get_multi_sig_signatures, get_multi_sig_status, get_user_credentials,
     is_multi_sig_threshold_met, issue_credential, remove_signer_from_multi_sig,
-    renew_credential, revoke_credential, rotate_signer_in_multi_sig, verify_credential,
-    CredentialStatus,
+    renew_credential, revoke_credential, rotate_signer_in_multi_sig,
+    verify_credential, verify_credentials_batch, CredentialStatus,
 };
 use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol, Vec};
 
@@ -1402,4 +1402,122 @@ fn test_signer_management_only_admin() {
         );
     }));
     assert!(result.is_err());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Batch Credential Verification Tests (Issue #172)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Test: batch verification handles mixed active/revoked/nonexistent credentials
+/// Returns false for revoked and nonexistent, true for active
+#[test]
+fn test_verify_credentials_batch_mixed_states() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    // Create an active credential
+    let active_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Active Cred"),
+        String::from_str(&env, "Still active"),
+        String::from_str(&env, "course-batch-001"),
+        String::from_str(&env, "ipfs://QmActiveBatch"),
+        None,
+    );
+
+    // Create and revoke another credential
+    let revoked_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Revoked Cred"),
+        String::from_str(&env, "Will be revoked"),
+        String::from_str(&env, "course-batch-002"),
+        String::from_str(&env, "ipfs://QmRevokedBatch"),
+        None,
+    );
+    revoke_credential(&env, revoked_id, admin.clone());
+
+    // Batch verify: [active_id, revoked_id, nonexistent(9999)]
+    let ids = Vec::from_array(&env, [active_id, revoked_id, 9999u64]);
+    let results = verify_credentials_batch(&env, ids);
+
+    assert_eq!(results.len(), 3);
+    assert!(results.get(0).unwrap(), "Active credential should verify true");
+    assert!(!results.get(1).unwrap(), "Revoked credential should verify false");
+    assert!(!results.get(2).unwrap(), "Nonexistent credential should verify false");
+}
+
+/// Test: batch verification with empty list returns empty results
+#[test]
+fn test_verify_credentials_batch_empty_list() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let ids = Vec::new(&env);
+    let results = verify_credentials_batch(&env, ids);
+    assert_eq!(results.len(), 0);
+}
+
+/// Test: batch verification with expired credentials returns false
+#[test]
+fn test_verify_credentials_batch_expired() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    // Create active credential
+    let active_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Active Permanent"),
+        String::from_str(&env, "No expiration"),
+        String::from_str(&env, "course-batch-003"),
+        String::from_str(&env, "ipfs://QmActivePerm"),
+        None,
+    );
+
+    // Create credential that will expire
+    let expired_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Will Expire"),
+        String::from_str(&env, "Short-lived"),
+        String::from_str(&env, "course-batch-004"),
+        String::from_str(&env, "ipfs://QmExpiredBatch"),
+        Some(1), // 1 second validity
+    );
+
+    // Advance time past expiration
+    env.ledger().set_timestamp(env.ledger().timestamp() + 2);
+
+    // Batch verify: [active_id, expired_id]
+    let ids = Vec::from_array(&env, [active_id, expired_id]);
+    let results = verify_credentials_batch(&env, ids);
+
+    assert_eq!(results.len(), 2);
+    assert!(results.get(0).unwrap(), "Active credential should verify true");
+    assert!(!results.get(1).unwrap(), "Expired credential should verify false");
 }
