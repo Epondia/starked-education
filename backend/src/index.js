@@ -1,3 +1,6 @@
+const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
 const { createServer } = require('http');
 const dotenv = require('dotenv');
 
@@ -64,10 +67,13 @@ const swarmLearningRoutes = require('./routes/swarmLearning');
 const smartWalletRoutes = resolveRoute(require('./routes/smartWallet'));
 
 // AGI Tutor routes
-const agiTutorRoutes = require('./routes/agiTutorRoutes');
+const agiTutorRoutes = resolveRoute(require('./routes/agiTutorRoutes'));
 
 // Analytics routes
 const analyticsRoutes = require('./routes/analytics');
+
+// Swagger documentation
+const { setupSwagger } = require('./docs/swagger');
 
 // Initialize Express app
 const app = express();
@@ -156,6 +162,16 @@ v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
 const adminRoutes = require('./routes/admin');
 v1Router.use('/admin', adminRoutes);
 
+// Health check under v1 for OpenAPI spec compatibility
+v1Router.get('/health', (req, res) => {
+  const version = req.apiVersion || 'v1';
+  res.json(createVersionedResponse({
+    status: 'healthy',
+    uptime: process.uptime(),
+    supportedVersions: SUPPORTED_VERSIONS,
+  }, version));
+});
+
 // Mount v1 router at /api/v1
 app.use('/api/v1', v1Router);
 
@@ -175,6 +191,9 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Swagger API documentation
+setupSwagger(app, DEFAULT_VERSION);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
