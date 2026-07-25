@@ -697,10 +697,7 @@ export const markAsReadSchema: ValidationSchema = {
 };
 
 export const markAllAsReadSchema: ValidationSchema = {
-  body: Joi.object({
-    userId: Joi.string().trim().min(1).required()
-      .messages({ 'any.required': '"userId" is required' }),
-  }),
+  // userId is obtained from the authenticated request (req.user.id)
 };
 
 export const updatePreferencesSchema: ValidationSchema = {
@@ -714,7 +711,7 @@ export const updatePreferencesSchema: ValidationSchema = {
     digestFrequency: Joi.string().valid('daily', 'weekly', 'never').optional(),
     quietHoursStart: Joi.string().regex(/^\d{2}:\d{2}$/).optional(),
     quietHoursEnd: Joi.string().regex(/^\d{2}:\d{2}$/).optional(),
-  }).min(1).messages({ 'object.min': 'At least one preference field must be provided' }),
+  }).min(1).unknown(false).messages({ 'object.min': 'At least one preference field must be provided' }),
 };
 
 export const getNotificationsSchema: ValidationSchema = {

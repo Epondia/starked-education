@@ -12,6 +12,16 @@ import admin from "firebase-admin";
 import { Twilio } from "twilio";
 import webpush from "web-push";
 
+// HTML entity escaping to prevent XSS in email content
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 // Initialize services with environment variables
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -127,6 +137,18 @@ class NotificationService {
 
       const deliveryPromises: Promise<void>[] = [];
 
+      // Validate actionUrl to prevent open redirects
+      if (notification.actionUrl) {
+        try {
+          const url = new URL(notification.actionUrl);
+          if (!['http:', 'https:'].includes(url.protocol)) {
+            notification.actionUrl = undefined;
+          }
+        } catch {
+          notification.actionUrl = undefined;
+        }
+      }
+
       // Deliver via each specified method
       if (preferences.deliveryMethods.includes("websocket")) {
         // Deliver via websocket if user is online
@@ -190,10 +212,11 @@ class NotificationService {
         to: userEmail,
         subject: notification.title,
         text: notification.message,
-        html: `<p>${notification.message}</p>`,
+        html: `<p>${escapeHtml(notification.message)}</p>`,
       });
+      // Log masked email to avoid PII exposure
       logger.info(
-        `Email sent to ${userEmail} for notification ${notification._id}`,
+        `Email sent to ${userEmail.replace(/(.{3}).*(@.*)/, '$1***$2')} for notification ${notification._id}`,
       );
     } catch (error) {
       logger.error(
@@ -254,7 +277,9 @@ class NotificationService {
         from: process.env.TWILIO_PHONE_NUMBER,
         to: userPhone,
       });
-      logger.info(`SMS sent to ${userPhone} for user ${notification.userId}`);
+      // Log masked phone number to avoid PII exposure
+      const maskedPhone = userPhone.slice(-4).padStart(userPhone.length, '*');
+      logger.info(`SMS sent to ${maskedPhone} for user ${notification.userId}`);
     } catch (error) {
       logger.error(`Error sending SMS for user ${notification.userId}:`, error);
     }
