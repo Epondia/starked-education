@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { notificationService } from "../services/notificationService";
+import { NotificationType } from "../models/Notification";
 import logger from "../utils/logger";
 
 export class NotificationController {
@@ -85,7 +86,17 @@ export class NotificationController {
   public async updatePreferences(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user.id;
-      const preferences = req.body;
+      // Sanitize input to only whitelisted preference fields
+      const allowedFields = new Set([
+        'emailNotifications', 'pushNotifications', 'inAppNotifications',
+        'digestFrequency', 'quietHoursStart', 'quietHoursEnd',
+      ]);
+      const preferences: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(req.body)) {
+        if (allowedFields.has(key)) {
+          preferences[key] = value;
+        }
+      }
 
       await notificationService.setNotificationPreferences(userId, preferences);
       res.status(200).json({ success: true, message: "Preferences updated" });
@@ -142,24 +153,30 @@ export class NotificationController {
         });
         return;
       }
-      if (typeof title !== 'string' || typeof message !== 'string') {
+      if (typeof userId !== 'string' || typeof type !== 'string' || typeof title !== 'string' || typeof message !== 'string') {
         res.status(400).json({
           success: false,
-          message: "title and message must be strings",
+          message: "userId, type, title and message must be strings",
         });
         return;
       }
 
+      // Validate and sanitize actionUrl and metadata before passing to service
+      const safeActionUrl = typeof actionUrl === 'string' ? actionUrl : undefined;
+      const safeMetadata = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+        ? metadata as Record<string, unknown>
+        : undefined;
+
       const notification = await notificationService.createAndPushNotification(
         userId,
-        type,
+        type as NotificationType,
         title,
         message,
         category || "system",
         {
           priority: priority || "medium",
-          actionUrl,
-          metadata,
+          actionUrl: safeActionUrl,
+          metadata: safeMetadata,
           deliveryMethods: ["websocket"],
         },
       );
@@ -193,13 +210,16 @@ export class NotificationController {
         return;
       }
 
+      // Validate that actionUrl is a string if provided
+      const safeActionUrl = typeof actionUrl === 'string' ? actionUrl : undefined;
+
       const result = await notificationService.sendAnnouncement(
         title,
         message,
         targetRoles || [],
         {
           priority: priority || "high",
-          actionUrl,
+          actionUrl: safeActionUrl,
         },
       );
 

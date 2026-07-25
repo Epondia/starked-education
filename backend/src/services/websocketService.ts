@@ -6,6 +6,11 @@ import collaborationService from './collaborationService';
 import { getSyncStatus } from './syncService'; // Hook into tracking system
 import logger from '../utils/logger';
 
+// Helper: sanitize log strings to prevent log injection (strip control chars)
+function sanitizeLog(data: unknown): string {
+  return String(data).replace(/[\x00-\x1f\x7f-\x9f]/g, '_');
+}
+
 interface ClientNotificationData {
   id: string;
   userId: string;
@@ -29,7 +34,7 @@ class WebsocketService {
 
   constructor(server?: any) {
     const corsOptions = {
-      origin: process.env.FRONTEND_URL || '*',
+      origin: process.env.FRONTEND_URL || undefined,
       methods: ['GET', 'POST'],
       credentials: true
     };
@@ -76,18 +81,18 @@ class WebsocketService {
         
         this.socketUsers[socket.id] = userId;
         this.addUserSocket(userId, socket);
-        logger.info(`User ${userId} registered with socket ${socket.id}`);
+        logger.info(`User ${sanitizeLog(userId)} registered with socket ${socket.id}`);
 
         // Deliver missed notifications on reconnect
         try {
           const { notificationService } = await import('./notificationService');
           const deliveredCount = await notificationService.deliverMissedNotifications(userId);
           if (deliveredCount > 0) {
-            logger.info(`Delivered ${deliveredCount} missed notifications to user ${userId} on reconnect`);
+            logger.info(`Delivered ${deliveredCount} missed notifications to user ${sanitizeLog(userId)} on reconnect`);
           }
         } catch (error) {
           const err = error instanceof Error ? error.message : String(error);
-          logger.error(`Failed to deliver missed notifications for user ${userId}: ${err}`);
+          logger.error(`Failed to deliver missed notifications for user ${sanitizeLog(userId)}: ${sanitizeLog(err)}`);
         }
 
         // State recovery implementation: Replay missed sync messages if lastOffset is provided
@@ -103,7 +108,7 @@ class WebsocketService {
             }
           } catch (error) {
             const err = error instanceof Error ? error.message : String(error);
-            logger.error(`Failed to replay state recovery logs for user ${userId}: ${err}`);
+            logger.error(`Failed to replay state recovery logs for user ${sanitizeLog(userId)}: ${sanitizeLog(err)}`);
           }
         }
       });
@@ -169,12 +174,13 @@ class WebsocketService {
 
       socket.on('document-sync', (payload: { workspaceId: string; documentId: string; title: string; userId: string; version: number; updatedAt?: Date; content: Record<string, unknown>; strategy?: any }) => {
         // Validate workspaceId to prevent dynamic event injection
-        if (typeof payload.workspaceId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(payload.workspaceId)) {
+        if (typeof payload.workspaceId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(payload.workspaceId)) {
           logger.warn(`document-sync rejected: invalid workspaceId from socket ${socket.id}`);
           return;
         }
+        const safeWorkspaceId = payload.workspaceId;
         const document = collaborationService.syncDocument(payload);
-        this.io.emit(`workspace-document-${payload.workspaceId}`, document);
+        this.io.emit(`workspace-document-${safeWorkspaceId}`, document);
       });
 
       socket.on('disconnect', () => {
@@ -234,7 +240,7 @@ class WebsocketService {
             timestamp: notification.createdAt,
           });
         });
-        logger.info(`Notification sent via websocket to user ${userId}`);
+        logger.info(`Notification sent via websocket to user ${sanitizeLog(userId)}`);
       } else {
         delete this.userSockets[userId];
       }

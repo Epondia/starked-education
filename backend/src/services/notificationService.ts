@@ -30,33 +30,28 @@ function validateActionUrl(url: string | undefined): string | undefined {
     if (!['http:', 'https:'].includes(parsed.protocol)) return undefined;
     // Block private/internal IP ranges to prevent SSRF
     const hostname = parsed.hostname;
-    if (
+    const isPrivateIPv4 =
       hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
       hostname === '0.0.0.0' ||
+      /^127\./.test(hostname) ||
+      /^0\./.test(hostname) ||
       hostname.startsWith('192.168.') ||
       hostname.startsWith('10.') ||
-      hostname.startsWith('172.16.') ||
-      hostname.startsWith('172.17.') ||
-      hostname.startsWith('172.18.') ||
-      hostname.startsWith('172.19.') ||
-      hostname.startsWith('172.20.') ||
-      hostname.startsWith('172.21.') ||
-      hostname.startsWith('172.22.') ||
-      hostname.startsWith('172.23.') ||
-      hostname.startsWith('172.24.') ||
-      hostname.startsWith('172.25.') ||
-      hostname.startsWith('172.26.') ||
-      hostname.startsWith('172.27.') ||
-      hostname.startsWith('172.28.') ||
-      hostname.startsWith('172.29.') ||
-      hostname.startsWith('172.30.') ||
-      hostname.startsWith('172.31.') ||
-      hostname.startsWith('169.254.') ||
-      hostname === '[::1]' ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      hostname.startsWith('169.254.');
+    const isPrivateIPv6 =
+      hostname === '::1' ||
+      hostname === '::' ||
       hostname.startsWith('fc00:') ||
-      hostname.startsWith('fe80:')
-    ) {
+      hostname.startsWith('fd') ||
+      hostname.startsWith('fe80:') ||
+      hostname === '0:0:0:0:0:0:0:1' ||
+      hostname === '0000:0000:0000:0000:0000:0000:0000:0001' ||
+      hostname.startsWith('::ffff:127.') ||
+      hostname.startsWith('::ffff:10.') ||
+      hostname.startsWith('::ffff:192.168.') ||
+      /^::ffff:172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+    if (isPrivateIPv4 || isPrivateIPv6) {
       return undefined;
     }
     return url;
@@ -74,9 +69,9 @@ const ALLOWED_PREFERENCE_FIELDS = new Set([
   'digestFrequency', 'quietHoursStart', 'quietHoursEnd',
 ]);
 
-// Helper: sanitize log strings to prevent log injection (strip newlines/returns)
+// Helper: sanitize log strings to prevent log injection (strip newlines/returns and control chars)
 function sanitizeLog(data: unknown): string {
-  return String(data).replace(/[\r\n]/g, '_');
+  return String(data).replace(/[\x00-\x1f\x7f-\x9f]/g, '_');
 }
 
 // Helper: sanitize metadata to prevent MongoDB operator injection and prototype pollution
@@ -189,7 +184,7 @@ class NotificationService {
         await this.deliverNotification(notification, preferences);
       }
 
-      logger.info(`Notification created for user ${userId}: ${sanitizeLog(title)}`);
+      logger.info(`Notification created for user ${sanitizeLog(userId)}: ${sanitizeLog(title)}`);
       return notification;
     } catch (error) {
       logger.error("Error creating notification:", error);
@@ -279,7 +274,7 @@ class NotificationService {
       });
       // Log masked email to avoid PII exposure
       logger.info(
-        `Email sent to ${userEmail.replace(/(.{3}).*(@.*)/, '$1***$2')} for notification ${notification._id}`,
+        `Email sent to ${userEmail.replace(/(.{3}).*(@.*)/, '$1***$2')} for notification ${sanitizeLog(String(notification._id))}`,
       );
     } catch (error) {
       // Only log error message and stack to avoid leaking request bodies/auth headers
@@ -471,7 +466,7 @@ class NotificationService {
         { $set: updateFields },
         { upsert: true, new: true },
       );
-      logger.info(`Updated notification preferences for user ${userId}`);
+      logger.info(`Updated notification preferences for user ${sanitizeLog(userId)}`);
     } catch (error) {
       logger.error("Error setting notification preferences:", error);
       throw error;
@@ -500,7 +495,7 @@ class NotificationService {
 
       return preferences;
     } catch (error) {
-      logger.error(`Error fetching preferences for user ${userId}:`, error);
+      logger.error(`Error fetching preferences for user ${sanitizeLog(userId)}:`, error);
       throw error;
     }
   }
@@ -603,7 +598,7 @@ class NotificationService {
       return await Notification.countDocuments({ userId, isRead: false });
     } catch (error) {
       const err = error instanceof Error ? error.message : String(error);
-      logger.error(`Error getting unread count for user ${userId}: ${err}`);
+      logger.error(`Error getting unread count for user ${sanitizeLog(userId)}: ${sanitizeLog(err)}`);
       throw error;
     }
   }
@@ -650,7 +645,7 @@ class NotificationService {
       await notification.save();
     } catch (wsError) {
       logger.warn(
-        `WebSocket push failed for user ${userId}, notification persisted for later delivery`,
+        `WebSocket push failed for user ${sanitizeLog(userId)}, notification persisted for later delivery`,
       );
     }      logger.info(`Notification pushed for user ${userId}: ${sanitizeLog(title)}`);
     return notification;
@@ -738,7 +733,7 @@ class NotificationService {
       return { persisted: persistedCount, pushed: pushedCount };
     } catch (error) {
       const err = error instanceof Error ? error.message : String(error);
-      logger.error(`Error sending announcement: ${err}`);
+      logger.error(`Error sending announcement: ${sanitizeLog(err)}`);
       throw error;
     }
   }
@@ -781,7 +776,7 @@ class NotificationService {
       return deliveredCount;
     } catch (error) {
       const err = error instanceof Error ? error.message : String(error);
-      logger.error(`Error delivering missed notifications for user ${userId}: ${err}`);
+      logger.error(`Error delivering missed notifications for user ${sanitizeLog(userId)}: ${sanitizeLog(err)}`);
       throw error;
     }
   }
