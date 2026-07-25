@@ -34,13 +34,16 @@ function validateActionUrl(url: string | undefined): string | undefined {
   }
 }
 
-// Helper: sanitize metadata to prevent MongoDB operator injection
+// Blocked metadata keys: MongoDB operators ($) and prototype pollution vectors
+const BLOCKED_META_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+// Helper: sanitize metadata to prevent MongoDB operator injection and prototype pollution
 function sanitizeMetadata(meta: Record<string, any> | undefined): Record<string, any> | undefined {
   if (!meta) return undefined;
   const sanitized: Record<string, any> = {};
   for (const [key, value] of Object.entries(meta)) {
-    // Reject keys starting with $ to prevent MongoDB operator injection
-    if (key.startsWith('$')) continue;
+    // Reject keys starting with $ (MongoDB operators) and prototype pollution keys
+    if (key.startsWith('$') || BLOCKED_META_KEYS.has(key)) continue;
     sanitized[key] = value;
   }
   return sanitized;
