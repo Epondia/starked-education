@@ -22,12 +22,43 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#x27;');
 }
 
-// Helper: validate URL to prevent open redirects
+// Helper: validate URL to prevent open redirects and SSRF
 function validateActionUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
   try {
     const parsed = new URL(url);
     if (!['http:', 'https:'].includes(parsed.protocol)) return undefined;
+    // Block private/internal IP ranges to prevent SSRF
+    const hostname = parsed.hostname;
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('172.16.') ||
+      hostname.startsWith('172.17.') ||
+      hostname.startsWith('172.18.') ||
+      hostname.startsWith('172.19.') ||
+      hostname.startsWith('172.20.') ||
+      hostname.startsWith('172.21.') ||
+      hostname.startsWith('172.22.') ||
+      hostname.startsWith('172.23.') ||
+      hostname.startsWith('172.24.') ||
+      hostname.startsWith('172.25.') ||
+      hostname.startsWith('172.26.') ||
+      hostname.startsWith('172.27.') ||
+      hostname.startsWith('172.28.') ||
+      hostname.startsWith('172.29.') ||
+      hostname.startsWith('172.30.') ||
+      hostname.startsWith('172.31.') ||
+      hostname.startsWith('169.254.') ||
+      hostname === '[::1]' ||
+      hostname.startsWith('fc00:') ||
+      hostname.startsWith('fe80:')
+    ) {
+      return undefined;
+    }
     return url;
   } catch {
     return undefined;
@@ -42,6 +73,11 @@ const ALLOWED_PREFERENCE_FIELDS = new Set([
   'emailNotifications', 'pushNotifications', 'inAppNotifications',
   'digestFrequency', 'quietHoursStart', 'quietHoursEnd',
 ]);
+
+// Helper: sanitize log strings to prevent log injection (strip newlines/returns)
+function sanitizeLog(data: unknown): string {
+  return String(data).replace(/[\r\n]/g, '_');
+}
 
 // Helper: sanitize metadata to prevent MongoDB operator injection and prototype pollution
 function sanitizeMetadata(meta: Record<string, any> | undefined): Record<string, any> | undefined {
@@ -150,7 +186,7 @@ class NotificationService {
         await this.deliverNotification(notification, preferences);
       }
 
-      logger.info(`Notification created for user ${userId}: ${title}`);
+      logger.info(`Notification created for user ${userId}: ${sanitizeLog(title)}`);
       return notification;
     } catch (error) {
       logger.error("Error creating notification:", error);
@@ -243,9 +279,10 @@ class NotificationService {
         `Email sent to ${userEmail.replace(/(.{3}).*(@.*)/, '$1***$2')} for notification ${notification._id}`,
       );
     } catch (error) {
+      // Only log error message and stack to avoid leaking request bodies/auth headers
+      const err = error instanceof Error ? error.message : String(error);
       logger.error(
-        `Error sending email for notification ${notification._id}:`,
-        error,
+        `Error sending email for notification ${notification._id}: ${err}`,
       );
       throw error;
     }
@@ -271,6 +308,15 @@ class NotificationService {
 
       // Web Push
       if (notification.metadata?.webPushSubscription) {
+        // Validate push subscription endpoint to prevent SSRF
+        const sub = notification.metadata.webPushSubscription;
+        if (sub && typeof sub.endpoint === 'string') {
+          const endpointUrl = validateActionUrl(sub.endpoint);
+          if (!endpointUrl) {
+            logger.warn(`Rejected web push with unsafe endpoint for user ${notification.userId}`);
+            return;
+          }
+        }
         await webpush.sendNotification(
           notification.metadata.webPushSubscription,
           JSON.stringify({
@@ -283,9 +329,9 @@ class NotificationService {
         logger.info(`Web Push sent to ${notification.userId}`);
       }
     } catch (error) {
+      const err = error instanceof Error ? error.message : String(error);
       logger.error(
-        `Error sending push for notification ${notification._id}:`,
-        error,
+        `Error sending push for notification ${notification._id}: ${err}`,
       );
       throw error;
     }
@@ -597,9 +643,7 @@ class NotificationService {
       logger.warn(
         `WebSocket push failed for user ${userId}, notification persisted for later delivery`,
       );
-    }
-
-    logger.info(`Notification pushed for user ${userId}: ${title}`);
+    }      logger.info(`Notification pushed for user ${userId}: ${sanitizeLog(title)}`);
     return notification;
   }
 

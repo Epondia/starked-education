@@ -85,7 +85,8 @@ class WebsocketService {
             console.log(`Delivered ${deliveredCount} missed notifications to user ${userId} on reconnect`);
           }
         } catch (error) {
-          console.error(`Failed to deliver missed notifications for user ${userId}:`, error);
+          const err = error instanceof Error ? error.message : String(error);
+          console.error(`Failed to deliver missed notifications for user ${userId}: ${err}`);
         }
 
         // State recovery implementation: Replay missed sync messages if lastOffset is provided
@@ -106,7 +107,20 @@ class WebsocketService {
       });
 
       socket.on('join-classroom', (payload: { classroomId: string; userId: string; name: string; role?: 'student' | 'instructor' | 'moderator' | 'reviewer' }) => {
-        const classroom = collaborationService.joinClassroom(payload.classroomId, payload);
+        // Rebuild payload from verified identity, ignoring client-supplied userId/role to prevent privilege escalation
+        const verifiedUserId = this.socketUsers[socket.id];
+        if (!verifiedUserId) {
+          console.warn(`join-classroom rejected: unauthenticated socket ${socket.id}`);
+          socket.emit('auth-error', { message: 'Authentication required to join classroom' });
+          return;
+        }
+        const participant = {
+          classroomId: payload.classroomId,
+          userId: verifiedUserId,
+          name: payload.name || 'Anonymous',
+          role: 'student' as const, // Default role; real role fetched from DB by collaborationService
+        };
+        const classroom = collaborationService.joinClassroom(payload.classroomId, participant);
         socket.join(this.getRoomName(payload.classroomId));
         socket.emit('classroom-state', classroom);
         this.io.to(this.getRoomName(payload.classroomId)).emit('classroom-presence-updated', classroom.participants);
@@ -152,6 +166,11 @@ class WebsocketService {
       });
 
       socket.on('document-sync', (payload: { workspaceId: string; documentId: string; title: string; userId: string; version: number; updatedAt?: Date; content: Record<string, unknown>; strategy?: any }) => {
+        // Validate workspaceId to prevent dynamic event injection
+        if (typeof payload.workspaceId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(payload.workspaceId)) {
+          console.warn(`document-sync rejected: invalid workspaceId from socket ${socket.id}`);
+          return;
+        }
         const document = collaborationService.syncDocument(payload);
         this.io.emit(`workspace-document-${payload.workspaceId}`, document);
       });
