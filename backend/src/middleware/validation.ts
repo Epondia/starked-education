@@ -912,9 +912,6 @@ export const markAllAsReadSchema: ValidationSchema = {
 };
 
 export const updatePreferencesSchema: ValidationSchema = {
-  params: Joi.object({
-    userId: Joi.string().trim().min(1).required(),
-  }),
   body: Joi.object({
     emailNotifications: Joi.boolean().optional(),
     pushNotifications: Joi.boolean().optional(),
@@ -926,9 +923,6 @@ export const updatePreferencesSchema: ValidationSchema = {
 };
 
 export const getNotificationsSchema: ValidationSchema = {
-  params: Joi.object({
-    userId: Joi.string().trim().min(1).required(),
-  }),
   query: Joi.object({
     page: Joi.number().integer().min(1).optional(),
     limit: Joi.number().integer().min(1).max(100).optional(),

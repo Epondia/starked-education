@@ -37,6 +37,12 @@ function validateActionUrl(url: string | undefined): string | undefined {
 // Blocked metadata keys: MongoDB operators ($) and prototype pollution vectors
 const BLOCKED_META_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
+// Allowed preference fields for explicit whitelist-based updates to prevent injection
+const ALLOWED_PREFERENCE_FIELDS = new Set([
+  'emailNotifications', 'pushNotifications', 'inAppNotifications',
+  'digestFrequency', 'quietHoursStart', 'quietHoursEnd',
+]);
+
 // Helper: sanitize metadata to prevent MongoDB operator injection and prototype pollution
 function sanitizeMetadata(meta: Record<string, any> | undefined): Record<string, any> | undefined {
   if (!meta) return undefined;
@@ -403,9 +409,16 @@ class NotificationService {
     preferences: Partial<INotificationPreference>,
   ): Promise<void> {
     try {
+      // Build update fields via whitelist to prevent MongoDB operator injection
+      const updateFields: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(preferences)) {
+        if (ALLOWED_PREFERENCE_FIELDS.has(key)) {
+          updateFields[key] = value;
+        }
+      }
       await NotificationPreference.findOneAndUpdate(
         { userId },
-        { $set: preferences },
+        { $set: updateFields },
         { upsert: true, new: true },
       );
       logger.info(`Updated notification preferences for user ${userId}`);
