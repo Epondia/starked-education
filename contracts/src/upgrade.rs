@@ -5,10 +5,18 @@
 //! contract upgrades via `env.deployer().update_current_contract_wasm()`,
 //! which replaces the code while preserving the contract ID and all storage.
 //!
-//! NOTE: This module uses its own `UpgradeKey` namespace for storage.
-//! The `StarkEdContract` in `lib.rs` has its own upgrade entry point using
+//! **IMPORTANT — Storage Key Namespace:**
+//! This module uses its own `UpgradeKey` namespace for storage. The
+//! `StarkEdContract` in `lib.rs` has its own upgrade entry point using
 //! `DataKey` for consistency with the rest of the contract storage. See
 //! `lib.rs::StarkEdContract::upgrade()` for the primary upgrade path.
+//!
+//! **DO NOT call `upgrade_contract()` from this module on a contract
+//! initialized by `StarkEdContract::initialize()`** — it uses a different
+//! admin storage key (`Symbol("admin")` vs `DataKey::Admin`) and will
+//! panic with "Contract not initialized". This module is a standalone
+//! reference for contracts that want a pluggable upgrade framework with
+//! its own isolated storage namespace.
 //!
 //! This module serves as:
 //! - A reference pattern for implementing migrations
@@ -94,8 +102,15 @@ fn apply_migration(env: &Env, from_version: u32, to_version: u32) {
             // No data migration required for v1->v2
         }
         // Add more migration steps here as the contract evolves
-        _ => {
-            // Unknown migration path — no-op (allows forward compatibility)
+        (from, to) => {
+            // Unknown migration path — emit warning event for operators
+            env.events().publish(
+                (
+                    Symbol::new(env, "upgrade"),
+                    Symbol::new(env, "unknown_migration"),
+                ),
+                (from, to),
+            );
         }
     }
 

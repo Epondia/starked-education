@@ -1,73 +1,81 @@
-## [Backend] Implement comprehensive API documentation with OpenAPI/Swagger
+## Summary
 
-**Closes #173**
+Resolves all 3 issues assigned to @Degentle12 in a single quality PR:
 
-### Summary
+- Closes #166 — [Contracts] Implement upgrade mechanism for Soroban smart contracts (priority: high)
+- Closes #170 — [Contracts] Optimize smart contract binary size (priority: low)
+- Closes #172 — [Contracts] Implement batch credential verification (priority: medium)
 
-This PR implements comprehensive OpenAPI 3.0 specification and Swagger UI for all backend API endpoints, addressing issue #173.
+---
 
-### Changes Made
+## Changes
 
-#### 1. OpenAPI Specification (`backend/src/config/swagger.js`)
-- Created a comprehensive OpenAPI 3.0 specification file documenting **265 API paths**, **94 request/response schemas**, across **30 tagged endpoint groups**
-- All major API modules documented with detailed schemas, parameters, and responses:
-  - Authentication (register, login, profile, role management)
-  - Health (liveness, readiness, comprehensive health check)
-  - Users (profile, settings, achievements, stats)
-  - Content (IPFS upload, retrieve, pin, cache management)
-  - Courses (version control, comparison, export, statistics)
-  - Quizzes (CRUD, submission, grading, statistics)
-  - Enrollments (enroll, progress, waitlist, analytics, certificates)
-  - Payments (intent, Stellar, refunds, webhooks, exchange rates)
-  - Search (query, suggestions, voice, recommendations, trending)
-  - Notifications (list, mark read, preferences)
-  - Smart Wallet (create, execute, recovery, multisig, session keys)
-  - Federated Learning (sessions, participants, rounds, models, privacy)
-  - Swarm Learning (initialize, swarms, agents, tasks, analytics)
-  - AGI Tutor (sessions, assessments, guidance, recommendations)
-  - Time-Lock Credentials (issue, release, revoke, schedule, audit)
-  - VRF (randomness, commit-reveal, beacon, stats)
-  - Translation (text, batch, subtitles, correction, quality)
-  - Cross-Protocol Bridge (send, proof, gas cost, stats)
-  - Admin (dashboard, logs, reports, settings, backup, announcements)
-  - ACO (learning paths, resources, replanning, swarm, analytics)
-  - Assignments (CRUD, submissions, grading, bulk, progress)
-  - RBAC, Gamification, Autonomous Agents, Holographic, Secure Communication
+### 🔴 #166 — Upgrade Mechanism (priority: high)
 
-#### 2. Authentication Scheme
-- JWT Bearer token authentication documented as `BearerAuth` security scheme
-- API Key authentication documented as `ApiKeyAuth`
-- Applied to all protected endpoints with appropriate security requirements
+**Problem:** No way to upgrade deployed Soroban smart contracts without losing state.
 
-#### 3. Swagger UI Integration (`backend/src/index.js`)
-- Swagger UI mounted at `/api-docs` with interactive documentation browser
-- Raw OpenAPI spec served as JSON at `/api-docs.json`
-- Features: authorization persistence, request duration display, endpoint filtering
+**Solution:** Uses Soroban's native `env.deployer().update_current_contract_wasm()` mechanism (no proxy pattern needed — Soroban preserves contract ID and storage natively).
 
-#### 4. Frontend Type Generation (`frontend/package.json`)
-- Added `generate-api-types` script to auto-generate TypeScript types from the OpenAPI spec
-- Added `generate-api-types:local` script for offline/cached generation
-- Installed `openapi-typescript` dev dependency
+- **`contracts/src/lib.rs`**: Added `upgrade()` entry point with admin-only authorization, version tracking via `ContractVersion` storage key, `get_version()` query, and event emission. Documented the critical caveat that code after `update_current_contract_wasm()` runs in the new WASM context.
+- **`contracts/src/upgrade.rs`** _(new)_: Reference migration framework with `run_migration()`, `needs_migration()`, `upgrade_contract()`, `get_migration_history()`, and extensible per-version migration steps (`apply_migration` with version match arms).
+- **`contracts/src/upgrade_test.rs`** _(new)_: 9 tests — version tracking, pending migration application, admin-only authorization, idempotent no-ops, downgrade safety (no-op when stored > code), and migration history recording.
+- **`contracts/UPGRADE.md`** _(new)_: Complete upgrade guide with CLI commands (`soroban contract install` → `soroban contract invoke -- upgrade`), migration safety rules, security considerations, version history, and troubleshooting table.
 
-#### 5. Documentation Strategy
-- Added comprehensive strategy comment explaining how to keep docs in sync with code
-- Centralized spec mirrors actual route structure for maintainability
+### 🟢 #170 — Binary Size Optimization (priority: low)
 
-### Dependencies Added
-- `swagger-jsdoc` (^6.3.0) - OpenAPI spec generation
-- `swagger-ui-express` (^5.0.1) - Swagger UI serving
-- `openapi-typescript` (^7.13.0, frontend devDep) - Type generation
+**Problem:** Large WASM binary increases Stellar deployment costs.
 
-### How to Test
+**Solution:** Added `[profile.release]` to `Cargo.toml` with maximum size optimizations:
 
-1. Start the backend: `cd backend && npm run dev`
-2. Visit http://localhost:3001/api-docs to see the interactive Swagger UI
-3. Try out endpoints using the "Try it out" feature with JWT authentication
-4. Generate frontend types: `cd frontend && npm run generate-api-types`
+```toml
+[profile.release]
+opt-level = "z"        # Optimize for size over speed
+lto = true             # Link-time optimization across entire crate
+codegen-units = 1      # Single codegen unit for better inlining
+strip = true           # Strip debug symbols
+panic = "abort"        # Abort on panic (no unwinding machinery)
+```
 
-### Checklist
-- [x] All API endpoints documented with request/response schemas
-- [x] Authentication scheme (JWT Bearer) documented
-- [x] Swagger UI available at `/api-docs`
-- [x] Frontend type generation scripts added
-- [x] Documentation strategy documented for code sync
+These flags target ~20%+ binary size reduction by enabling aggressive dead code elimination, cross-crate inlining, and removing panic unwinding infrastructure from the WASM output.
+
+### 🟡 #172 — Batch Credential Verification (priority: medium)
+
+**Problem:** Verifying multiple credentials requires N separate contract calls, each incurring cross-contract call overhead.
+
+**Solution:** Added `verify_credentials_batch(Vec<u64>) -> Vec<bool>` to both the main contract and the credentials module.
+
+- **`contracts/src/lib.rs`**: `StarkEdContract::verify_credentials_batch()` — iterates credential IDs, returns a boolean array of verification results in a single call.
+- **`contracts/src/credentials.rs`**: `verify_credentials_batch()` — same pattern integrated with the existing status/revocation/expiration checks (verifies active, non-revoked, non-expired).
+- **`contracts/src/credentials_test.rs`**: 3 batch tests — mixed active/revoked/nonexistent, empty list, and expired credentials.
+
+---
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `contracts/Cargo.toml` | Added `[profile.release]` size optimizations |
+| `contracts/src/lib.rs` | Added `verify_credentials_batch`, `upgrade`, `get_version`; added `ContractVersion` key; registered `upgrade`/`upgrade_test` modules |
+| `contracts/src/credentials.rs` | Added `verify_credentials_batch` function |
+| `contracts/src/credentials_test.rs` | Added 3 batch verification tests; fixed batch to return `false` for nonexistent IDs |
+| `contracts/src/upgrade.rs` | **New** — Migration framework with storage-namespaced versioning |
+| `contracts/src/upgrade_test.rs` | **New** — 9 upgrade/migration tests |
+| `contracts/UPGRADE.md` | **New** — Deployment upgrade guide |
+
+---
+
+## Testing
+
+- 12 new tests added (3 batch verification + 9 upgrade/migration)
+- All tests follow existing project patterns (`#[test]`, `Env::default()`, `mock_all_auths()`)
+- Upgrade tests cover: version tracking, migration flow, auth rejection, idempotent no-ops, downgrade safety
+- Batch tests cover: mixed states (active/revoked/nonexistent), empty input, expired credentials
+
+## How to Verify
+
+```bash
+cd contracts
+cargo test
+cargo build --target wasm32-unknown-unknown --release
+```
+
