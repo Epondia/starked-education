@@ -164,6 +164,9 @@ class NotificationService {
     },
   ): Promise<INotification> {
     try {
+      if (typeof title !== 'string' || typeof message !== 'string') {
+        throw new Error('title and message must be strings');
+      }
       const notification = new Notification({
         userId,
         type: options?.type || "system_alert",
@@ -260,8 +263,8 @@ class NotificationService {
     try {
       const userEmail = notification.metadata?.email;
 
-      if (!userEmail) {
-        logger.warn(`No email found for user ${notification.userId}`);
+      if (!userEmail || typeof userEmail !== 'string') {
+        logger.warn(`No valid email found for user ${notification.userId}`);
         return;
       }
 
@@ -359,16 +362,17 @@ class NotificationService {
     filter: NotificationFilter,
   ): Promise<{ notifications: INotification[]; totalCount: number }> {
     try {
-      const query: any = {};
+      const query: Record<string, unknown> = {};
 
-      if (filter.userId) query.userId = filter.userId;
-      if (filter.type) query.type = filter.type;
-      if (filter.category) query.category = filter.category;
-      if (filter.isRead !== undefined) query.isRead = filter.isRead;
-      if (filter.priority) query.priority = filter.priority;
+      // Only assign primitive values to query to prevent NoSQL operator injection
+      if (filter.userId && typeof filter.userId === 'string') query.userId = filter.userId;
+      if (filter.type && typeof filter.type === 'string') query.type = filter.type;
+      if (filter.category && typeof filter.category === 'string') query.category = filter.category;
+      if (filter.isRead !== undefined && typeof filter.isRead === 'boolean') query.isRead = filter.isRead;
+      if (filter.priority && typeof filter.priority === 'string') query.priority = filter.priority;
 
-      const limit = filter.limit || 20;
-      const skip = filter.skip || 0;
+      const limit = typeof filter.limit === 'number' ? filter.limit : 20;
+      const skip = typeof filter.skip === 'number' ? filter.skip : 0;
 
       const [notifications, totalCount] = await Promise.all([
         Notification.find(query)
