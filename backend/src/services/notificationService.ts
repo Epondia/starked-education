@@ -22,6 +22,30 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#x27;');
 }
 
+// Helper: validate URL to prevent open redirects
+function validateActionUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return undefined;
+    return url;
+  } catch {
+    return undefined;
+  }
+}
+
+// Helper: sanitize metadata to prevent MongoDB operator injection
+function sanitizeMetadata(meta: Record<string, any> | undefined): Record<string, any> | undefined {
+  if (!meta) return undefined;
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    // Reject keys starting with $ to prevent MongoDB operator injection
+    if (key.startsWith('$')) continue;
+    sanitized[key] = value;
+  }
+  return sanitized;
+}
+
 // Initialize services with environment variables
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -103,8 +127,8 @@ class NotificationService {
         category,
         priority: options?.priority || "medium",
         deliveryMethods: options?.deliveryMethods || ["websocket"],
-        actionUrl: options?.actionUrl,
-        metadata: options?.metadata,
+        actionUrl: validateActionUrl(options?.actionUrl),
+        metadata: sanitizeMetadata(options?.metadata),
         scheduledTime: options?.scheduledTime,
       });
 
@@ -135,21 +159,12 @@ class NotificationService {
       notification.sentTime = new Date();
       await notification.save();
 
-      const deliveryPromises: Promise<void>[] = [];
-
       // Validate actionUrl to prevent open redirects
       if (notification.actionUrl) {
-        try {
-          const url = new URL(notification.actionUrl);
-          if (!['http:', 'https:'].includes(url.protocol)) {
-            notification.actionUrl = undefined;
-          }
-        } catch {
-          notification.actionUrl = undefined;
-        }
+        notification.actionUrl = validateActionUrl(notification.actionUrl);
       }
 
-      // Deliver via each specified method
+      const deliveryPromises: Promise<void>[] = [];
       if (preferences.deliveryMethods.includes("websocket")) {
         // Deliver via websocket if user is online
         const websocketService = getWebsocketService();
@@ -542,16 +557,16 @@ class NotificationService {
   ): Promise<INotification> {
     // Create notification directly without auto-delivery to avoid duplicate push
     const notification = new Notification({
-      userId,
-      type,
-      title,
-      message,
-      category,
-      priority: options?.priority || "medium",
-      deliveryMethods: options?.deliveryMethods || ["websocket"],
-      actionUrl: options?.actionUrl,
-      metadata: options?.metadata,
-    });
+        userId,
+        type,
+        title,
+        message,
+        category,
+        priority: options?.priority || "medium",
+        deliveryMethods: options?.deliveryMethods || ["websocket"],
+        actionUrl: validateActionUrl(options?.actionUrl),
+        metadata: sanitizeMetadata(options?.metadata),
+      });
 
     await notification.save();
 
@@ -584,6 +599,7 @@ class NotificationService {
   ): Promise<{ persisted: number; pushed: number }> {
     try {
       const websocketService = getWebsocketService();
+      const safeActionUrl = validateActionUrl(options?.actionUrl);
 
       // Persist announcement notification for offline users
       // If roles are targeted, only persist for users in connected rooms matching those roles
@@ -605,7 +621,7 @@ class NotificationService {
               message,
               category: "system",
               priority: options?.priority || "high",
-              actionUrl: options?.actionUrl,
+              actionUrl: safeActionUrl,
               isDelivered: false,
             });
             await notification.save();
@@ -627,7 +643,7 @@ class NotificationService {
             title,
             message,
             priority: options?.priority || "high",
-            actionUrl: options?.actionUrl,
+            actionUrl: validateActionUrl(options?.actionUrl),
             timestamp: new Date().toISOString(),
           });
         }
@@ -639,7 +655,7 @@ class NotificationService {
           title,
           message,
           priority: options?.priority || "high",
-          actionUrl: options?.actionUrl,
+          actionUrl: validateActionUrl(options?.actionUrl),
           timestamp: new Date().toISOString(),
         });
         pushedCount = websocketService.getConnectedCount();
