@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { INotification } from '../models/Notification';
 import collaborationService from './collaborationService';
 import { getSyncStatus } from './syncService'; // Hook into tracking system
+import logger from '../utils/logger';
 
 interface ClientNotificationData {
   id: string;
@@ -39,7 +40,7 @@ class WebsocketService {
 
   private setupConnectionHandlers(): void {
     this.io.on('connection', (socket: Socket) => {
-      console.log(`User connected: ${socket.id}`);
+      logger.info(`User connected: ${socket.id}`);
 
       // Instantly notify connection health state upon initial handshake
       socket.emit('connection-state-changed', { status: 'connected' });
@@ -50,7 +51,7 @@ class WebsocketService {
 
         // Authenticate the user via JWT token to prevent identity spoofing
         if (!token) {
-          console.warn(`register-user rejected: no token provided for socket ${socket.id}`);
+          logger.warn(`register-user rejected: no token provided for socket ${socket.id}`);
           socket.emit('auth-error', { message: 'Authentication required' });
           return;
         }
@@ -59,13 +60,13 @@ class WebsocketService {
         try {
           const jwtSecret = process.env.JWT_SECRET;
           if (!jwtSecret) {
-            console.error('JWT_SECRET not configured');
+            logger.error('JWT_SECRET not configured');
             return;
           }
           const decoded = jwt.verify(token, jwtSecret) as { id: string };
           verifiedUserId = decoded.id;
         } catch {
-          console.warn(`register-user rejected: invalid token for socket ${socket.id}`);
+          logger.warn(`register-user rejected: invalid token for socket ${socket.id}`);
           socket.emit('auth-error', { message: 'Invalid token' });
           return;
         }
@@ -75,18 +76,18 @@ class WebsocketService {
         
         this.socketUsers[socket.id] = userId;
         this.addUserSocket(userId, socket);
-        console.log(`User ${userId} registered with socket ${socket.id}`);
+        logger.info(`User ${userId} registered with socket ${socket.id}`);
 
         // Deliver missed notifications on reconnect
         try {
           const { notificationService } = await import('./notificationService');
           const deliveredCount = await notificationService.deliverMissedNotifications(userId);
           if (deliveredCount > 0) {
-            console.log(`Delivered ${deliveredCount} missed notifications to user ${userId} on reconnect`);
+            logger.info(`Delivered ${deliveredCount} missed notifications to user ${userId} on reconnect`);
           }
         } catch (error) {
           const err = error instanceof Error ? error.message : String(error);
-          console.error(`Failed to deliver missed notifications for user ${userId}: ${err}`);
+          logger.error(`Failed to deliver missed notifications for user ${userId}: ${err}`);
         }
 
         // State recovery implementation: Replay missed sync messages if lastOffset is provided
@@ -101,7 +102,7 @@ class WebsocketService {
               });
             }
           } catch (error) {
-            console.error(`Failed to replay state recovery logs for user ${userId}:`, error);
+            logger.error(`Failed to replay state recovery logs for user ${userId}:`, error);
           }
         }
       });
@@ -110,7 +111,7 @@ class WebsocketService {
         // Rebuild payload from verified identity, ignoring client-supplied userId/role to prevent privilege escalation
         const verifiedUserId = this.socketUsers[socket.id];
         if (!verifiedUserId) {
-          console.warn(`join-classroom rejected: unauthenticated socket ${socket.id}`);
+          logger.warn(`join-classroom rejected: unauthenticated socket ${socket.id}`);
           socket.emit('auth-error', { message: 'Authentication required to join classroom' });
           return;
         }
@@ -168,7 +169,7 @@ class WebsocketService {
       socket.on('document-sync', (payload: { workspaceId: string; documentId: string; title: string; userId: string; version: number; updatedAt?: Date; content: Record<string, unknown>; strategy?: any }) => {
         // Validate workspaceId to prevent dynamic event injection
         if (typeof payload.workspaceId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(payload.workspaceId)) {
-          console.warn(`document-sync rejected: invalid workspaceId from socket ${socket.id}`);
+          logger.warn(`document-sync rejected: invalid workspaceId from socket ${socket.id}`);
           return;
         }
         const document = collaborationService.syncDocument(payload);
@@ -178,7 +179,7 @@ class WebsocketService {
       socket.on('disconnect', () => {
         delete this.socketUsers[socket.id];
         this.removeSocket(socket);
-        console.log(`User disconnected: ${socket.id}`);
+        logger.info(`User disconnected: ${socket.id}`);
       });
     });
   }
@@ -232,7 +233,7 @@ class WebsocketService {
             timestamp: notification.createdAt,
           });
         });
-        console.log(`Notification sent via websocket to user ${userId}`);
+        logger.info(`Notification sent via websocket to user ${userId}`);
       } else {
         delete this.userSockets[userId];
       }
