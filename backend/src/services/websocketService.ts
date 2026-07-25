@@ -102,7 +102,8 @@ class WebsocketService {
               });
             }
           } catch (error) {
-            logger.error(`Failed to replay state recovery logs for user ${userId}:`, error);
+            const err = error instanceof Error ? error.message : String(error);
+            logger.error(`Failed to replay state recovery logs for user ${userId}: ${err}`);
           }
         }
       });
