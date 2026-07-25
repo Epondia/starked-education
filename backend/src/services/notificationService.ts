@@ -598,7 +598,8 @@ class NotificationService {
     try {
       return await Notification.countDocuments({ userId, isRead: false });
     } catch (error) {
-      logger.error(`Error getting unread count for user ${userId}:`, error);
+      const err = error instanceof Error ? error.message : String(error);
+      logger.error(`Error getting unread count for user ${userId}: ${err}`);
       throw error;
     }
   }
@@ -617,6 +618,10 @@ class NotificationService {
       deliveryMethods?: ("email" | "push" | "websocket")[];
     },
   ): Promise<INotification> {
+    // Validate input types at the DB boundary to prevent NoSQL operator injection
+    if (typeof title !== 'string' || typeof message !== 'string') {
+      throw new Error('title and message must be strings');
+    }
     // Create notification directly without auto-delivery to avoid duplicate push
     const notification = new Notification({
         userId,
@@ -660,6 +665,11 @@ class NotificationService {
     try {
       const websocketService = getWebsocketService();
       const safeActionUrl = validateActionUrl(options?.actionUrl);
+
+      // Validate input types to prevent NoSQL operator injection
+      if (typeof title !== 'string' || typeof message !== 'string') {
+        throw new Error('title and message must be strings');
+      }
 
       // Persist announcement notification for offline users
       // If roles are targeted, only persist for users in connected rooms matching those roles
@@ -723,7 +733,8 @@ class NotificationService {
 
       return { persisted: persistedCount, pushed: pushedCount };
     } catch (error) {
-      logger.error("Error sending announcement:", error);
+      const err = error instanceof Error ? error.message : String(error);
+      logger.error(`Error sending announcement: ${err}`);
       throw error;
     }
   }
@@ -765,10 +776,8 @@ class NotificationService {
 
       return deliveredCount;
     } catch (error) {
-      logger.error(
-        `Error delivering missed notifications for user ${userId}:`,
-        error,
-      );
+      const err = error instanceof Error ? error.message : String(error);
+      logger.error(`Error delivering missed notifications for user ${userId}: ${err}`);
       throw error;
     }
   }
