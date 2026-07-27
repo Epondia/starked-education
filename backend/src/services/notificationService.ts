@@ -71,6 +71,7 @@ const ALLOWED_PREFERENCE_FIELDS = new Set([
 
 // Helper: sanitize log strings to prevent log injection (strip newlines/returns and control chars)
 function sanitizeLog(data: unknown): string {
+  // eslint-disable-next-line no-control-regex
   return String(data).replace(/[\x00-\x1f\x7f-\x9f]/g, '_');
 }
 
