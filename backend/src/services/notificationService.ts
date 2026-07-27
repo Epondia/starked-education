@@ -51,6 +51,11 @@ function validateActionUrl(url: string | undefined): string | undefined {
       hostname.startsWith('::ffff:10.') ||
       hostname.startsWith('::ffff:192.168.') ||
       /^::ffff:172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+    // Block IP obfuscation bypasses: decimal (http://2130706433), hex (http://0x7f000001), octal
+    if (/^[0-9]+$/.test(hostname) || /^0x[0-9a-fA-F]+$/.test(hostname) || /^0[0-7]+$/.test(hostname)) {
+      return undefined;
+    }
+
     if (isPrivateIPv4 || isPrivateIPv6) {
       return undefined;
     }
@@ -260,7 +265,7 @@ class NotificationService {
       const userEmail = notification.metadata?.email;
 
       if (!userEmail || typeof userEmail !== 'string') {
-        logger.warn(`No valid email found for user ${notification.userId}`);
+        logger.warn(`No valid email found for user ${sanitizeLog(notification.userId)}`);
         return;
       }
 
@@ -271,7 +276,7 @@ class NotificationService {
         to: userEmail,
         subject: notification.title,
         text: notification.message,
-        html: `<p>${escapeHtml(notification.message)}</p>`,
+        html: `<h3>${escapeHtml(notification.title)}</h3><p>${escapeHtml(notification.message)}</p>`,
       });
       // Log masked email to avoid PII exposure
       logger.info(
@@ -302,7 +307,7 @@ class NotificationService {
             actionUrl: notification.actionUrl || "",
           },
         });
-        logger.info(`FCM Push sent to ${notification.userId}`);
+        logger.info(`FCM Push sent to ${sanitizeLog(notification.userId)}`);
       }
 
       // Web Push
@@ -312,7 +317,7 @@ class NotificationService {
         if (sub && typeof sub.endpoint === 'string') {
           const endpointUrl = validateActionUrl(sub.endpoint);
           if (!endpointUrl) {
-            logger.warn(`Rejected web push with unsafe endpoint for user ${notification.userId}`);
+            logger.warn(`Rejected web push with unsafe endpoint for user ${sanitizeLog(notification.userId)}`);
             return;
           }
         }
@@ -325,7 +330,7 @@ class NotificationService {
             url: notification.actionUrl,
           }),
         );
-        logger.info(`Web Push sent to ${notification.userId}`);
+        logger.info(`Web Push sent to ${sanitizeLog(notification.userId)}`);
       }
     } catch (error) {
       const err = error instanceof Error ? error.message : String(error);
@@ -348,9 +353,9 @@ class NotificationService {
       });
       // Log masked phone number to avoid PII exposure
       const maskedPhone = userPhone.slice(-4).padStart(userPhone.length, '*');
-      logger.info(`SMS sent to ${maskedPhone} for user ${notification.userId}`);
+      logger.info(`SMS sent to ${maskedPhone} for user ${sanitizeLog(notification.userId)}`);
     } catch (error) {
-      logger.error(`Error sending SMS for user ${notification.userId}:`, error);
+      logger.error(`Error sending SMS for user ${sanitizeLog(notification.userId)}:`, error);
     }
   }
 
@@ -560,7 +565,7 @@ class NotificationService {
         );
         successCount++;
       } catch (error) {
-        logger.error(`Failed to send notification to user ${userId}:`, error);
+        logger.error(`Failed to send notification to user ${sanitizeLog(userId)}:`, error);
         failedCount++;
       }
     }
@@ -648,7 +653,8 @@ class NotificationService {
       logger.warn(
         `WebSocket push failed for user ${sanitizeLog(userId)}, notification persisted for later delivery`,
       );
-    }      logger.info(`Notification pushed for user ${userId}: ${sanitizeLog(title)}`);
+    }
+      logger.info(`Notification pushed for user ${sanitizeLog(userId)}: ${sanitizeLog(title)}`);
     return notification;
   }
 
@@ -697,7 +703,7 @@ class NotificationService {
             await notification.save();
             persistedCount++;
           } catch (err) {
-            logger.warn(`Failed to persist announcement for user ${userId}`);
+            logger.warn(`Failed to persist announcement for user ${sanitizeLog(userId)}`);
           }
         }
       }
@@ -707,6 +713,8 @@ class NotificationService {
       if (targetRoles.length > 0) {
         // Broadcast to connected users with matching roles
         for (const role of targetRoles) {
+          // Validate role to prevent event/room injection
+          if (typeof role !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(role)) continue;
           const roomName = `role:${role}`;
           websocketService.emitToRoom(roomName, "notification", {
             type: "announcement",
@@ -769,7 +777,7 @@ class NotificationService {
           deliveredCount++;
         } catch (wsError) {
           logger.warn(
-            `Failed to deliver missed notification ${notification._id} to user ${userId}`,
+            `Failed to deliver missed notification ${notification._id} to user ${sanitizeLog(userId)}`,
           );
         }
       }
