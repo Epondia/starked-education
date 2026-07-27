@@ -7,7 +7,8 @@ use crate::credential_registry::{
     issue_credential_with_expiration, revoke_credential, set_max_batch_size,
     BatchIssueInput, BatchRenewInput, BatchResult, CredentialStatus,
 };
-use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, Env, String, Symbol, Vec};
+use crate::utils::format::build_indexed_string;
 
 // ═══════════════════════════════════════════════════════════════════
 //  Helper functions
@@ -97,8 +98,8 @@ fn test_batch_issue_50_credentials_all_succeed() {
             recipient,
             String::from_str(&env, "Test Credential Title"),
             String::from_str(&env, "Test Credential Description"),
-            format!("course-{}", i + 1),
-            format!("ipfs://QmHash{}", i + 1),
+            build_indexed_string(&env, "course-", (i + 1) as u64),
+            build_indexed_string(&env, "ipfs://QmHash", (i + 1) as u64),
             31_536_000, // 1 year
         ));
     }
@@ -196,8 +197,8 @@ fn test_batch_revoke_30_credentials_all_revoked() {
             recipient,
             String::from_str(&env, "Revokable Cert"),
             String::from_str(&env, "Will be revoked"),
-            format!("course-{}", i + 1),
-            format!("ipfs://revoke{}", i + 1),
+            build_indexed_string(&env, "course-", (i + 1) as u64),
+            build_indexed_string(&env, "ipfs://revoke", (i + 1) as u64),
             31_536_000,
         );
         credential_ids.push_back(id);
@@ -239,8 +240,8 @@ fn test_batch_renew_20_credentials_all_extended() {
             recipient,
             String::from_str(&env, "Renewable Cert"),
             String::from_str(&env, "Will be renewed"),
-            format!("course-renew-{}", i + 1),
-            format!("ipfs://renew{}", i + 1),
+            build_indexed_string(&env, "course-renew-", (i + 1) as u64),
+            build_indexed_string(&env, "ipfs://renew", (i + 1) as u64),
             validity,
         );
         credential_ids.push_back(id);
@@ -252,12 +253,14 @@ fn test_batch_renew_20_credentials_all_extended() {
     let mut renewals = Vec::new(&env);
     let extension = 31_536_000u64;
     for id in credential_ids.iter() {
-        renewals.push_back(make_renew_input(*id, extension));
+        renewals.push_back(make_renew_input(id, extension));
     }
 
     // Advance time by 30 minutes (credentials still valid)
     let current_time = env.ledger().timestamp();
-    env.ledger().set_timestamp(current_time + 1800);
+    let mut ledger_info = env.ledger().get();
+    ledger_info.timestamp = current_time + 1800;
+    env.ledger().set(ledger_info);
 
     // Batch renew (admin can renew all)
     let results = batch_renew_credentials(&env, admin.clone(), renewals);
@@ -301,8 +304,8 @@ fn test_batch_issue_exceeding_max_batch_size_rejected() {
             recipient,
             s(&env, "Test Cert"),
             s(&env, "Test Desc"),
-            format!("course-{}", i + 1),
-            format!("ipfs://hash{}", i + 1),
+            build_indexed_string(&env, "course-", (i + 1) as u64),
+            build_indexed_string(&env, "ipfs://hash", (i + 1) as u64),
             3600,
         ));
     }
@@ -405,6 +408,7 @@ fn test_batch_revoke_partial_success() {
 
 /// Unauthorized user cannot use batch_issue_credentials
 #[test]
+#[should_panic]
 fn test_batch_issue_unauthorized_rejected() {
     let (env, _admin) = setup_env();
     let unauthorized = Address::generate(&env);
@@ -415,10 +419,7 @@ fn test_batch_issue_unauthorized_rejected() {
         [make_issue_input(recipient, s(&env, "Test"), s(&env, "Desc"), s(&env, "c1"), s(&env, "ipfs://1"), 3600)],
     );
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        batch_issue_credentials(&env, unauthorized, inputs);
-    }));
-    assert!(result.is_err());
+    batch_issue_credentials(&env, unauthorized, inputs);
 }
 
 /// Batch issue with recipients in different credential lists
@@ -478,15 +479,13 @@ fn test_batch_issue_empty_list() {
 
 /// Unauthorized user cannot use batch_revoke_credentials
 #[test]
+#[should_panic]
 fn test_batch_revoke_unauthorized_rejected() {
     let (env, _admin) = setup_env();
     let unauthorized = Address::generate(&env);
 
     let ids = Vec::from_array(&env, [1u64]);
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        batch_revoke_credentials(&env, unauthorized, ids);
-    }));
-    assert!(result.is_err());
+    batch_revoke_credentials(&env, unauthorized, ids);
 }
 
 /// Batch revoke skips non-existent credentials
@@ -533,15 +532,13 @@ fn test_batch_revoke_empty_list() {
 
 /// Unauthorized user cannot use batch_renew_credentials
 #[test]
+#[should_panic]
 fn test_batch_renew_unauthorized_rejected() {
     let (env, _admin) = setup_env();
     let unauthorized = Address::generate(&env);
 
     let renewals = Vec::from_array(&env, [make_renew_input(1, 3600)]);
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        batch_renew_credentials(&env, unauthorized, renewals);
-    }));
-    assert!(result.is_err());
+    batch_renew_credentials(&env, unauthorized, renewals);
 }
 
 /// Batch renew skips revoked credentials
@@ -712,13 +709,22 @@ fn test_default_max_batch_size() {
 
 /// Admin can change max batch size
 #[test]
-fn test_set_max_batch_size() {
+fn test_set_max_batch_size_config() {
+    let (env, admin) = setup_env();
+
+    set_max_batch_size(&env, admin, 50);
+    assert_eq!(get_max_batch_size(&env), 50);
+}
+
+/// Issuing more than custom max batch size panics
+#[test]
+#[should_panic]
+fn test_issue_over_custom_max_panics() {
     let (env, admin) = setup_env();
 
     set_max_batch_size(&env, admin.clone(), 50);
-    assert_eq!(get_max_batch_size(&env), 50);
 
-    // Now batch of 51 should fail
+    // Now batch of 51 should panic
     let mut inputs = Vec::new(&env);
     for i in 0..51u32 {
         let recipient = Address::generate(&env);
@@ -726,16 +732,13 @@ fn test_set_max_batch_size() {
             recipient,
             s(&env, "Test"),
             s(&env, "Desc"),
-            format!("c{}", i + 1),
-            format!("ipfs://{}", i + 1),
+            build_indexed_string(&env, "c", (i + 1) as u64),
+            build_indexed_string(&env, "ipfs://", (i + 1) as u64),
             3600,
         ));
     }
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        batch_issue_credentials(&env, admin, inputs);
-    }));
-    assert!(result.is_err());
+    batch_issue_credentials(&env, admin, inputs);
 }
 
 /// Setting batch size to 0 is rejected
@@ -748,14 +751,12 @@ fn test_set_max_batch_size_zero_rejected() {
 
 /// Non-admin cannot change max batch size
 #[test]
+#[should_panic]
 fn test_set_max_batch_size_unauthorized_rejected() {
     let (env, _admin) = setup_env();
     let unauthorized = Address::generate(&env);
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        set_max_batch_size(&env, unauthorized, 50);
-    }));
-    assert!(result.is_err());
+    set_max_batch_size(&env, unauthorized, 50);
 }
 
 /// After changing batch size, can still issue within new limit
@@ -772,8 +773,8 @@ fn test_batch_issue_within_custom_max_size() {
             recipient,
             s(&env, "Test"),
             s(&env, "Desc"),
-            format!("c{}", i + 1),
-            format!("ipfs://{}", i + 1),
+            build_indexed_string(&env, "c", (i + 1) as u64),
+            build_indexed_string(&env, "ipfs://", (i + 1) as u64),
             3600,
         ));
     }
@@ -800,8 +801,8 @@ fn test_batch_issue_then_batch_revoke_integration() {
             recipient,
             s(&env, "Integration Cert"),
             s(&env, "Testing full flow"),
-            format!("course-int-{}", i + 1),
-            format!("ipfs://int{}", i + 1),
+            build_indexed_string(&env, "course-int-", (i + 1) as u64),
+            build_indexed_string(&env, "ipfs://int", (i + 1) as u64),
             3600,
         ));
     }
@@ -864,7 +865,9 @@ fn test_batch_issue_then_expire_then_batch_renew_integration() {
 
     // Advance past expiry (3600 + 1 seconds)
     let current = env.ledger().timestamp();
-    env.ledger().set_timestamp(current + 3601);
+    let mut ledger_info = env.ledger().get();
+    ledger_info.timestamp = current + 3601;
+    env.ledger().set(ledger_info);
 
     // They should now show expired
     let status1 = check_credential_expiration(&env, id1);
@@ -911,8 +914,8 @@ fn test_batch_gas_efficiency() {
             recipient,
             s(&env, "Gas Test"),
             s(&env, "Testing gas"),
-            format!("gas-{}", i + 1),
-            format!("ipfs://gas{}", i + 1),
+            build_indexed_string(&env, "gas-", (i + 1) as u64),
+            build_indexed_string(&env, "ipfs://gas", (i + 1) as u64),
             3600,
         ));
     }

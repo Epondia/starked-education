@@ -3,7 +3,7 @@ use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
 
 /// Credential status enumeration
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CredentialStatus {
     Active = 0,
     Expired = 1,
@@ -287,12 +287,12 @@ pub fn check_credential_expiration(env: &Env, credential_id: u64) -> CredentialS
     let current_time = env.ledger().timestamp();
 
     // Skip if already revoked
-    if credential.status == CredentialStatus::Revoked {
+    if matches!(credential.status, CredentialStatus::Revoked) {
         return credential.status;
     }
 
     // Check if credential has expired
-    if current_time >= credential.expires_at && credential.status == CredentialStatus::Active {
+    if current_time >= credential.expires_at && matches!(credential.status, CredentialStatus::Active) {
         credential.status = CredentialStatus::Expired;
 
         // Update stored credential
@@ -327,9 +327,9 @@ pub fn batch_update_expiration_status(env: &Env, credential_ids: Vec<u64>) -> Ve
     let mut expired_credentials = Vec::new(env);
 
     for credential_id in credential_ids.iter() {
-        let status = check_credential_expiration(env, *credential_id);
-        if status == CredentialStatus::Expired {
-            expired_credentials.push_back(*credential_id);
+        let status = check_credential_expiration(env, credential_id);
+        if matches!(status, CredentialStatus::Expired) {
+            expired_credentials.push_back(credential_id);
         }
     }
 
@@ -435,7 +435,7 @@ pub fn get_credentials_expiring_soon(env: &Env, within_seconds: u64) -> Vec<u64>
             .persistent()
             .get::<_, CredentialRegistry>(&CredentialRegistryKey::Credential(i))
         {
-            if credential.expires_at <= threshold && credential.status == CredentialStatus::Active {
+            if credential.expires_at <= threshold && matches!(credential.status, CredentialStatus::Active) {
                 expiring_soon.push_back(i);
             }
         }
@@ -626,11 +626,11 @@ pub fn batch_revoke_credentials(
         let credential_opt: Option<CredentialRegistry> = env
             .storage()
             .persistent()
-            .get(&CredentialRegistryKey::Credential(*credential_id));
+            .get(&CredentialRegistryKey::Credential(credential_id));
 
         if credential_opt.is_none() {
             results.push_back(BatchResult {
-                credential_id: *credential_id,
+                credential_id,
                 success: false,
                 error: String::from_str(env, "credential not found"),
             });
@@ -640,9 +640,9 @@ pub fn batch_revoke_credentials(
         let mut credential = credential_opt.unwrap();
 
         // Skip if already revoked
-        if credential.status == CredentialStatus::Revoked {
+        if matches!(credential.status, CredentialStatus::Revoked) {
             results.push_back(BatchResult {
-                credential_id: *credential_id,
+                credential_id,
                 success: false,
                 error: String::from_str(env, "credential already revoked"),
             });
@@ -651,18 +651,18 @@ pub fn batch_revoke_credentials(
 
         credential.status = CredentialStatus::Revoked;
         env.storage().persistent().set(
-            &CredentialRegistryKey::Credential(*credential_id),
+            &CredentialRegistryKey::Credential(credential_id),
             &credential,
         );
 
         // Emit individual revocation event
         env.events().publish(
             (Symbol::new(env, "credential"), Symbol::new(env, "batch_revoked")),
-            (*credential_id, revoker.clone()),
+            (credential_id, revoker.clone()),
         );
 
         results.push_back(BatchResult {
-            credential_id: *credential_id,
+            credential_id,
             success: true,
             error: String::from_str(env, ""),
         });
@@ -732,7 +732,7 @@ pub fn batch_renew_credentials(
         }
 
         // Check if credential is eligible for renewal
-        if credential.status == CredentialStatus::Revoked {
+        if matches!(credential.status, CredentialStatus::Revoked) {
             results.push_back(BatchResult {
                 credential_id,
                 success: false,
@@ -1061,7 +1061,7 @@ pub fn is_multi_sig_active(env: &Env, credential_id: u64) -> bool {
         .get(&MultiSigRegistryKey::MultiSigCredential(credential_id))
         .unwrap_or_else(|| panic!("Multi-sig credential not found"));
 
-    credential.status == CredentialStatus::Active
+    matches!(credential.status, CredentialStatus::Active)
 }
 
 /// Get multi-sig credential count
