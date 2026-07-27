@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTheme } from "@/context/ThemeContext";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export interface Settings {
   emailNotifications: boolean;
@@ -36,6 +38,7 @@ export function SettingsPanel({
   const [settings, setSettings] = useState<Settings>(initialSettings);
   const [hasChanges, setHasChanges] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const { isDark, toggleTheme } = useTheme();
 
   useEffect(() => {
     // Load settings from localStorage on mount
@@ -46,7 +49,19 @@ export function SettingsPanel({
     }
   }, []);
 
+  // Sync darkMode setting with actual theme
+  useEffect(() => {
+    if (settings.darkMode !== isDark) {
+      setSettings((prev) => ({ ...prev, darkMode: isDark }));
+    }
+  }, [isDark]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleToggle = (key: keyof Settings) => {
+    if (key === "darkMode") {
+      // Delegate to theme context
+      toggleTheme();
+      return;
+    }
     const newSettings = {
       ...settings,
       [key]: !settings[key],
@@ -67,10 +82,13 @@ export function SettingsPanel({
   };
 
   const handleSave = () => {
-    localStorage.setItem("userSettings", JSON.stringify(settings));
+    // Sync darkMode with actual theme before saving
+    const syncedSettings = { ...settings, darkMode: isDark };
+    localStorage.setItem("userSettings", JSON.stringify(syncedSettings));
+    setSettings(syncedSettings);
     setHasChanges(false);
     setSaveSuccess(true);
-    onSettingsChange?.(settings);
+    onSettingsChange?.(syncedSettings);
 
     // Hide success message after 3 seconds
     setTimeout(() => {
@@ -136,12 +154,17 @@ export function SettingsPanel({
           Appearance
         </h3>
         <div className="space-y-4">
-          <SettingToggle
-            label="Dark Mode"
-            description="Enable dark theme for the application"
-            checked={settings.darkMode}
-            onChange={() => handleToggle("darkMode")}
-          />
+          <div className="flex items-start justify-between gap-4 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-900 dark:text-white cursor-pointer">
+                Dark Mode
+              </label>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                Enable dark theme for the application
+              </p>
+            </div>
+            <ThemeToggle iconOnly />
+          </div>
 
           <div className="border-t border-gray-200 dark:border-slate-700 pt-4">
             <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
@@ -153,8 +176,8 @@ export function SettingsPanel({
               className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
             >
               <option value="en">English</option>
-              <option value="es">Español</option>
-              <option value="fr">Français</option>
+              <option value="es">Spanish</option>
+              <option value="fr">French</option>
               <option value="de">Deutsch</option>
               <option value="ja">日本語</option>
             </select>
@@ -266,6 +289,7 @@ const SettingToggle: React.FC<SettingToggleProps> = ({
           relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent
           cursor-pointer transition-colors duration-200 ease-in-out
           focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2
+          dark:focus:ring-offset-slate-900
           ${checked ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}
         `}
         role="switch"

@@ -339,5 +339,11 @@
     "github": "جيت هب",
     "youtube": "يوتيوب",
     "medium": "ميديوم"
+  },
+  "languageSwitcher": {
+    "title": "اختر لغتك",
+    "subtitle": "اختر لغتك المفضلة للحصول على أفضل تجربة",
+    "searchPlaceholder": "البحث عن لغات...",
+    "ariaSelect": "اختر اللغة"
   }
 }

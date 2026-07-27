@@ -15,43 +15,38 @@
 
 /* ─── Design tokens — light ──────────────────────────────────────── */
 :root {
-  --foreground-rgb:       15, 23, 42;
-  --background-start-rgb: 248, 250, 252;
-  --background-end-rgb:   255, 255, 255;
-
-  /* HSL surface tokens (shadcn-compatible) */
-  --background:           0 0% 100%;
-  --foreground:           222.2 84% 4.9%;
-  --muted:                210 40% 96.1%;
-  --muted-foreground:     215.4 16.3% 46.9%;
-  --border:               214.3 31.8% 91.4%;
-  --ring:                 221.2 83.2% 53.3%;
-
-  /* Theme transition speed — zeroed by the reduced-motion rule below */
-  --theme-transition: 200ms;
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-tertiary: #f3f4f6;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --border-color: #e5e7eb;
+  --shadow-color: rgba(0, 0, 0, 0.1);
 }
 
-/* ─── Design tokens — dark ───────────────────────────────────────── */
 .dark {
-  --foreground-rgb:       248, 250, 252;
-  --background-start-rgb: 15, 23, 42;
-  --background-end-rgb:   15, 23, 42;
-
-  --background:           222.2 84% 4.9%;
-  --foreground:           210 40% 98%;
-  --muted:                217.2 32.6% 17.5%;
-  --muted-foreground:     215 20.2% 65.1%;
-  --border:               217.2 32.6% 17.5%;
-  --ring:                 224.3 76.3% 48%;
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 0, 0, 0;
+  --background-end-rgb: 0, 0, 0;
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --border-color: #334155;
+  --shadow-color: rgba(0, 0, 0, 0.3);
 }
 
 /* ─── Base ───────────────────────────────────────────────────────── */
 body {
-  color:      rgb(var(--foreground-rgb));
-  background: rgb(var(--background-start-rgb));
-  transition:
-    background-color var(--theme-transition) ease,
-    color            var(--theme-transition) ease;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  transition: color 0.2s ease, background-color 0.2s ease;
 }
 
 /* ─── Reduced-motion guard ───────────────────────────────────────── */
@@ -67,23 +62,26 @@ body {
   }
 }
 
-/* ─── Animations ─────────────────────────────────────────────────── */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+/* Custom scrollbar - dark mode aware */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
 }
 
 /* ─── Scrollbar (theme-aware) ────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 6px; }
 ::-webkit-scrollbar-track { background: hsl(var(--muted)); }
 ::-webkit-scrollbar-thumb {
-  background:    hsl(var(--muted-foreground) / 0.5);
+  background: var(--text-muted);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.8);
+  background: var(--text-secondary);
 }
