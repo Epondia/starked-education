@@ -1,12 +1,14 @@
 #![cfg(test)]
+extern crate std;
 
 use super::*;
 use crate::user_profile::{
     Achievement, PrivacyLevel, UserProfileContract, UserProfileContractClient,
 };
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use std::panic::AssertUnwindSafe;
 
-fn create_test_env() -> (Env, UserProfileContractClient, Address, Address) {
+fn create_test_env<'a>() -> (Env, UserProfileContractClient<'a>, Address, Address) {
     let env = Env::default();
     let contract_id = env.register_contract(None, UserProfileContract);
     let client = UserProfileContractClient::new(&env, &contract_id);
@@ -40,11 +42,8 @@ fn test_create_profile() {
 
     assert_eq!(profile.owner, user);
     assert_eq!(profile.username, username);
-    assert_eq!(profile.email, email);
-    assert_eq!(profile.bio, bio);
-    assert_eq!(profile.avatar_url, avatar_url);
-    assert_eq!(profile.privacy_level, privacy_level);
-    assert_eq!(profile.achievements.len(), 0);
+    assert_eq!(PrivacyLevel::from_u32(profile.flags.privacy_level()), privacy_level);
+    assert_eq!(profile.achievement_count, 0);
 }
 
 #[test]
@@ -64,7 +63,6 @@ fn test_get_profile() {
 
     let profile = retrieved_profile.unwrap();
     assert_eq!(profile.username, username);
-    assert_eq!(profile.email, email);
 }
 
 #[test]
@@ -106,6 +104,7 @@ fn test_add_achievement() {
         &achievement_title,
         &achievement_description,
         &badge_url,
+        &0u32,
     );
 
     assert!(achievement_id > 0);
@@ -117,8 +116,9 @@ fn test_add_achievement() {
     assert_eq!(achievement.user, user);
     assert_eq!(achievement.title, achievement_title);
     assert_eq!(achievement.description, achievement_description);
-    assert_eq!(achievement.badge_url, badge_url);
-    assert_eq!(achievement.verified, false);
+    assert_eq!(achievement.tier, 0u32);
+    assert_eq!(achievement.weight, 1u32);
+    assert_eq!((achievement.timestamp & 1u64) != 0, false);
 }
 
 #[test]
@@ -137,8 +137,8 @@ fn test_get_user_achievements() {
     let achievement_title2 = String::from_str(&env, "Second Achievement");
     let achievement_desc2 = String::from_str(&env, "Second milestone");
 
-    let id1 = client.add_achievement(&user, &achievement_title1, &achievement_desc1, &None);
-    let id2 = client.add_achievement(&user, &achievement_title2, &achievement_desc2, &None);
+    let id1 = client.add_achievement(&user, &achievement_title1, &achievement_desc1, &None, &0u32);
+    let id2 = client.add_achievement(&user, &achievement_title2, &achievement_desc2, &None, &0u32);
 
     let achievements = client.get_user_achievements(&user);
     assert_eq!(achievements.len(), 2);
@@ -167,7 +167,7 @@ fn test_verify_achievement() {
     let username = String::from_str(&env, "testuser");
     let privacy_level = PrivacyLevel::Public;
 
-    env.mock_all_auths_multiple(&[&user, &admin]);
+    env.mock_all_auths();
 
     client.create_or_update_profile(&user, &username, &None, &None, &None, &privacy_level);
 
@@ -175,11 +175,11 @@ fn test_verify_achievement() {
     let achievement_desc = String::from_str(&env, "Needs verification");
 
     let achievement_id =
-        client.add_achievement(&user, &achievement_title, &achievement_desc, &None);
+        client.add_achievement(&user, &achievement_title, &achievement_desc, &None, &0u32);
 
     // Initially, achievement should not be verified
     let achievement = client.get_achievement(&achievement_id).unwrap();
-    assert_eq!(achievement.verified, false);
+    assert_eq!((achievement.timestamp & 1u64) != 0, false);
 
     // Verify the achievement
     let result = client.verify_achievement(&admin, &achievement_id);
@@ -187,7 +187,7 @@ fn test_verify_achievement() {
 
     // Now the achievement should be verified
     let achievement = client.get_achievement(&achievement_id).unwrap();
-    assert_eq!(achievement.verified, true);
+    assert_eq!((achievement.timestamp & 1u64) != 0, true);
 }
 
 #[test]
@@ -226,7 +226,7 @@ fn test_update_privacy_level() {
     assert_eq!(result, true);
 
     let profile = client.get_profile(&user).unwrap();
-    assert_eq!(profile.privacy_level, PrivacyLevel::Private);
+    assert_eq!(PrivacyLevel::from_u32(profile.flags.privacy_level()), PrivacyLevel::Private);
 }
 
 #[test]
@@ -263,10 +263,10 @@ fn test_username_uniqueness() {
     client.create_or_update_profile(&user1, &username, &None, &None, &None, &privacy_level);
 
     // Second user tries to use same username - should panic
-    let result = std::panic::catch_unwind(|| {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
         env.mock_all_auths();
         client.create_or_update_profile(&user2, &username, &None, &None, &None, &privacy_level);
-    });
+    }));
 
     assert!(result.is_err());
 }

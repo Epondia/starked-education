@@ -7,6 +7,7 @@ import { AdaptiveContent } from '../components/Bio/AdaptiveContent';
 import { HapticFeedback } from '../components/Bio/HapticFeedback';
 import { BioFeedbackModule } from '../components/Bio/BioFeedbackModule';
 import { useBiometrics } from '../hooks/useBiometrics';
+import { RouteErrorBoundary } from '../components/RouteErrorBoundary';
 import { Brain, Settings, Play, Info, AlertTriangle, ChevronRight } from 'lucide-react';
 
 const DemoContent: React.FC = () => {
@@ -32,6 +33,9 @@ const DemoContent: React.FC = () => {
           </div>
           <button 
             onClick={() => setSimulationActive(!isSimulationActive)}
+            type="button"
+            aria-label={isSimulationActive ? 'Disconnect biometric simulation' : 'Connect biometric simulation'}
+            aria-pressed={isSimulationActive}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <Settings className="w-5 h-5 text-gray-500" />
@@ -39,7 +43,7 @@ const DemoContent: React.FC = () => {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-8 py-10">
+      <main id="main-content" className="max-w-7xl mx-auto px-8 py-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
           {/* Left Column - Lesson Content */}
@@ -153,12 +157,14 @@ const DemoContent: React.FC = () => {
 
 export default function BioLearningDemo() {
   return (
-    <BiometricProvider>
-      <Head>
-        <title>Bio-Integrated Learning | StarkEd</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </Head>
-      <DemoContent />
-    </BiometricProvider>
+    <RouteErrorBoundary routeName="Bio-Learning Demo">
+      <BiometricProvider>
+        <Head>
+          <title>Bio-Integrated Learning | StarkEd</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+        </Head>
+        <DemoContent />
+      </BiometricProvider>
+    </RouteErrorBoundary>
   );
 }

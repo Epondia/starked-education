@@ -11,7 +11,16 @@ pub enum CredentialKey {
     CredentialRevocations(u64), // Separate revocation tracking
 }
 
-/// Optimized credential with packed verification status
+/// Credential status enumeration
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CredentialStatus {
+    Active = 0,
+    Expired = 1,
+    Revoked = 2,
+}
+
+/// Optimized credential with packed verification status and expiration
 #[contracttype]
 pub struct Credential {
     pub id: u64,
@@ -22,9 +31,10 @@ pub struct Credential {
     pub course_id: String,
     pub timestamp: u64, // Packed completion_date and revocation status
     pub ipfs_hash: String,
+    pub expires_at: Option<u64>, // Optional expiration timestamp (None = never expires)
 }
 
-/// Issue a new credential with optimized storage
+/// Issue a new credential with optimized storage and optional expiration
 pub fn issue_credential(
     env: &Env,
     issuer: Address,
@@ -33,6 +43,7 @@ pub fn issue_credential(
     description: String,
     course_id: String,
     ipfs_hash: String,
+    validity_duration: Option<u64>, // Optional: duration in seconds; None = never expires
 ) -> u64 {
     issuer.require_auth();
 
@@ -49,7 +60,10 @@ pub fn issue_credential(
     let packed_timestamp = timestamp << 1; // Reserve bit 0 for revocation status
 
     // Generate hash for description to save storage space
-    let description_hash = Self::generate_string_hash(&description);
+    let description_hash = generate_string_hash(&description);
+
+    // Calculate expiration timestamp if validity_duration is provided
+    let expires_at = validity_duration.map(|duration| timestamp + duration);
 
     let credential = Credential {
         id: credential_id,
@@ -60,6 +74,7 @@ pub fn issue_credential(
         course_id,
         timestamp: packed_timestamp,
         ipfs_hash,
+        expires_at,
     };
 
     // Store credential in persistent storage
@@ -84,20 +99,96 @@ pub fn issue_credential(
     credential_id
 }
 
-/// Verify a credential using packed timestamp
-pub fn verify_credential(env: &Env, credential_id: u64) -> bool {
+/// Get credential status — checks revocation, expiration (lazy evaluation)
+/// Returns (CredentialStatus, Option<expires_at>)
+pub fn get_credential_status(env: &Env, credential_id: u64) -> CredentialStatus {
     let mut credential: Credential = env
         .storage()
         .persistent()
         .get(&CredentialKey::Credential(credential_id))
         .unwrap_or_else(|| panic!("Credential not found"));
 
-    // Check revocation bit (bit 0)
+    // Check revocation bit (bit 0 of timestamp)
     if (credential.timestamp & 1) != 0 {
-        return false; // Credential is revoked
+        return CredentialStatus::Revoked;
     }
 
-    // Here you can add more verification logic (e.g. check issuer signature, expiration)
+    // Check expiration (lazy evaluation — checked at read time for gas efficiency)
+    // Uses a dedicated expiration key to avoid corrupting the packed timestamp
+    if let Some(expires_at) = credential.expires_at {
+        let current_time = env.ledger().timestamp();
+        if current_time >= expires_at {
+            // Store expiration marker separately (avoids corrupting packed timestamp bits)
+            env.storage().instance().set(
+                &CredentialKey::CredentialRevocations(credential_id),
+                &current_time,
+            );
+            return CredentialStatus::Expired;
+        }
+    }
+
+    CredentialStatus::Active
+}
+
+/// Verify a credential using packed timestamp and expiration check
+pub fn verify_credential(env: &Env, credential_id: u64) -> bool {
+    let status = get_credential_status(env, credential_id);
+    status == CredentialStatus::Active
+}
+
+/// Renew a credential — extends expiration, callable by original issuer only
+/// Emits CredentialRenewed event. Revoked credentials cannot be renewed.
+pub fn renew_credential(
+    env: &Env,
+    credential_id: u64,
+    renewer: Address,
+    new_expires_at: u64,
+) -> bool {
+    renewer.require_auth();
+
+    let mut credential: Credential = env
+        .storage()
+        .persistent()
+        .get(&CredentialKey::Credential(credential_id))
+        .unwrap_or_else(|| panic!("Credential not found"));
+
+    // Only the original issuer (admin) can renew
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not set"));
+
+    if renewer != credential.issuer && renewer != admin {
+        panic!("Only original issuer or admin can renew credentials");
+    }
+
+    // Check if revoked — revoked credentials cannot be renewed
+    if (credential.timestamp & 1) != 0 {
+        panic!("Cannot renew revoked credential");
+    }
+
+    let old_expires_at = credential.expires_at;
+    credential.expires_at = Some(new_expires_at);
+
+    // Clear any stored expiration marker
+    env.storage()
+        .instance()
+        .remove(&CredentialKey::CredentialRevocations(credential_id));
+
+    env.storage()
+        .persistent()
+        .set(&CredentialKey::Credential(credential_id), &credential);
+
+    // Emit CredentialRenewed event
+    env.events().publish(
+        (
+            Symbol::new(env, "credential"),
+            Symbol::new(env, "renewed"),
+        ),
+        (credential_id, old_expires_at, new_expires_at, renewer),
+    );
+
     true
 }
 
@@ -166,6 +257,507 @@ pub fn get_credential_count(env: &Env) -> u64 {
         .instance()
         .get(&CredentialKey::CredentialCount)
         .unwrap_or(0)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Multi-Signature Credential Issuance (M-of-N)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Multi-signature credential for high-stakes credentials (degrees, certifications)
+#[contracttype]
+pub struct MultiSigCredential {
+    pub id: u64,
+    pub threshold: u32,
+    pub signers: Vec<Address>,
+    pub recipient: Address,
+    pub title: String,
+    pub description_hash: String,
+    pub course_id: String,
+    pub ipfs_hash: String,
+    pub timestamp: u64,
+    pub activated: bool,
+}
+
+/// Multi-sig storage keys
+#[contracttype]
+pub enum MultiSigCredentialKey {
+    MultiSigCred(u64),
+    MultiSigSignatures(u64),
+    MultiSigCredCount,
+}
+
+/// Events emitted during multi-sig credential lifecycle
+#[contracttype]
+pub enum MultiSigEvent {
+    CredentialCreated(u64, u32, u32),
+    SignatureAdded(u64, Address),
+    CredentialActivated(u64),
+}
+
+/// Create a new multi-signature credential (M-of-N)
+///
+/// Only the admin can create multi-sig credentials.
+/// The credential starts inactive and requires `threshold` valid
+/// signatures from the `signers` set before it becomes active.
+pub fn create_multi_sig_credential(
+    env: &Env,
+    creator: Address,
+    signers: Vec<Address>,
+    threshold: u32,
+    recipient: Address,
+    title: String,
+    description: String,
+    course_id: String,
+    ipfs_hash: String,
+) -> u64 {
+    creator.require_auth();
+
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not set"));
+
+    if creator != admin {
+        panic!("Only admin can create multi-sig credentials");
+    }
+
+    let signer_count = signers.len() as u32;
+    if signer_count == 0 {
+        panic!("Signer list cannot be empty");
+    }
+    if threshold == 0 || threshold > signer_count {
+        panic!("Threshold must be between 1 and the number of signers");
+    }
+
+    let credential_id = StorageUtils::get_next_id(env, EntityType::Credential);
+    let description_hash = generate_string_hash(&description);
+    let timestamp = env.ledger().timestamp();
+
+    let credential = MultiSigCredential {
+        id: credential_id,
+        threshold,
+        signers: signers.clone(),
+        recipient: recipient.clone(),
+        title,
+        description_hash,
+        course_id,
+        ipfs_hash,
+        timestamp,
+        activated: false,
+    };
+
+    // Store credential
+    env.storage()
+        .persistent()
+        .set(&MultiSigCredentialKey::MultiSigCred(credential_id), &credential);
+
+    // Store description separately for later retrieval
+    env.storage()
+        .instance()
+        .set(&CredentialKey::CredentialMetadata(credential_id), &description);
+
+    // Initialize empty signature set
+    let empty_sigs: Vec<Address> = Vec::new(env);
+    env.storage().persistent().set(
+        &MultiSigCredentialKey::MultiSigSignatures(credential_id),
+        &empty_sigs,
+    );
+
+    // Update credential count
+    env.storage()
+        .instance()
+        .set(&MultiSigCredentialKey::MultiSigCredCount, &credential_id);
+
+    // Also link to recipient's profile
+    user_profile::add_credential(env, recipient.clone(), credential_id);
+
+    // Emit creation event
+    env.events().publish(
+        (
+            Symbol::new(env, "multi_sig_cred"),
+            Symbol::new(env, "created"),
+        ),
+        (credential_id, threshold, signer_count),
+    );
+
+    credential_id
+}
+
+/// Add a signature to a multi-signature credential
+///
+/// The caller must be one of the authorized signers.
+/// Duplicate signatures from the same signer are rejected.
+/// When the threshold is reached, the credential is automatically activated.
+pub fn add_multi_sig_signature(
+    env: &Env,
+    credential_id: u64,
+    signer: Address,
+) -> bool {
+    signer.require_auth();
+
+    let mut credential: MultiSigCredential = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigCred(credential_id))
+        .unwrap_or_else(|| panic!("Multi-sig credential not found"));
+
+    // Reject if already activated
+    if credential.activated {
+        panic!("Credential is already activated");
+    }
+
+    // Verify signer is authorized
+    if !is_authorized_signer(&credential.signers, &signer) {
+        panic!("Signer is not authorized for this credential");
+    }
+
+    // Load current signatures and check for duplicates
+    let mut signatures: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigSignatures(credential_id))
+        .unwrap_or_else(|| Vec::new(env));
+
+    if signatures.contains(&signer) {
+        panic!("Signer has already signed this credential");
+    }
+
+    // Add the signature
+    signatures.push_back(signer.clone());
+    env.storage().persistent().set(
+        &MultiSigCredentialKey::MultiSigSignatures(credential_id),
+        &signatures,
+    );
+
+    // Emit signature event
+    env.events().publish(
+        (
+            Symbol::new(env, "multi_sig_cred"),
+            Symbol::new(env, "signed"),
+        ),
+        (credential_id, signer.clone()),
+    );
+
+    // Check if threshold is now met
+    let current_count = signatures.len() as u32;
+    if current_count >= credential.threshold {
+        credential.activated = true;
+        env.storage()
+            .persistent()
+            .set(
+                &MultiSigCredentialKey::MultiSigCred(credential_id),
+                &credential,
+            );
+
+        // Emit activation event
+        env.events().publish(
+            (
+                Symbol::new(env, "multi_sig_cred"),
+                Symbol::new(env, "activated"),
+            ),
+            (credential_id,),
+        );
+
+        return true; // Threshold met, credential activated
+    }
+
+    false // Threshold not yet met
+}
+
+/// Check if an address is in the authorized signers list
+fn is_authorized_signer(signers: &Vec<Address>, signer: &Address) -> bool {
+    signers.contains(signer)
+}
+
+/// Get the multi-sig credential details
+pub fn get_multi_sig_credential(env: &Env, credential_id: u64) -> MultiSigCredential {
+    env.storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigCred(credential_id))
+        .unwrap_or_else(|| panic!("Multi-sig credential not found"))
+}
+
+/// Get the list of signers who have signed a multi-sig credential
+pub fn get_multi_sig_signatures(env: &Env, credential_id: u64) -> Vec<Address> {
+    env.storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigSignatures(credential_id))
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Multi-Signature Signer Management
+// ═══════════════════════════════════════════════════════════════════
+
+/// Add a new signer to an existing multi-sig credential (admin only, pending state only)
+///
+/// The credential must not yet be activated. The new signer must not already
+/// be in the signer list. After adding, the credential's threshold remains
+/// unchanged, so if it was previously met, the credential won't automatically
+/// deactivate — but a re-check ensures the threshold is still valid relative
+/// to the new signer count.
+pub fn add_signer_to_multi_sig(
+    env: &Env,
+    credential_id: u64,
+    admin: Address,
+    new_signer: Address,
+) {
+    admin.require_auth();
+
+    let stored_admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not set"));
+
+    if admin != stored_admin {
+        panic!("Only admin can manage signers");
+    }
+
+    let mut credential: MultiSigCredential = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigCred(credential_id))
+        .unwrap_or_else(|| panic!("Multi-sig credential not found"));
+
+    if credential.activated {
+        panic!("Cannot modify signers after credential is activated");
+    }
+
+    if is_authorized_signer(&credential.signers, &new_signer) {
+        panic!("Signer is already in the authorized list");
+    }
+
+    credential.signers.push_back(new_signer.clone());
+
+    // Validate threshold is still valid with new signer count
+    let new_signer_count = credential.signers.len() as u32;
+    if credential.threshold > new_signer_count {
+        panic!("Threshold exceeds signer count after adding");
+    }
+
+    env.storage()
+        .persistent()
+        .set(&MultiSigCredentialKey::MultiSigCred(credential_id), &credential);
+
+    // Emit signer added event
+    env.events().publish(
+        (
+            Symbol::new(env, "multi_sig_cred"),
+            Symbol::new(env, "signer_added"),
+        ),
+        (credential_id, new_signer),
+    );
+}
+
+/// Remove a signer from an existing multi-sig credential (admin only, pending state only)
+///
+/// Cannot remove if it would drop the signer count below the threshold.
+/// If the signer to remove has already signed, their signature is also removed.
+pub fn remove_signer_from_multi_sig(
+    env: &Env,
+    credential_id: u64,
+    admin: Address,
+    signer_to_remove: Address,
+) {
+    admin.require_auth();
+
+    let stored_admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not set"));
+
+    if admin != stored_admin {
+        panic!("Only admin can manage signers");
+    }
+
+    let mut credential: MultiSigCredential = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigCred(credential_id))
+        .unwrap_or_else(|| panic!("Multi-sig credential not found"));
+
+    if credential.activated {
+        panic!("Cannot modify signers after credential is activated");
+    }
+
+    if !is_authorized_signer(&credential.signers, &signer_to_remove) {
+        panic!("Signer is not in the authorized list");
+    }
+
+    let new_signer_count = (credential.signers.len() - 1) as u32;
+    if new_signer_count == 0 {
+        panic!("Cannot remove the last signer from a credential");
+    }
+    if credential.threshold > new_signer_count {
+        panic!("Cannot remove signer: threshold would exceed remaining signer count");
+    }
+
+    // Remove from signer list
+    let mut new_signers: Vec<Address> = Vec::new(env);
+    for i in 0..credential.signers.len() {
+        let signer = credential.signers.get(i).unwrap();
+        if signer != signer_to_remove {
+            new_signers.push_back(signer);
+        }
+    }
+    credential.signers = new_signers;
+
+    // Also remove their signature if they had signed
+    let mut signatures: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigSignatures(credential_id))
+        .unwrap_or_else(|| Vec::new(env));
+
+    let mut cleaned_signatures: Vec<Address> = Vec::new(env);
+    for i in 0..signatures.len() {
+        let sig = signatures.get(i).unwrap();
+        if sig != signer_to_remove {
+            cleaned_signatures.push_back(sig);
+        }
+    }
+
+    env.storage().persistent().set(
+        &MultiSigCredentialKey::MultiSigSignatures(credential_id),
+        &cleaned_signatures,
+    );
+
+    env.storage()
+        .persistent()
+        .set(&MultiSigCredentialKey::MultiSigCred(credential_id), &credential);
+
+    // Emit signer removed event
+    env.events().publish(
+        (
+            Symbol::new(env, "multi_sig_cred"),
+            Symbol::new(env, "signer_removed"),
+        ),
+        (credential_id, signer_to_remove),
+    );
+}
+
+/// Rotate (replace) a signer on an existing multi-sig credential (admin only, pending state only)
+///
+/// Replaces `old_signer` with `new_signer`. If the old signer had already signed,
+/// their signature is removed (the new signer must sign separately).
+/// The new signer must not already be in the signer list.
+pub fn rotate_signer_in_multi_sig(
+    env: &Env,
+    credential_id: u64,
+    admin: Address,
+    old_signer: Address,
+    new_signer: Address,
+) {
+    admin.require_auth();
+
+    let stored_admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not set"));
+
+    if admin != stored_admin {
+        panic!("Only admin can manage signers");
+    }
+
+    let mut credential: MultiSigCredential = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigCred(credential_id))
+        .unwrap_or_else(|| panic!("Multi-sig credential not found"));
+
+    if credential.activated {
+        panic!("Cannot modify signers after credential is activated");
+    }
+
+    if !is_authorized_signer(&credential.signers, &old_signer) {
+        panic!("Old signer is not in the authorized list");
+    }
+
+    if is_authorized_signer(&credential.signers, &new_signer) {
+        panic!("New signer is already in the authorized list");
+    }
+
+    // Replace in signer list
+    let mut new_signers: Vec<Address> = Vec::new(env);
+    for i in 0..credential.signers.len() {
+        let signer = credential.signers.get(i).unwrap();
+        if signer == old_signer {
+            new_signers.push_back(new_signer.clone());
+        } else {
+            new_signers.push_back(signer);
+        }
+    }
+    credential.signers = new_signers;
+
+    // Remove old signer's signature if present
+    let mut signatures: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigSignatures(credential_id))
+        .unwrap_or_else(|| Vec::new(env));
+
+    let mut cleaned_signatures: Vec<Address> = Vec::new(env);
+    for i in 0..signatures.len() {
+        let sig = signatures.get(i).unwrap();
+        if sig != old_signer {
+            cleaned_signatures.push_back(sig);
+        }
+    }
+
+    env.storage().persistent().set(
+        &MultiSigCredentialKey::MultiSigSignatures(credential_id),
+        &cleaned_signatures,
+    );
+
+    env.storage()
+        .persistent()
+        .set(&MultiSigCredentialKey::MultiSigCred(credential_id), &credential);
+
+    // Emit signer rotated event
+    env.events().publish(
+        (
+            Symbol::new(env, "multi_sig_cred"),
+            Symbol::new(env, "signer_rotated"),
+        ),
+        (credential_id, old_signer, new_signer),
+    );
+}
+
+/// Check if the threshold for a multi-sig credential has been met
+pub fn is_multi_sig_threshold_met(env: &Env, credential_id: u64) -> bool {
+    let credential: MultiSigCredential = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigCred(credential_id))
+        .unwrap_or_else(|| panic!("Multi-sig credential not found"));
+
+    credential.activated
+}
+
+/// Query the status of a multi-sig credential
+/// Returns a tuple of (activated, signature_count, threshold)
+pub fn get_multi_sig_status(env: &Env, credential_id: u64) -> (bool, u32, u32) {
+    let credential: MultiSigCredential = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigCred(credential_id))
+        .unwrap_or_else(|| panic!("Multi-sig credential not found"));
+
+    let signatures: Vec<Address> = env
+        .storage()
+        .persistent()
+        .get(&MultiSigCredentialKey::MultiSigSignatures(credential_id))
+        .unwrap_or_else(|| Vec::new(env));
+
+    (
+        credential.activated,
+        signatures.len() as u32,
+        credential.threshold,
+    )
 }
 
 /// Generate hash for string data

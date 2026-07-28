@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useFocusTrap } from '../../hooks/useKeyboardNavigation';
 import { 
   Menu, 
   X, 
@@ -16,7 +17,11 @@ import {
   Search,
   Bell,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FlaskConical,
+  Globe,
+  Brain,
+  Users
 } from 'lucide-react';
 
 interface MobileNavProps {
@@ -48,6 +53,12 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
+  const searchDialogRef = useFocusTrap<HTMLDivElement>(searchOpen, {
+    onEscape: () => setSearchOpen(false)
+  });
+  const navigationDialogRef = useFocusTrap<HTMLDivElement>(isOpen, {
+    onEscape: () => setIsOpen(false)
+  });
 
   const mainNavItems: NavItem[] = [
     {
@@ -73,6 +84,30 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       label: 'Certificates',
       icon: <Award className="w-5 h-5" />,
       path: '/certificates'
+    },
+    {
+      id: 'lab',
+      label: 'Virtual Lab',
+      icon: <FlaskConical className="w-5 h-5" />,
+      path: '/lab'
+    },
+    {
+      id: 'campus',
+      label: 'Metaverse',
+      icon: <Globe className="w-5 h-5" />,
+      path: '/campus'
+    },
+    {
+      id: 'bci',
+      label: 'BCI Control',
+      icon: <Brain className="w-5 h-5" />,
+      path: '/bci-dashboard'
+    },
+    {
+      id: 'collaboration',
+      label: 'Collab Room',
+      icon: <Users className="w-5 h-5" />,
+      path: '/collaboration'
     }
   ];
 
@@ -200,13 +235,22 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
       {/* Search Overlay */}
       {searchOpen && (
-        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-start pt-20 px-4">
+        <div
+          ref={searchDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mobile-search-title"
+          tabIndex={-1}
+          className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-start pt-20 px-4"
+        >
           <div className="w-full max-w-md mx-auto bg-white rounded-lg shadow-xl">
             <form onSubmit={handleSearch} className="p-4">
+              <h2 id="mobile-search-title" className="sr-only">Search StarkEd</h2>
               <div className="flex items-center gap-3">
-                <Search className="w-5 h-5 text-gray-400" />
+                <Search aria-hidden="true" className="w-5 h-5 text-gray-500" />
                 <input
                   type="text"
+                  aria-label="Search courses and topics"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search courses, topics..."
@@ -216,7 +260,8 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 <button
                   type="button"
                   onClick={() => setSearchOpen(false)}
-                  className="p-2 text-gray-400 hover:text-gray-600 touch-manipulation"
+                  aria-label="Close search"
+                  className="p-2 text-gray-600 hover:text-gray-900 touch-manipulation"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -228,6 +273,12 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
       {/* Mobile Navigation Menu */}
       <div
+        ref={navigationDialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mobile-navigation-title"
+        aria-hidden={!isOpen}
+        tabIndex={-1}
         className={`fixed inset-0 z-50 md:hidden transition-all duration-300 ease-in-out ${
           isOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
         }`}
@@ -238,6 +289,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
             isOpen ? 'bg-opacity-50' : 'bg-opacity-0'
           }`}
           onClick={() => setIsOpen(false)}
+          aria-hidden="true"
         />
 
         {/* Menu Panel */}
@@ -249,7 +301,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
           {/* Header */}
           <div className="bg-blue-500 text-white p-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">StarkEd</h2>
+              <h2 id="mobile-navigation-title" className="text-lg font-semibold">StarkEd navigation</h2>
               <button
                 onClick={() => setIsOpen(false)}
                 className="p-2 hover:bg-blue-600 rounded-lg transition-colors touch-manipulation"
@@ -282,9 +334,12 @@ export const MobileNav: React.FC<MobileNavProps> = ({
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex border-b border-gray-200">
+          <div className="flex border-b border-gray-200" role="tablist" aria-label="Navigation sections">
             <button
               onClick={() => setActiveTab('main')}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'main'}
               className={`flex-1 py-3 text-sm font-medium transition-colors touch-manipulation ${
                 activeTab === 'main'
                   ? 'text-blue-600 border-b-2 border-blue-600'
@@ -295,6 +350,9 @@ export const MobileNav: React.FC<MobileNavProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('secondary')}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'secondary'}
               className={`flex-1 py-3 text-sm font-medium transition-colors touch-manipulation ${
                 activeTab === 'secondary'
                   ? 'text-blue-600 border-b-2 border-blue-600'
@@ -355,7 +413,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       {/* Bottom Navigation for Mobile */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 md:hidden">
         <nav className="flex items-center justify-around py-2">
-          {mainNavItems.map((item) => (
+          {mainNavItems.slice(0, 4).map((item) => (
             <button
               key={item.id}
               onClick={() => handleNavItemClick(item)}
