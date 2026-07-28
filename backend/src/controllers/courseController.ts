@@ -1,12 +1,14 @@
 /**
  * Course Controller
- * Handles HTTP endpoints for course discovery, search, and recommendations
+ * Handles HTTP endpoints for course discovery, search, and recommendations.
+ * Now with Redis caching for frequently accessed course data.
  */
 
 import { Request, Response, Router } from "express";
 import { validationResult, query, body } from "express-validator";
 import searchService from "../services/searchService";
 import recommendationService from "../services/recommendationService";
+import courseCacheService, { KEY_PREFIX, DEFAULT_TTL } from "../services/courseCacheService";
 import {
   Course,
   SearchFilter,
@@ -100,6 +102,15 @@ router.post(
         userId,
       );
 
+      // Warm the course list cache with search results for popular queries
+      if (searchQuery && result.total > 0) {
+        courseCacheService.set(
+          KEY_PREFIX.COURSE_LIST + searchQuery.toLowerCase().trim(),
+          result,
+          { ttl: DEFAULT_TTL.COURSE_LIST },
+        );
+      }
+
       return res.status(200).json({
         success: true,
         message: "Search completed successfully",
@@ -140,9 +151,14 @@ router.get(
 
       logger.info(`Suggestions request - Query: ${searchQuery}`);
 
-      const suggestions = await searchService.getSearchSuggestions(
-        searchQuery as string,
-        parseInt(limit as string),
+      const cacheKey = KEY_PREFIX.SUGGESTIONS + (searchQuery as string).toLowerCase().trim() + ':' + limit;
+      const suggestions = await courseCacheService.getOrSet(
+        cacheKey,
+        () => searchService.getSearchSuggestions(
+          searchQuery as string,
+          parseInt(limit as string),
+        ),
+        { ttl: DEFAULT_TTL.SUGGESTIONS },
       );
 
       return res.status(200).json({
@@ -181,7 +197,12 @@ router.get(
 
       logger.info(`Trending courses request - Limit: ${limit}`);
 
-      const courses = await recommendationService.getTrendingCourses(limit);
+      const cacheKey = KEY_PREFIX.TRENDING + limit;
+      const courses = await courseCacheService.getOrSet(
+        cacheKey,
+        () => recommendationService.getTrendingCourses(limit),
+        { ttl: DEFAULT_TTL.TRENDING },
+      );
 
       return res.status(200).json({
         success: true,
@@ -226,9 +247,11 @@ router.get(
         `Similar courses request - Course: ${courseId}, Limit: ${limit}`,
       );
 
-      const similar = await recommendationService.getSimilarCourses(
-        courseId,
-        limit,
+      const cacheKey = KEY_PREFIX.SIMILAR + courseId + ':' + limit;
+      const similar = await courseCacheService.getOrSet(
+        cacheKey,
+        () => recommendationService.getSimilarCourses(courseId, limit),
+        { ttl: DEFAULT_TTL.COURSE_DETAIL },
       );
 
       return res.status(200).json({
@@ -294,9 +317,11 @@ router.post(
         `Recommendations request - User: ${context.userId}, Limit: ${limit}`,
       );
 
-      const result = await recommendationService.getRecommendations(
-        context,
-        limit,
+      const cacheKey = KEY_PREFIX.RECOMMENDATIONS + context.userId + ':' + limit;
+      const result = await courseCacheService.getOrSet(
+        cacheKey,
+        () => recommendationService.getRecommendations(context, limit),
+        { ttl: DEFAULT_TTL.RECOMMENDATIONS },
       );
 
       return res.status(200).json({
@@ -393,7 +418,11 @@ router.get("/categories", async (req: Request, res: Response) => {
   try {
     logger.info("Categories request");
 
-    const categories = await searchService.getCategories();
+    const categories = await courseCacheService.getOrSet(
+      KEY_PREFIX.CATEGORIES,
+      () => searchService.getCategories(),
+      { ttl: DEFAULT_TTL.CATEGORIES },
+    );
 
     return res.status(200).json({
       success: true,
@@ -423,7 +452,11 @@ router.get("/categories/tree", async (req: Request, res: Response) => {
   try {
     logger.info("Category tree request");
 
-    const categories = await searchService.getCategoryTree();
+    const categories = await courseCacheService.getOrSet(
+      KEY_PREFIX.CATEGORY_TREE,
+      () => searchService.getCategoryTree(),
+      { ttl: DEFAULT_TTL.CATEGORIES },
+    );
 
     return res.status(200).json({
       success: true,
@@ -481,6 +514,10 @@ router.post(
 
       const created = await searchService.upsertCategory(category);
 
+      // Invalidate category caches
+      courseCacheService.invalidate(KEY_PREFIX.CATEGORIES);
+      courseCacheService.invalidate(KEY_PREFIX.CATEGORY_TREE);
+
       return res.status(201).json({
         success: true,
         message: "Category created successfully",
@@ -531,6 +568,10 @@ router.put(
 
       const updated = await searchService.upsertCategory(category);
 
+      // Invalidate category caches
+      courseCacheService.invalidate(KEY_PREFIX.CATEGORIES);
+      courseCacheService.invalidate(KEY_PREFIX.CATEGORY_TREE);
+
       return res.status(200).json({
         success: true,
         message: "Category updated successfully",
@@ -567,6 +608,10 @@ router.delete(
 
       await searchService.deleteCategory(categoryId);
 
+      // Invalidate category caches
+      courseCacheService.invalidate(KEY_PREFIX.CATEGORIES);
+      courseCacheService.invalidate(KEY_PREFIX.CATEGORY_TREE);
+
       return res.status(200).json({
         success: true,
         message: "Category deleted successfully",
@@ -602,7 +647,12 @@ router.get(
 
       logger.info(`Popular searches request - Limit: ${limit}`);
 
-      const popular = await searchService.getPopularSearches(limit);
+      const cacheKey = KEY_PREFIX.POPULAR_SEARCHES + limit;
+      const popular = await courseCacheService.getOrSet(
+        cacheKey,
+        () => searchService.getPopularSearches(limit),
+        { ttl: DEFAULT_TTL.TRENDING },
+      );
 
       return res.status(200).json({
         success: true,
@@ -648,6 +698,62 @@ router.get("/analytics/search/:query", async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Failed to get search analytics",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+/**
+ * GET /api/courses/cache/metrics
+ * Get cache performance metrics (Admin only)
+ *
+ * @returns {CacheMetrics} Cache hit/miss rates and connection status
+ *
+ * @example
+ * GET /api/courses/cache/metrics
+ */
+router.get("/cache/metrics", async (req: Request, res: Response) => {
+  try {
+    const health = await courseCacheService.healthCheck();
+    const metrics = courseCacheService.getMetricsSummary();
+
+    return res.status(200).json({
+      success: true,
+      message: "Cache metrics retrieved successfully",
+      data: { ...metrics, health },
+    });
+  } catch (error) {
+    logger.error("Cache metrics error", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get cache metrics",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+/**
+ * POST /api/courses/cache/invalidate
+ * Manually invalidate all course caches (Admin only)
+ *
+ * @returns {object} Success response
+ *
+ * @example
+ * POST /api/courses/cache/invalidate
+ */
+router.post("/cache/invalidate", async (req: Request, res: Response) => {
+  try {
+    await courseCacheService.invalidateAllCourseCaches();
+
+    return res.status(200).json({
+      success: true,
+      message: "All course caches invalidated successfully",
+    });
+  } catch (error) {
+    logger.error("Cache invalidation error", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to invalidate caches",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }
