@@ -268,7 +268,8 @@ impl StarkEdContract {
             CredentialStatus::Pending => 3u8,
         });
         // Append issuer address as raw bytes (use string representation for determinism)
-        let issuer_bytes = issuer.to_string().as_bytes();
+        let issuer_s = issuer.to_string();
+        let issuer_bytes: Bytes = issuer_s.into();
         input.append(&issuer_bytes);
         env.crypto().sha256(&input)
     }
@@ -354,7 +355,7 @@ impl StarkEdContract {
         // Emit cross-chain relay event for off-chain relayers
         env.events().publish(
             (Symbol::new(&env, "relay"), Symbol::new(&env, "proof_generated")),
-            (&proof, relayer),
+            (proof.clone(), relayer),
         );
 
         proof
@@ -421,7 +422,7 @@ impl StarkEdContract {
         if proof.status != credential.status {
             env.events().publish(
                 (Symbol::new(&env, "relay"), Symbol::new(&env, "status_mismatch")),
-                (proof.credential_id, proof.status as u8, credential.status as u8),
+                (proof.credential_id, proof.status.clone(), credential.status.clone()),
             );
             return false;
         }
