@@ -1,8 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import { ChatAssistant } from '@/components/Chat/ChatAssistant';
 import { useCourseStore } from '@/store/courseStore';
+import { RouteErrorBoundary } from '../components/RouteErrorBoundary';
 
 const ChatAssistantPage: React.FC = () => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <RouteErrorBoundary routeName="Chat Assistant">
+      <ChatAssistantContent />
+    </RouteErrorBoundary>
+  );
+};
+
+const ChatAssistantContent: React.FC = () => {
   const { currentCourse, loadAvailableCourses, setCurrentCourse } = useCourseStore();
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -36,6 +59,10 @@ const ChatAssistantPage: React.FC = () => {
             {/* Mobile menu button */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              type="button"
+              aria-label={isMobileMenuOpen ? 'Close course menu' : 'Open course menu'}
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="course-selection"
               className="md:hidden p-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,7 +76,7 @@ const ChatAssistantPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Course Selection Sidebar */}
-          <aside className={`${isMobileMenuOpen ? 'block' : 'hidden'} lg:block lg:col-span-1`}>
+          <aside id="course-selection" aria-label="Course selection" className={`${isMobileMenuOpen ? 'block' : 'hidden'} lg:block lg:col-span-1`}>
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Course</h2>
               
@@ -107,7 +134,7 @@ const ChatAssistantPage: React.FC = () => {
           </aside>
 
           {/* Chat Area */}
-          <main className="lg:col-span-3">
+          <main id="main-content" className="lg:col-span-3">
             <div className="bg-white rounded-lg shadow-md h-[calc(100vh-200px)] lg:h-[600px]">
               <ChatAssistant 
                 courseId={selectedCourseId || undefined}

@@ -74,6 +74,18 @@ STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 JWT_EXPIRES_IN=24h
 
+# Email Configuration (NEW)
+EMAIL_PROVIDER=smtp                              # smtp | sendgrid | ses
+EMAIL_FROM=noreply@starked.edu                   # From address for all emails
+EMAIL_HOST=smtp.example.com                       # SMTP host (for smtp provider)
+EMAIL_PORT=587                                    # SMTP port
+EMAIL_SECURE=false                                # Use TLS
+EMAIL_USER=your-email-user                        # SMTP auth user
+EMAIL_PASS=your-email-password                    # SMTP auth password
+SENDGRID_API_KEY=                                # Required if EMAIL_PROVIDER=sendgrid
+AWS_SES_REGION=us-east-1                         # Required if EMAIL_PROVIDER=ses
+FRONTEND_URL=http://localhost:3000                # Base URL for email links
+
 # Transaction Queue Configuration
 QUEUE_MAX_SIZE=10000
 QUEUE_MAX_RETRIES=3

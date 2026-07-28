@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import CollaborationRoom from '@/components/Collaboration/CollaborationRoom';
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 import toast from 'react-hot-toast';
 
 const CollaborationRoomPage = () => {
@@ -56,12 +57,14 @@ const CollaborationRoomPage = () => {
   }
 
   return (
-    <CollaborationRoom
-      roomId={roomId}
-      userId={userInfo.userId}
-      username={userInfo.username}
-      role={userInfo.role}
-    />
+    <RouteErrorBoundary routeName="Collaboration Room">
+      <CollaborationRoom
+        roomId={roomId}
+        userId={userInfo.userId}
+        username={userInfo.username}
+        role={userInfo.role}
+      />
+    </RouteErrorBoundary>
   );
 };
 

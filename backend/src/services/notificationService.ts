@@ -172,7 +172,6 @@ class NotificationService {
 
   private async queueEmailDelivery(notification: INotification): Promise<void> {
     try {
-      // In a real app, you'd fetch the user's email from the user model
       const userEmail = notification.metadata?.email;
 
       if (!userEmail) {
@@ -180,6 +179,8 @@ class NotificationService {
         return;
       }
 
+      // For rich transactional emails, use the enhanced email service
+      // For simple notification emails, fall back to basic nodemailer
       await transporter.sendMail({
         from: process.env.EMAIL_FROM,
         to: userEmail,
