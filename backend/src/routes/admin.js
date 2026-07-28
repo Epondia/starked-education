@@ -9,6 +9,7 @@ const { validateRequestSchema } = require('../middleware/validateRequestSchema')
 const { PERMISSIONS, UserRole } = require('../utils/roles');
 const { AnalyticsService } = require('../services/analyticsService');
 const { adminTierLimiter } = require('../middleware/rateLimiter');
+const { getPoolHealthReport } = require('../utils/database');
 const router = express.Router();
 
 const updateSettingsSchema = {
@@ -306,6 +307,32 @@ router.get(
       res.status(500).json({
         error: 'Internal server error',
         message: 'Error retrieving backups',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/admin/pool-stats
+ * Returns live PostgreSQL pool metrics (issue #187) — useful for capacity
+ * planning and confirming that env-driven pool sizing is actually applied.
+ */
+router.get(
+  '/pool-stats',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  (_req, res) => {
+    try {
+      const report = getPoolHealthReport();
+      res.json({
+        message: 'Database pool metrics retrieved successfully',
+        pool: report,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Pool stats error:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Error retrieving database pool metrics',
       });
     }
   }
