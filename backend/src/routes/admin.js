@@ -8,6 +8,8 @@ const {
 const { validateRequestSchema } = require('../middleware/validateRequestSchema');
 const { PERMISSIONS, UserRole } = require('../utils/roles');
 const { AnalyticsService } = require('../services/analyticsService');
+const { auditLogService } = require('../services/auditLogService');
+const { AuditEventType } = require('../models/AuditLog');
 const { adminTierLimiter } = require('../middleware/rateLimiter');
 const router = express.Router();
 
@@ -234,6 +236,16 @@ router.put(
       const { category, settings } = req.body;
 
       // Settings update would go to a configuration store in production
+      // Log admin settings update to tamper-evident audit trail
+      auditLogService.logAdminAction(
+        req.user.id,
+        req.user.role,
+        AuditEventType.ADMIN_SETTINGS_UPDATED,
+        { category, settings },
+        req.ip,
+        req.headers['user-agent']
+      ).catch(() => {});
+
       res.json({
         message: 'System settings updated successfully',
         category,
@@ -263,6 +275,16 @@ router.post(
       const { type = 'full', includeFiles = true } = req.body;
 
       const backupId = `backup_${Date.now()}`;
+
+      // Log backup initiation to tamper-evident audit trail
+      auditLogService.logAdminAction(
+        req.user.id,
+        req.user.role,
+        AuditEventType.ADMIN_BACKUP_INITIATED,
+        { type, includeFiles, backupId },
+        req.ip,
+        req.headers['user-agent']
+      ).catch(() => {});
 
       res.json({
         message: 'Backup initiated successfully',
@@ -340,6 +362,16 @@ router.post(
         createdAt: new Date().toISOString(),
         active: true,
       };
+
+      // Log announcement creation to tamper-evident audit trail
+      auditLogService.logAdminAction(
+        req.user.id,
+        req.user.role,
+        AuditEventType.ADMIN_ANNOUNCEMENT_CREATED,
+        { title, message, targetRoles, priority },
+        req.ip,
+        req.headers['user-agent']
+      ).catch(() => {});
 
       res.status(201).json({
         message: 'Announcement created successfully',

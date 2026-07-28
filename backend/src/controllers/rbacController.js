@@ -31,7 +31,14 @@ const rbacController = {
       }
 
       // 2. Perform role assignment via service
-      const result = await rbacService.assignRole(admin.id, userId, role);
+      const result = await rbacService.assignRole(
+        admin.id,
+        userId,
+        role,
+        admin.role,
+        undefined, // oldRole — fetched by the service if needed
+        req.ip
+      );
 
       res.status(200).json({
         success: true,

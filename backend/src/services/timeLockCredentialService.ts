@@ -1,6 +1,8 @@
 import { TimeLockedCredential, ITimeLockedCredential } from '../models/TimeLockedCredential';
 import { v4 as uuidv4 } from 'uuid';
 import { Redis } from 'ioredis';
+import { auditLogService } from './auditLogService';
+import logger from '../utils/logger';
 
 interface IssueCredentialParams {
   issuer: string;
@@ -57,6 +59,17 @@ export class TimeLockCredentialService {
     });
 
     await (credential as any).addAuditEntry('ISSUE', issuer, 'Credential issued with time lock');
+
+    // Also create tamper-evident audit log entry
+    auditLogService.logCredentialIssued(
+      issuer,
+      'issuer',
+      credentialId,
+      {
+        recipientId: recipient,
+        credentialType: 'time-locked',
+      }
+    ).catch(err => logger.error('Failed to log credential issuance to audit:', err));
 
     // Cache the credential
     await this.cacheCredential(credential);
@@ -152,6 +165,17 @@ export class TimeLockCredentialService {
     credential.emergencyOverrideBy = admin;
     credential.revokeReason = reason;
     await (credential as any).addAuditEntry('EMERGENCY_REVOKE', admin, `Emergency revoke: ${reason}`);
+
+    // Create tamper-evident audit log entry for revocation
+    auditLogService.logCredentialRevoked(
+      admin,
+      'admin',
+      credentialId,
+      {
+        recipientId: credential.recipient,
+        reason,
+      }
+    ).catch(err => logger.error('Failed to log credential revocation to audit:', err));
 
     // Update cache
     await this.cacheCredential(credential);
