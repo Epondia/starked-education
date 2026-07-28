@@ -89,6 +89,13 @@ export const useCourseStore = create<CourseStore>()(
           set((state) => ({
             enrolledCourses: [...state.enrolledCourses, enrolledCourse]
           }));
+
+          // Track course enrollment
+          if (typeof window !== 'undefined' && (window as any).plausible) {
+            (window as any).plausible('Course Enrollment', { 
+              props: { courseId: course.id, courseTitle: course.title } 
+            });
+          }
         }
       },
       

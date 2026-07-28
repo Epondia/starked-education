@@ -6,6 +6,7 @@ export interface IpfsUploadOptions {
   includeMetadata?: boolean;
   wrapWithDirectory?: boolean;
   onProgress?: (progress: UploadProgress) => void;
+  signal?: AbortSignal;
 }
 
 export interface UploadProgress {
@@ -178,6 +179,7 @@ class IpfsClient {
           ...this.getAuthHeaders(),
           'Content-Type': 'multipart/form-data',
         },
+        signal: options.signal,
         onUploadProgress: (progressEvent) => {
           if (options.onProgress && progressEvent.total) {
             const progress = {
