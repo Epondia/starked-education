@@ -1,0 +1,31 @@
+# =============================================================================
+# StarkEd Backend — Development Dockerfile
+# =============================================================================
+# Uses nodemon for hot-reload and exposes the debug port 9229.
+# Source code is mounted as a volume.
+# =============================================================================
+
+FROM node:18-alpine
+
+RUN apk add --no-cache python3 py3-pip
+
+WORKDIR /app
+
+# Copy only package files for dependency installation
+COPY package.json package-lock.json* ./
+COPY requirements.txt ./
+RUN npm ci && \
+    pip install -r requirements.txt 2>/dev/null || true
+
+# Expose app and debug ports
+EXPOSE 3001
+EXPOSE 9229
+
+ENV NODE_ENV development
+
+# Install nodemon globally for hot-reload
+RUN npm install -g nodemon ts-node
+
+# Default command - runs with hot-reload and debugger
+# Note: src/index.js is CommonJS; ts-node handles it gracefully
+CMD ["nodemon", "--legacy-watch", "--inspect=0.0.0.0:9229", "--exec", "ts-node", "src/index.js"]
