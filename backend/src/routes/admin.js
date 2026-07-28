@@ -10,6 +10,7 @@ const { PERMISSIONS, UserRole } = require('../utils/roles');
 const { AnalyticsService } = require('../services/analyticsService');
 const { auditLogService } = require('../services/auditLogService');
 const { AuditEventType } = require('../models/AuditLog');
+const { adminTierLimiter } = require('../middleware/rateLimiter');
 const router = express.Router();
 
 const updateSettingsSchema = {
@@ -39,6 +40,9 @@ const announcementSchema = {
 // Apply authentication and admin middleware to all routes
 router.use(authenticateToken);
 router.use(requireAdmin);
+// Issue #17: 100 requests per minute for authenticated admins,
+// 20 requests per minute for anonymous callers (defense in depth).
+router.use(adminTierLimiter);
 
 /**
  * GET /api/admin/dashboard
