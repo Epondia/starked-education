@@ -268,8 +268,7 @@ impl StarkEdContract {
             CredentialStatus::Pending => 3u8,
         });
         // Append issuer address as raw bytes (use string representation for determinism)
-        let issuer_s = issuer.to_string();
-        let issuer_bytes: Bytes = issuer_s.into();
+        let issuer_bytes = issuer.to_xdr(env);
         input.append(&issuer_bytes);
         env.crypto().sha256(&input)
     }
