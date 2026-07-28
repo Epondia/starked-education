@@ -158,9 +158,9 @@ router.get(
 
       logger.info(`Suggestions request - Query: ${searchQuery}`);
 
-      const cacheKey = KEY_PREFIX.SUGGESTIONS + (searchQuery as string).toLowerCase().trim() + ':' + limit;
+      const redisKey = KEY_PREFIX.SUGGESTIONS + (searchQuery as string).toLowerCase().trim() + ':' + limit;
       const suggestions = await courseCacheService.getOrSet(
-        cacheKey,
+        redisKey,
         () => searchService.getSearchSuggestions(
           searchQuery as string,
           parseInt(limit as string),
@@ -211,14 +211,14 @@ router.get(
 
       logger.info(`Trending courses request - Limit: ${limit}`);
 
-      const cacheKey = KEY_PREFIX.TRENDING + limit;
+      const redisKey = KEY_PREFIX.TRENDING + limit;
       const courses = await courseCacheService.getOrSet(
-        cacheKey,
+        redisKey,
         () => recommendationService.getTrendingCourses(limit),
         { ttl: DEFAULT_TTL.TRENDING },
       );
 
-      return res.status(200).json({
+      const response = {
         success: true,
         message: "Trending courses retrieved successfully",
         data: courses,
@@ -268,9 +268,9 @@ router.get(
         `Similar courses request - Course: ${courseId}, Limit: ${limit}`,
       );
 
-      const cacheKey = KEY_PREFIX.SIMILAR + courseId + ':' + limit;
+      const redisKey = KEY_PREFIX.SIMILAR + courseId + ':' + limit;
       const similar = await courseCacheService.getOrSet(
-        cacheKey,
+        redisKey,
         () => recommendationService.getSimilarCourses(courseId, limit),
         { ttl: DEFAULT_TTL.COURSE_DETAIL },
       );
