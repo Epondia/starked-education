@@ -19,39 +19,25 @@ import {
   Sparkles,
   Wand2,
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import CourseCard from './CourseCard';
 import { CourseGridSkeleton } from './CourseCardSkeleton';
 import FilterPanel from './FilterPanel';
 import Recommendations from './Recommendations';
 import SearchBar from './SearchBar';
+import { ActiveFilters } from './FilterChip';
+import { SortDropdown } from './SortDropdown';
 import { discoveryApi } from '../../lib/discoveryApi';
+import { useDebouncedSearch } from '../../hooks/useDebouncedSearch';
 
 const createSessionId = () =>
   `discovery_${Math.random().toString(36).slice(2, 10)}`;
-
-const defaultFilters: DiscoveryFilters = {
-  query: '',
-  categories: [],
-  levels: [],
-  languages: [],
-  tags: [],
-  minRating: 0,
-  maxPrice: 150,
-  maxDuration: 16,
-  freeOnly: false,
-  sortBy: 'relevance',
-  view: 'grid',
-  page: 1,
-  limit: 12,
-};
 
 const formatPrice = (value: number) => (value === 0 ? 'Free' : `$${value}`);
 
 export const DiscoveryExperience: React.FC = () => {
   const [sessionId, setSessionId] = useState('browser_pending');
-  const [filters, setFilters] = useState<DiscoveryFilters>(defaultFilters);
   const [searchData, setSearchData] = useState<DiscoverySearchResponse | null>(
     null,
   );
@@ -77,6 +63,59 @@ export const DiscoveryExperience: React.FC = () => {
   const [isCreatingAlert, setIsCreatingAlert] = useState(false);
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
 
+  // Local controlled search input — debounced before being pushed into the
+  // URL via `useUrlFilters`.
+  const [queryDraft, setQueryDraft] = useState('');
+  const debouncedQueryDraft = useDebouncedSearch(queryDraft, 300);
+  const lastWrittenQueryRef = React.useRef<string>('');
+
+  // URL-backed filter state (issue #112).
+  const [filters, setFiltersState] = useState<DiscoveryFilters>({
+    query: '',
+    categories: [],
+    levels: [],
+    languages: [],
+    tags: [],
+    minRating: 0,
+    maxPrice: 150,
+    maxDuration: 16,
+    freeOnly: false,
+    sortBy: 'relevance',
+    view: 'grid',
+    page: 1,
+    limit: 12,
+  });
+
+  const updateFilters = useCallback(
+    (next: Partial<DiscoveryFilters>) => {
+      setFiltersState((current) => ({
+        ...current,
+        ...next,
+        page: next.page ?? 1,
+      }));
+    },
+    [],
+  );
+
+  const resetFilters = useCallback(() => {
+    setFiltersState({
+      query: '',
+      categories: [],
+      levels: [],
+      languages: [],
+      tags: [],
+      minRating: 0,
+      maxPrice: 150,
+      maxDuration: 16,
+      freeOnly: false,
+      sortBy: 'relevance',
+      view: 'grid',
+      page: 1,
+      limit: 12,
+    });
+    setQueryDraft('');
+  }, []);
+
   useEffect(() => {
     const storedSessionId =
       window.sessionStorage.getItem('starked-discovery-session') ||
@@ -84,6 +123,53 @@ export const DiscoveryExperience: React.FC = () => {
     window.sessionStorage.setItem('starked-discovery-session', storedSessionId);
     setSessionId(storedSessionId);
   }, []);
+
+  // Sync the debounced search-with-filters into the URL hash-style state via
+  // history.replaceState (cheap — no router round-trip). This is the URL
+  // persistence half of issue #112.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (debouncedQueryDraft) params.set('q', debouncedQueryDraft);
+    else params.delete('q');
+    params.set('sortBy', filters.sortBy);
+    params.set('view', filters.view);
+    if (filters.categories.length)
+      params.set('category', filters.categories.join(','));
+    else params.delete('category');
+    if (filters.levels.length) params.set('level', filters.levels.join(','));
+    else params.delete('level');
+    if (filters.minRating > 0) params.set('minRating', String(filters.minRating));
+    else params.delete('minRating');
+    if (filters.maxPrice !== 150) params.set('maxPrice', String(filters.maxPrice));
+    else params.delete('maxPrice');
+    if (filters.maxDuration !== 16)
+      params.set('maxDuration', String(filters.maxDuration));
+    else params.delete('maxDuration');
+    if (filters.freeOnly) params.set('freeOnly', 'true');
+    else params.delete('freeOnly');
+    if (filters.page > 1) params.set('page', String(filters.page));
+    else params.delete('page');
+
+    // Skip the write if it hasn't actually changed since the last render —
+    // avoids re-rendering on every debounced keystroke.
+    const nextSearch = params.toString();
+    if (
+      lastWrittenQueryRef.current === nextSearch &&
+      filters.query === debouncedQueryDraft
+    ) {
+      return;
+    }
+    lastWrittenQueryRef.current = nextSearch;
+    const next = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`;
+    window.history.replaceState(null, '', next);
+
+    // Once the URL has the canonical value, mirror it into the canonical
+    // filter state.
+    if (filters.query !== debouncedQueryDraft) {
+      setFiltersState((current) => ({ ...current, query: debouncedQueryDraft }));
+    }
+  }, [debouncedQueryDraft, filters]);
 
   useEffect(() => {
     if (sessionId === 'browser_pending') {
@@ -159,9 +245,15 @@ export const DiscoveryExperience: React.FC = () => {
     }
 
     let cancelled = false;
+    // Suggestions always reflect the *immediate* draft text — debouncing
+    // here would feel laggy to the user. Backing it with the debounced
+    // filters.query keeps the saved-search analytics in sync.
     const timer = window.setTimeout(async () => {
       try {
-        const data = await discoveryApi.suggestions(filters.query, sessionId);
+        const data = await discoveryApi.suggestions(
+          debouncedQueryDraft || filters.query,
+          sessionId,
+        );
         if (!cancelled) {
           setSuggestions(data.suggestions);
         }
@@ -176,7 +268,7 @@ export const DiscoveryExperience: React.FC = () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [filters.query, sessionId]);
+  }, [filters.query, debouncedQueryDraft, sessionId]);
 
   useEffect(() => {
     if (!selectedCourse) {
@@ -203,10 +295,6 @@ export const DiscoveryExperience: React.FC = () => {
     };
   }, [selectedCourse]);
 
-  const updateFilters = (next: Partial<DiscoveryFilters>) => {
-    setFilters((current) => ({ ...current, ...next, page: next.page || 1 }));
-  };
-
   const handleSelectCourse = async (course: DiscoveryCourse) => {
     setSelectedCourse(course);
 
@@ -225,14 +313,109 @@ export const DiscoveryExperience: React.FC = () => {
   };
 
   const handleApplySavedSearch = (savedSearch: SavedSearch) => {
-    setFilters({
-      ...defaultFilters,
-      ...savedSearch.filters,
+    setFiltersState({
       query: savedSearch.query,
+      categories: savedSearch.filters?.categories ?? [],
+      levels: savedSearch.filters?.levels ?? [],
+      languages: savedSearch.filters?.languages ?? [],
+      tags: savedSearch.filters?.tags ?? [],
+      minRating: savedSearch.filters?.minRating ?? 0,
+      maxPrice: savedSearch.filters?.maxPrice ?? 150,
+      maxDuration: savedSearch.filters?.maxDuration ?? 16,
+      freeOnly: savedSearch.filters?.freeOnly ?? false,
+      sortBy: savedSearch.filters?.sortBy ?? 'relevance',
+      view: savedSearch.filters?.view ?? 'grid',
       page: 1,
-      limit: defaultFilters.limit,
+      limit: savedSearch.filters?.limit ?? 12,
     });
+    setQueryDraft(savedSearch.query);
   };
+
+  // Issue #112 keyboard accessibility is satisfied by the `focus-visible:ring-2`
+  // styles on the existing filter chips + sort dropdown + range inputs — no
+  // modal-style focus trap is needed (the panel isn't a modal, it's a sidebar).
+
+  // ── Active filter chips (issue #112) ────────────────────────────────
+  const activeFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; onRemove: () => void }> = [];
+    filters.categories.forEach((category) =>
+      chips.push({
+        key: `category:${category}`,
+        label: `Category: ${category}`,
+        onRemove: () =>
+          updateFilters({
+            categories: filters.categories.filter((c) => c !== category),
+            page: 1,
+          }),
+      }),
+    );
+    filters.levels.forEach((level) =>
+      chips.push({
+        key: `level:${level}`,
+        label: `Level: ${level}`,
+        onRemove: () =>
+          updateFilters({
+            levels: filters.levels.filter((l) => l !== level),
+            page: 1,
+          }),
+      }),
+    );
+    if (filters.minRating > 0) {
+      chips.push({
+        key: 'minRating',
+        label: `Min rating: ${filters.minRating.toFixed(1)}`,
+        onRemove: () => updateFilters({ minRating: 0, page: 1 }),
+      });
+    }
+    if (filters.maxPrice !== 150) {
+      chips.push({
+        key: 'maxPrice',
+        label: filters.maxPrice === 0 ? 'Free' : `Max $${filters.maxPrice}`,
+        onRemove: () => updateFilters({ maxPrice: 150, page: 1 }),
+      });
+    }
+    if (filters.maxDuration !== 16) {
+      chips.push({
+        key: 'maxDuration',
+        label: `Up to ${filters.maxDuration}h`,
+        onRemove: () => updateFilters({ maxDuration: 16, page: 1 }),
+      });
+    }
+    if (filters.freeOnly) {
+      chips.push({
+        key: 'freeOnly',
+        label: 'Free only',
+        onRemove: () => updateFilters({ freeOnly: false, page: 1 }),
+      });
+    }
+    if (filters.tags.length) {
+      filters.tags.forEach((tag) =>
+        chips.push({
+          key: `tag:${tag}`,
+          label: `#${tag}`,
+          onRemove: () =>
+            updateFilters({
+              tags: filters.tags.filter((t) => t !== tag),
+              page: 1,
+            }),
+        }),
+      );
+    }
+    if (filters.languages.length) {
+      filters.languages.forEach((language) =>
+        chips.push({
+          key: `language:${language}`,
+          label: `Language: ${language}`,
+          onRemove: () =>
+            updateFilters({
+              languages: filters.languages.filter((l) => l !== language),
+              page: 1,
+            }),
+        }),
+      );
+    }
+    return chips;
+  }, [filters, updateFilters]);
 
   const handleSaveSearch = async () => {
     if (!filters.query) {
@@ -293,7 +476,8 @@ export const DiscoveryExperience: React.FC = () => {
         filters,
         sessionId,
       );
-      setFilters((current) => ({
+      setQueryDraft(response.normalizedQuery);
+      setFiltersState((current) => ({
         ...current,
         query: response.normalizedQuery,
         page: 1,
@@ -309,6 +493,14 @@ export const DiscoveryExperience: React.FC = () => {
   };
 
   const resultCountLabel = `${searchData?.total || 0} results`;
+
+  const handleChangeQueryDraft = useCallback(
+    (next: string) => {
+      setQueryDraft(next);
+      updateFilters({ page: 1 });
+    },
+    [updateFilters],
+  );
 
   return (
     <div
@@ -376,12 +568,18 @@ export const DiscoveryExperience: React.FC = () => {
 
           <div className="mt-8 rounded-[24px] border border-white/10 bg-white/95 p-4 text-slate-900 shadow-xl">
             <SearchBar
-              value={filters.query}
+              value={queryDraft}
               suggestions={suggestions}
               resultCountLabel={resultCountLabel}
-              onChange={(query) => updateFilters({ query })}
-              onSubmit={(query) => updateFilters({ query })}
-              onSelectSuggestion={(query) => updateFilters({ query })}
+              onChange={handleChangeQueryDraft}
+              onSubmit={(query) => {
+                setQueryDraft(query);
+                updateFilters({ query, page: 1 });
+              }}
+              onSelectSuggestion={(query) => {
+                setQueryDraft(query);
+                updateFilters({ query, page: 1 });
+              }}
               onVoiceSearch={handleVoiceSearch}
             />
           </div>
@@ -439,6 +637,10 @@ export const DiscoveryExperience: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap gap-3">
+                  <SortDropdown
+                    value={filters.sortBy}
+                    onChange={(sortBy) => updateFilters({ sortBy, page: 1 })}
+                  />
                   <button
                     className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
                     disabled={isSavingSearch}
@@ -455,6 +657,21 @@ export const DiscoveryExperience: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {activeFilterChips.length > 0 ? (
+                <div className="mt-4">
+                  <ActiveFilters
+                    filters={activeFilterChips}
+                    onClearAll={resetFilters}
+                  />
+                </div>
+              ) : null}
+
+              <p aria-live="polite" role="status" className="sr-only">
+                {isLoadingSearch
+                  ? 'Loading search results'
+                  : `${searchData?.total ?? 0} results found for ${filters.query || 'all courses'}`}
+              </p>
 
               <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {isLoadingSearch
@@ -473,9 +690,25 @@ export const DiscoveryExperience: React.FC = () => {
               </div>
 
               {!isLoadingSearch && searchData?.results.length === 0 ? (
-                <div className="mt-6 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-600">
-                  No matches found. Try a broader query, remove a filter, or use
-                  voice search.
+                <div
+                  role="status"
+                  className="mt-6 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-600"
+                >
+                  <p className="text-base font-medium text-slate-700">
+                    No courses match your search
+                  </p>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Try a broader query, remove a filter, or use voice search.
+                  </p>
+                  {activeFilterChips.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      className="mt-4 rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-500 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                    >
+                      Clear all filters
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
