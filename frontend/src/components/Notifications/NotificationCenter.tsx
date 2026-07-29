@@ -1,9 +1,11 @@
-import React, { useEffect, useRef } from 'react';
-import { Bell, BellRing, Filter, Check, CheckCheck, Trash2, Settings, X } from 'lucide-react';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { Bell, BellRing, Filter, Check, CheckCheck, Trash2, Settings, X, Loader2 } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
 import NotificationItem from './NotificationItem';
 import PreferencesPanel from './PreferencesPanel';
 import { useFocusTrap } from '../../hooks/useKeyboardNavigation';
+
+const NOTIFICATIONS_PER_PAGE = 20;
 
 const NotificationCenter: React.FC = () => {
   const {
@@ -52,6 +54,24 @@ const NotificationCenter: React.FC = () => {
   ];
 
   const [showPreferences, setShowPreferences] = React.useState(false);
+  const [displayCount, setDisplayCount] = React.useState(NOTIFICATIONS_PER_PAGE);
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false);
+
+  // Reset display count when category changes
+  React.useEffect(() => {
+    setDisplayCount(NOTIFICATIONS_PER_PAGE);
+  }, [selectedCategory]);
+
+  // Paginate notifications
+  const displayedNotifications = notifications.slice(0, displayCount);
+  const hasMoreNotifications = notifications.length > displayCount;
+
+  const handleLoadOlder = useCallback(() => {
+    if (isLoadingMore) return;
+    setIsLoadingMore(true);
+    setDisplayCount((prev) => prev + NOTIFICATIONS_PER_PAGE);
+    setIsLoadingMore(false);
+  }, [isLoadingMore]);
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -183,16 +203,47 @@ const NotificationCenter: React.FC = () => {
                     </p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100">
-                    {notifications.map((notification) => (
-                      <NotificationItem
-                        key={notification.id}
-                        notification={notification}
-                        onMarkAsRead={markAsRead}
-                        onRemove={removeNotification}
-                      />
-                    ))}
-                  </div>
+                  <>
+                    <div className="divide-y divide-gray-100">
+                      {displayedNotifications.map((notification) => (
+                        <NotificationItem
+                          key={notification.id}
+                          notification={notification}
+                          onMarkAsRead={markAsRead}
+                          onRemove={removeNotification}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Load older notifications button */}
+                    {hasMoreNotifications && (
+                      <div className="px-4 py-3">
+                        <button
+                          onClick={handleLoadOlder}
+                          disabled={isLoadingMore}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 disabled:pointer-events-none disabled:opacity-50"
+                        >
+                          {isLoadingMore ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                              Loading older notifications…
+                            </>
+                          ) : (
+                            <>
+                              Load older notifications ({notifications.length - displayCount} remaining)
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* All notifications loaded indicator */}
+                    {!hasMoreNotifications && notifications.length > NOTIFICATIONS_PER_PAGE && (
+                      <div className="px-4 py-3 text-center text-xs text-gray-400">
+                        All {notifications.length} notifications loaded
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
