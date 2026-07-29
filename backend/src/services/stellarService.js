@@ -1,6 +1,14 @@
 const { Server, Networks, TransactionBuilder, Operation, Asset, Memo, MemoText } = require('@stellar/stellar-sdk');
 const { Contract } = require('soroban-client');
 const axios = require('axios');
+const { circuitBreakerRegistry } = require('../utils/circuitBreaker');
+
+// Create circuit breaker for Stellar Horizon API calls
+const stellarCircuitBreaker = circuitBreakerRegistry.getOrCreate('stellar', {
+  failureThreshold: 5,
+  timeoutWindow: 30000,
+  halfOpenMaxRequests: 3,
+});
 
 class StellarService {
   constructor() {
@@ -55,10 +63,10 @@ class StellarService {
 
   async getNetworkStatus() {
     try {
-      const [feeStats, latestLedger] = await Promise.all([
+      const [feeStats, latestLedger] = await stellarCircuitBreaker.execute(() => Promise.all([
         this.server.feeStats(),
         this.server.ledgers().order('desc').limit(1).call(),
-      ]);
+      ]));
 
       this.networkStats = {
         lastUpdate: new Date(),
@@ -320,7 +328,7 @@ class StellarService {
       }
 
       // Submit to network
-      const result = await this.server.submitTransaction(transaction);
+      const result = await stellarCircuitBreaker.execute(() => this.server.submitTransaction(transaction));
 
       return {
         hash: result.hash,
@@ -554,9 +562,9 @@ class StellarService {
 
   async monitorTransaction(hash) {
     try {
-      const transaction = await this.server.transactions()
+      const transaction = await stellarCircuitBreaker.execute(() => this.server.transactions()
         .transaction(hash)
-        .call();
+        .call());
 
       return {
         hash: transaction.hash,
@@ -577,11 +585,11 @@ class StellarService {
 
   async getAccountTransactions(accountAddress, limit = 10) {
     try {
-      const transactions = await this.server.transactions()
+      const transactions = await stellarCircuitBreaker.execute(() => this.server.transactions()
         .forAccount(accountAddress)
         .order('desc')
         .limit(limit)
-        .call();
+        .call());
 
       return transactions.records.map(tx => ({
         hash: tx.hash,
@@ -1090,3 +1098,4 @@ class StellarService {
 }
 
 module.exports = { StellarService };
+module.exports.stellarCircuitBreaker = stellarCircuitBreaker;

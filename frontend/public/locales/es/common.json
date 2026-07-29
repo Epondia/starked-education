@@ -339,5 +339,11 @@
     "github": "GitHub",
     "youtube": "YouTube",
     "medium": "Medium"
+  },
+  "languageSwitcher": {
+    "title": "Seleccione su idioma",
+    "subtitle": "Elija su idioma preferido para la mejor experiencia",
+    "searchPlaceholder": "Buscar idiomas...",
+    "ariaSelect": "Seleccionar idioma"
   }
 }

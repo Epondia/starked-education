@@ -210,6 +210,70 @@ const courseWriteLimiter = createRateLimiter({
   keyPrefix: 'rl:courses:write:',
 });
 
+// Issue #17: Endpoint-specific limiters per the security best-practice guidance.
+// Each feature uses an independent Redis key prefix so counters don't bleed.
+const loginLimiter = (() => {
+  const { keyPrefix, ...rest } = securityConfig.endpoints.login;
+  return createRateLimiter({
+    ...rest,
+    keyPrefix: 'rl:login:',
+    keyByUser: false,
+  });
+})();
+
+const registerLimiter = (() => {
+  const { keyPrefix, ...rest } = securityConfig.endpoints.register;
+  return createRateLimiter({
+    ...rest,
+    keyPrefix: 'rl:register:',
+    keyByUser: false,
+  });
+})();
+
+const paymentLimiter = (() => {
+  const { keyPrefix, ...rest } = securityConfig.endpoints.payment;
+  return createRateLimiter({
+    ...rest,
+    keyPrefix: 'rl:payment:',
+    keyByUser: true,
+  });
+})();
+
+// Admin endpoint-specific limit: authenticated admins get a generous limit;
+// anonymous traffic hitting the admin routes is met with a stricter limit.
+//
+// Note: There is also a role-based `adminLimiter` above used by
+// `tieredRateLimiter`. We deliberately give this limiter a different
+// Redis key prefix (`rl:admin:ep:`) so its counter is independent.
+const adminEndpointLimiter = (() => {
+  const { keyPrefix, ...rest } = securityConfig.endpoints.admin;
+  return createRateLimiter({
+    ...rest,
+    keyPrefix: 'rl:admin:ep:',
+    keyByUser: true,
+  });
+})();
+
+const adminAnonymousLimiter = (() => {
+  const { keyPrefix, ...rest } = securityConfig.endpoints.adminAnonymous;
+  return createRateLimiter({
+    ...rest,
+    keyPrefix: 'rl:admin:anon:',
+    keyByUser: false,
+  });
+})();
+
+/**
+ * Selects the right admin limiter based on request authentication.
+ * Authenticated admins get the higher tier; anonymous calls get the stricter one.
+ */
+const adminTierLimiter = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    return adminEndpointLimiter(req, res, next);
+  }
+  return adminAnonymousLimiter(req, res, next);
+};
+
 /**
  * Middleware to select rate limiter based on user role
  */
@@ -245,6 +309,13 @@ module.exports = {
   readLimiter,
   searchWriteLimiter,
   courseWriteLimiter,
+  // Issue #17: Endpoint-specific limiters.
+  loginLimiter,
+  registerLimiter,
+  paymentLimiter,
+  adminEndpointLimiter,
+  adminAnonymousLimiter,
+  adminTierLimiter,
   publicRateLimitTiers,
   createRateLimiter
 };
