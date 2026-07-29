@@ -117,6 +117,16 @@ impl Governance {
         quorum: i128,
     ) -> u64 {
         proposer.require_auth();
+
+        // Validate inputs before creating the proposal
+        Self::validate_proposal(
+            &env,
+            proposer.clone(),
+            title.clone(),
+            description.clone(),
+            voting_period,
+        );
+
         let count: u64 = env
             .storage()
             .instance()
@@ -144,6 +154,13 @@ impl Governance {
         env.storage()
             .instance()
             .set(&GovernanceDataKey::ProposalCount, &id);
+
+        // Store timestamp for duplicate-proposal cooldown tracking
+        env.storage().instance().set(
+            &GovernanceDataKey::ProposalByProposerTitle(proposer, title),
+            &start_time,
+        );
+
         id
     }
 
@@ -500,7 +517,6 @@ impl Governance {
         }
     }
 
-    #[allow(dead_code)]
     fn validate_proposal(
         env: &Env,
         proposer: Address,
