@@ -5,6 +5,8 @@ import {
   INotificationPreference,
 } from "../models/Notification";
 import { getWebsocketService } from "./websocketService";
+import { webhookService } from "./webhookService";
+import { WebhookEventType } from "../models/Webhook";
 import logger from "../utils/logger";
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
@@ -459,6 +461,23 @@ class NotificationService {
     }
 
     return { success: successCount, failed: failedCount };
+  }
+
+  // ─── Webhook event emission helper ─────────────────────────────────────────
+
+  /**
+   * Emit a webhook event for the given tenant (best-effort, never throws).
+   */
+  public async emitWebhookEvent(
+    tenantId: string,
+    eventType: WebhookEventType,
+    data: Record<string, any>,
+  ): Promise<void> {
+    try {
+      await webhookService.emitEvent(tenantId, eventType, data);
+    } catch (error) {
+      logger.error(`Failed to emit webhook event ${eventType}:`, error);
+    }
   }
 
   // Stub methods for controller compatibility
