@@ -120,10 +120,42 @@ setSyncWebsocketEmitter((userId, event, data) => {
   websocketService.emitToUser(userId, event, data);
 });
 
-// Middleware
-app.use(helmet());
+// ── Security Middleware Chain ────────────────────────────────────
+// Order matters: performance tracker wraps everything, then early
+// rejection layers (blacklist → ddos → bot → geo/time), then body
+// parsing, then sanitization.
+app.use(securityPerformanceTracker);      // Measure security overhead
+app.use(checkBlacklist);                   // Block known malicious IPs (Redis-backed)
+app.use(ddosProtection);                   // Rate-limit bursts per IP before they hit routes
+app.use(botDetection);                     // Block scrapers and malicious bots
+app.use(advancedRestrictions);             // Geo-fencing & maintenance windows
+
+// ── Security Headers ────────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: false,             // Delegated to our custom CSP middleware
+  crossOriginEmbedderPolicy: true,
+  crossOriginOpenerPolicy: { policy: 'same-origin' },
+  crossOriginResourcePolicy: { policy: 'same-origin' },
+  dnsPrefetchControl: { allow: false },
+  frameguard: { action: 'deny' },
+  hidePoweredBy: true,
+  hsts: {
+    maxAge: 31536000,                       // 1 year
+    includeSubDomains: true,
+    preload: true,
+  },
+  ieNoOpen: true,
+  noSniff: true,
+  originAgentCluster: true,
+  permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  xssFilter: true,
+}));
 app.use(contentSecurityPolicy());
 app.use(cors());
+
+// CSP violation endpoint — must be before body parsers so it reads
+// the raw `application/csp-report` content-type correctly.
 app.post(
   '/api/v1/security/csp-report',
   express.json({
@@ -132,12 +164,35 @@ app.post(
   }),
   cspViolationReporter
 );
+
+// Body parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Sanitize request bodies, query strings, and params after parsing
+app.use(requestSanitizer);
+
+// Response compression (gzip/brotli) — reduces bandwidth for JSON payloads
+app.use(compressionMiddleware);
 
 // Structured request/response logging middleware
 const requestLogger = require('./middleware/requestLogger');
 app.use(requestLogger);
+
+// Request timeout middleware (prevents long-running requests from
+// exhausting server resources — resolves Issue #190).
+const { requestTimeout } = require('./middleware/requestTimeout');
+app.use(requestTimeout({
+  defaultTimeoutMs: 30000,
+  uploadTimeoutMs: 120000,
+  skipPaths: ['/health', '/api/health'],
+}));
+
+// Audit logging middleware — logs all mutating requests for compliance
+// (Issue #205). Mount BEFORE routes so every request passes through.
+// Read-only GET/HEAD/OPTIONS are skipped internally.
+const { auditLogger } = require('./middleware/auditLogger');
+app.use(auditLogger);
 
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
 const healthRoutes = require('./routes/health').default || require('./routes/health');
@@ -155,11 +210,8 @@ app.use(versionExtractor);
 // Create versioned routers
 const v1Router = createVersionedRouter('v1');
 
-// Apply baseline global rate limiting to ALL v1 API routes
-// This ensures every endpoint has at least baseline protection
-// Routes with more specific limiters (auth, transactions, etc.) will have both applied
-// See docs/RATE_LIMITING.md for complete rate limit tiers and configuration
-v1Router.use(globalLimiter);
+// Global rate limiter is applied at the app level (app.use(globalLimiter) above)
+// so all v1 routes are already protected — no need for a second application here.
 
 // ── v1 API Routes ──────────────────────────────────────────────
 // All existing routes are mounted under /api/v1/
@@ -218,7 +270,7 @@ v1Router.use('/admin', adminRoutes);
 
 // Schemas helper for versioned responses
 const { createVersionedResponse } = require('./utils/schemas');
-const { errorHandler } = require('./middleware/errorHandler');
+const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { ValidationError } = require('./utils/errors');
 const { getCompressionStats } = require('./middleware/compression');
 
@@ -272,6 +324,14 @@ app.use('/api/v:version*', (req, res, next) => {
     next();
   }
 });
+
+// Audit logging middleware — logs all mutating requests for compliance
+// (Issue #205). Mount BEFORE routes so every request passes through.
+// Read-only GET/HEAD/OPTIONS are skipped internally.
+// (Duplicate of the earlier auditLogger, removed — already applied pre-routes.)
+
+// 404 handler — must be after all routes, before error handler
+app.use(notFoundHandler);
 
 // Global error handler - must be last
 app.use(errorHandler);
