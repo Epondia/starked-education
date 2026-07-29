@@ -1,15 +1,38 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec};
 
+/// Canonical event types emitted by this contract.
+///
+/// The indexer's TOPIC_TO_EVENT_TYPE map keys on the first two Soroban
+/// symbol_short values in each publish() call, so the symbol strings below
+/// are the authoritative source-of-truth for the off-chain mapping.
+///
+/// | Rust topic tuple                          | Off-chain key       | IndexedEventType     |
+/// |-------------------------------------------|---------------------|----------------------|
+/// | ("cred",    "issued")                     | cred:issued         | CredentialIssued     |
+/// | ("cred",    "revoked")                    | cred:revoked        | CredentialRevoked    |
+/// | ("course",  "created")                    | course:created      | CourseCreated        |
+/// | ("enroll",  "created")                    | enroll:created      | EnrollmentCreated    |
+/// | ("ach",     "minted")                     | ach:minted          | AchievementMinted    |
+/// | ("pay",     "received")                   | pay:received        | PaymentReceived      |
+/// | ("profile", "update")                     | profile:update      | ProfileUpdated       |
+///
+/// Legacy aliases preserved for backward compatibility (handled in the indexer):
+///   ("course", "completed") → EnrollmentCreated
+///   ("ach",    "earn")      → AchievementMinted
+
 #[contracttype]
 #[derive(Clone)]
 pub enum EventType {
     CourseCompletion,
     CredentialIssuance,
+    CredentialRevoked,
     CredentialRenewed,
     UserAchievement,
     ProfileUpdate,
     CourseEnrollment,
+    CourseCreated,
+    PaymentReceived,
 }
 
 // Marketplace-specific events
@@ -22,7 +45,6 @@ pub enum MarketplaceEvent {
     SaleCompleted,
     ListingCancelled,
 }
-
 
 #[contracttype]
 #[derive(Clone)]
@@ -59,7 +81,14 @@ impl EventLoggerContract {
         env.storage().instance().set(&EventKey::EventCount, &0u64);
     }
 
-    /// Log a course completion event
+    // ──────────────────────────────────────────────────────────────────────
+    // Event logging functions
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// Log a course completion / enrollment event.
+    ///
+    /// Emits topic: ("enroll", "created") with value (user, course_id, event_id)
+    /// Legacy alias ("course", "completed") is handled by the off-chain indexer.
     pub fn log_course_completion(
         env: Env,
         user: Address,
@@ -70,24 +99,26 @@ impl EventLoggerContract {
 
         let event_id = Self::create_event(
             env.clone(),
-            EventType::CourseCompletion,
+            EventType::CourseEnrollment,
             user.clone(),
-            Some(course_id),
+            Some(course_id.clone()),
             None,
             None,
             metadata,
         );
 
-        // Create notification for course completion
+        // Canonical topic for off-chain indexer
         env.events().publish(
-            (symbol_short!("course"), symbol_short!("completed")),
-            (user, event_id),
+            (symbol_short!("enroll"), symbol_short!("created")),
+            (user, course_id, event_id),
         );
 
         event_id
     }
 
-    /// Log a credential issuance event
+    /// Log a credential issuance event.
+    ///
+    /// Emits topic: ("cred", "issued") with value (user, credential_id, event_id)
     pub fn log_credential_issuance(
         env: Env,
         user: Address,
@@ -95,7 +126,7 @@ impl EventLoggerContract {
         course_id: String,
         metadata: String,
     ) -> u64 {
-        // In production, require admin auth
+        // Require admin/issuer auth in production deployments.
         // user.require_auth();
 
         let event_id = Self::create_event(
@@ -108,7 +139,6 @@ impl EventLoggerContract {
             metadata,
         );
 
-        // Create notification for credential issuance
         env.events().publish(
             (symbol_short!("cred"), symbol_short!("issued")),
             (user, credential_id, event_id),
@@ -117,7 +147,70 @@ impl EventLoggerContract {
         event_id
     }
 
-    /// Log a user achievement event
+    /// Log a credential revocation event.
+    ///
+    /// Emits topic: ("cred", "revoked") with value (user, credential_id, event_id)
+    pub fn log_credential_revocation(
+        env: Env,
+        revoker: Address,
+        credential_id: u64,
+        metadata: String,
+    ) -> u64 {
+        revoker.require_auth();
+
+        let event_id = Self::create_event(
+            env.clone(),
+            EventType::CredentialRevoked,
+            revoker.clone(),
+            None,
+            Some(credential_id),
+            None,
+            metadata,
+        );
+
+        env.events().publish(
+            (symbol_short!("cred"), symbol_short!("revoked")),
+            (revoker, credential_id, event_id),
+        );
+
+        event_id
+    }
+
+    /// Log a course creation event.
+    ///
+    /// Emits topic: ("course", "created") with value (creator, course_id, event_id)
+    pub fn log_course_created(
+        env: Env,
+        creator: Address,
+        course_id: String,
+        metadata: String,
+    ) -> u64 {
+        creator.require_auth();
+
+        let event_id = Self::create_event(
+            env.clone(),
+            EventType::CourseCreated,
+            creator.clone(),
+            Some(course_id.clone()),
+            None,
+            None,
+            metadata,
+        );
+
+        env.events().publish(
+            (symbol_short!("course"), symbol_short!("created")),
+            (creator, course_id, event_id),
+        );
+
+        event_id
+    }
+
+    /// Log a user achievement minting event.
+    ///
+    /// Emits topic: ("ach", "minted") with value (user, achievement_type, event_id)
+    ///
+    /// Note: the legacy topic ("ach", "earn") is still accepted by the off-chain
+    /// indexer for backward compatibility with old contract deployments.
     pub fn log_user_achievement(
         env: Env,
         user: Address,
@@ -132,20 +225,52 @@ impl EventLoggerContract {
             user.clone(),
             None,
             None,
-            Some(achievement_type),
+            Some(achievement_type.clone()),
             metadata,
         );
 
-        // Create notification for achievement
+        // Canonical topic ("ach", "minted") – matches IndexedEventType::AchievementMinted
         env.events().publish(
-            (symbol_short!("ach"), symbol_short!("earn")),
-            (user, event_id),
+            (symbol_short!("ach"), symbol_short!("minted")),
+            (user, achievement_type, event_id),
         );
 
         event_id
     }
 
-    /// Log a profile update event
+    /// Log a payment received event.
+    ///
+    /// Emits topic: ("pay", "received") with value (payer, course_id, amount, event_id)
+    pub fn log_payment_received(
+        env: Env,
+        payer: Address,
+        course_id: String,
+        amount: i128,
+        metadata: String,
+    ) -> u64 {
+        payer.require_auth();
+
+        let event_id = Self::create_event(
+            env.clone(),
+            EventType::PaymentReceived,
+            payer.clone(),
+            Some(course_id.clone()),
+            None,
+            None,
+            metadata,
+        );
+
+        env.events().publish(
+            (symbol_short!("pay"), symbol_short!("received")),
+            (payer, course_id, amount, event_id),
+        );
+
+        event_id
+    }
+
+    /// Log a profile update event.
+    ///
+    /// Emits topic: ("profile", "update") with value (user, event_id)
     pub fn log_profile_update(env: Env, user: Address, metadata: String) -> u64 {
         user.require_auth();
 
@@ -159,10 +284,18 @@ impl EventLoggerContract {
             metadata,
         );
 
+        // Was missing in the original – now emits a consistently named event
+        env.events().publish(
+            (symbol_short!("profile"), symbol_short!("update")),
+            (user, event_id),
+        );
+
         event_id
     }
 
-    /// Log a course enrollment event
+    /// Log a course enrollment event.
+    ///
+    /// Emits topic: ("enroll", "created") with value (user, course_id, event_id)
     pub fn log_course_enrollment(
         env: Env,
         user: Address,
@@ -175,14 +308,24 @@ impl EventLoggerContract {
             env.clone(),
             EventType::CourseEnrollment,
             user.clone(),
-            Some(course_id),
+            Some(course_id.clone()),
             None,
             None,
             metadata,
         );
 
+        // Was missing event emission in the original contract
+        env.events().publish(
+            (symbol_short!("enroll"), symbol_short!("created")),
+            (user, course_id, event_id),
+        );
+
         event_id
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Query functions
+    // ──────────────────────────────────────────────────────────────────────
 
     /// Get event by ID
     pub fn get_event(env: Env, event_id: u64) -> Option<EventLog> {
@@ -263,7 +406,10 @@ impl EventLoggerContract {
             .unwrap_or(0)
     }
 
-    /// Internal helper to create and store events
+    // ──────────────────────────────────────────────────────────────────────
+    // Internal helpers
+    // ──────────────────────────────────────────────────────────────────────
+
     fn create_event(
         env: Env,
         event_type: EventType,

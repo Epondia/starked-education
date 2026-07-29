@@ -31,6 +31,8 @@ const { checkRedisConnectivity } = require('../config/redis');
 
 // Elasticsearch check
 import ElasticsearchService from '../services/search/ElasticsearchService';
+import { getIndexerStatus } from '../services/eventIndexer';
+import { IndexerStatus } from '../models/IndexedEvent';
 
 // Circuit breaker metrics
 const { circuitBreakerRegistry } = require('../utils/circuitBreaker');
@@ -134,7 +136,6 @@ async function checkAllDependencies() {
 
   return { postgres, redis, stellar, ipfs, elasticsearch };
 }
-
 /**
  * Critical dependencies: failure of any of these indicates the service cannot
  * reliably perform its core functions, so the aggregate status is "unhealthy".
@@ -224,8 +225,13 @@ router.get('/', async (req: Request, res: Response) => {
 
     const memory = process.memoryUsage();
 
-    // Get circuit breaker states
-    const circuitBreakers = circuitBreakerRegistry ? circuitBreakerRegistry.getStates() : {};
+    // Safely read the event indexer status (may not be initialised yet)
+    let indexerStatus: Partial<IndexerStatus> = { status: 'stopped' };
+    try {
+      indexerStatus = getIndexerStatus();
+    } catch {
+      // Indexer not yet initialised – report as stopped
+    }
 
     res.status(200).json({
       status: aggregateStatus(dependencies),
@@ -238,7 +244,14 @@ router.get('/', async (req: Request, res: Response) => {
         heapTotal: memory.heapTotal,
         rss: memory.rss
       },
-      circuitBreakers,
+      eventIndexer: {
+        status:          indexerStatus.status ?? 'stopped',
+        lastLedger:      indexerStatus.lastLedger ?? 0,
+        eventsProcessed: indexerStatus.eventsProcessed ?? 0,
+        lag:             indexerStatus.lag ?? 0,
+        ...(indexerStatus.errorMessage && { errorMessage: indexerStatus.errorMessage }),
+        ...(indexerStatus.startedAt && { startedAt: indexerStatus.startedAt }),
+      },
       dependencies: Object.fromEntries(
         Object.entries(dependencies).map(([key, value]) => {
           const dep = value as DependencyHealth;
@@ -278,7 +291,7 @@ router.get('/', async (req: Request, res: Response) => {
         heapTotal: 0,
         rss: 0
       },
-      circuitBreakers: circuitBreakerRegistry ? circuitBreakerRegistry.getStates() : {},
+      eventIndexer: { status: 'stopped', lastLedger: 0, eventsProcessed: 0, lag: 0 },
       dependencies: {
         postgres: { status: 'unhealthy', latencyMs: 0, error: 'Check failed' },
         redis: { status: 'unhealthy', latencyMs: 0, error: 'Check failed' },

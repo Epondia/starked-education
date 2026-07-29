@@ -19,6 +19,10 @@ const transactionProcessor = require('./workers/transactionProcessor');
 const transactionEvents = require('./events/transactionEvents');
 const emailWorker = require('./workers/emailWorker');
 
+// Event Indexer – polls Soroban for on-chain events and syncs them to PostgreSQL
+let eventIndexerInstance = null;
+const EVENT_INDEXER_ENABLED = process.env.EVENT_INDEXER_ENABLED === 'true';
+
 // Import security middleware
 const {
   securityPerformanceTracker,
@@ -216,21 +220,45 @@ v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
 const adminRoutes = require('./routes/admin');
 v1Router.use('/admin', adminRoutes);
 
-// Schemas helper for versioned responses
-const { createVersionedResponse } = require('./utils/schemas');
-const { errorHandler } = require('./middleware/errorHandler');
-const { ValidationError } = require('./utils/errors');
-const { getCompressionStats } = require('./middleware/compression');
+// Event Indexer admin routes (start / stop / status)
+const indexerAdminRouter = require('express').Router();
 
-// Health check under v1 for OpenAPI spec compatibility
-v1Router.get('/health', (req, res) => {
-  const version = req.apiVersion || 'v1';
-  res.json(createVersionedResponse({
-    status: 'healthy',
-    uptime: process.uptime(),
-    supportedVersions: SUPPORTED_VERSIONS,
-  }, version));
+indexerAdminRouter.get('/status', (req, res) => {
+  try {
+    const { getIndexerStatus } = require('./services/eventIndexer');
+    res.json({ eventIndexer: getIndexerStatus() });
+  } catch (err) {
+    res.json({ eventIndexer: { status: 'stopped', error: err.message } });
+  }
 });
+
+indexerAdminRouter.post('/start', async (req, res) => {
+  try {
+    if (!eventIndexerInstance) {
+      return res.status(400).json({ error: 'Indexer not initialized' });
+    }
+    await eventIndexerInstance.start();
+    const { getIndexerStatus } = require('./services/eventIndexer');
+    res.json({ message: 'Indexer started', status: getIndexerStatus() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+indexerAdminRouter.post('/stop', async (req, res) => {
+  try {
+    if (!eventIndexerInstance) {
+      return res.status(400).json({ error: 'Indexer not initialized' });
+    }
+    await eventIndexerInstance.stop();
+    const { getIndexerStatus } = require('./services/eventIndexer');
+    res.json({ message: 'Indexer stopped', status: getIndexerStatus() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+v1Router.use('/indexer', require('./middleware/auth').requireAdmin, indexerAdminRouter);
 
 // Mount v1 router at /api/v1
 app.use('/api/v1', v1Router);
@@ -304,6 +332,27 @@ async function startServer() {
     await transactionEvents.startListening();
     emailWorker.getEmailWorker().start();
 
+    // Start the event indexer if enabled
+    if (EVENT_INDEXER_ENABLED) {
+      try {
+        const { Pool } = require('pg');
+        const { getEventIndexer } = require('./services/eventIndexer');
+        const indexerPool = new Pool({
+          connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/starked',
+          max: 5, // dedicated small pool for the indexer
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 5000,
+        });
+        eventIndexerInstance = getEventIndexer(indexerPool);
+        await eventIndexerInstance.start();
+        console.log('🔗 Event Indexer started – polling Soroban for on-chain events');
+      } catch (indexerErr) {
+        console.error('⚠️  Event Indexer failed to start (non-fatal):', indexerErr.message);
+      }
+    } else {
+      console.log('ℹ️  Event Indexer disabled. Set EVENT_INDEXER_ENABLED=true to enable.');
+    }
+
     server.listen(PORT, () => {
       console.log(`🚀 StarkEd Education Backend running on port ${PORT}`);
       console.log(`📚 Quiz Management API available at /api/v1/quizzes`);
@@ -317,6 +366,7 @@ async function startServer() {
       console.log(`🌐 Federated Learning API available at /api/v1/federated-learning`);
       console.log(`🧠 AGI Tutor API available at /api/v1/agi-tutor`);
       console.log(`🔐 Quantum-Resistant Secure Communication API available at /api/v1/secure-comm`);
+      console.log(`🔗 Event Indexer API    available at /api/v1/indexer (admin-only)`);
       console.log(`🏥 Health check available at /api/health`);
       console.log(`✅ Transaction Queue System initialized successfully`);
     });
@@ -328,7 +378,14 @@ async function startServer() {
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
-  emailWorker.getEmailWorker().stop();
+  if (eventIndexerInstance) {
+    try {
+      await eventIndexerInstance.stop();
+      console.log('Event Indexer stopped cleanly.');
+    } catch (err) {
+      console.error('Error stopping event indexer:', err.message);
+    }
+  }
   await transactionQueue.stopProcessing();
   await transactionProcessor.stop();
   await transactionEvents.stopListening();
