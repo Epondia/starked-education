@@ -1,7 +1,7 @@
-const { createServer } = require('http');
 const express = require('express');
-const cors = require('cors');
 const helmet = require('helmet');
+const cors = require('cors');
+const { createServer } = require('http');
 const dotenv = require('dotenv');
 
 const { connectRedis } = require('./utils/redis');
@@ -30,6 +30,11 @@ const {
 } = require('./middleware/security');
 const { globalLimiter } = require('./middleware/rateLimiter');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  contentSecurityPolicy,
+  cspViolationReporter
+} = require('./middleware/contentSecurityPolicy');
 
 // Import compression middleware
 const { compressionMiddleware } = require('./middleware/compression');
@@ -94,9 +99,8 @@ const agiTutorRoutes = resolveRoute(require('./routes/agiTutorRoutes'));
 // Analytics routes
 const analyticsRoutes = require('./routes/analytics');
 
-// Initialize Swagger UI
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./config/swagger');
+// Swagger documentation
+const { setupSwagger } = require('./docs/swagger');
 
 // Initialize Express app
 const app = express();
@@ -118,35 +122,22 @@ setSyncWebsocketEmitter((userId, event, data) => {
 
 // Middleware
 app.use(helmet());
+app.use(contentSecurityPolicy());
 app.use(cors());
-
-// Response compression - early in pipeline to compress all outgoing responses
-app.use(compressionMiddleware());
-
+app.post(
+  '/api/v1/security/csp-report',
+  express.json({
+    limit: '16kb',
+    type: ['application/csp-report', 'application/reports+json', 'application/json']
+  }),
+  cspViolationReporter
+);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Structured request/response logging middleware
 const requestLogger = require('./middleware/requestLogger');
 app.use(requestLogger);
-
-// Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  explorer: true,
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'StarkEd API Documentation',
-  swaggerOptions: {
-    persistAuthorization: true,
-    displayRequestDuration: true,
-    filter: true,
-  },
-}));
-
-// Serve raw OpenAPI spec as JSON
-app.get('/api-docs.json', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerSpec);
-});
 
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
 const healthRoutes = require('./routes/health').default || require('./routes/health');
@@ -225,9 +216,21 @@ v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
 const adminRoutes = require('./routes/admin');
 v1Router.use('/admin', adminRoutes);
 
-// Admin jobs monitoring dashboard (email queue + worker stats for #178)
-const adminJobsRoutes = resolveRoute(require('./routes/admin/jobs'));
-v1Router.use('/admin/jobs', adminJobsRoutes);
+// Schemas helper for versioned responses
+const { createVersionedResponse } = require('./utils/schemas');
+const { errorHandler } = require('./middleware/errorHandler');
+const { ValidationError } = require('./utils/errors');
+const { getCompressionStats } = require('./middleware/compression');
+
+// Health check under v1 for OpenAPI spec compatibility
+v1Router.get('/health', (req, res) => {
+  const version = req.apiVersion || 'v1';
+  res.json(createVersionedResponse({
+    status: 'healthy',
+    uptime: process.uptime(),
+    supportedVersions: SUPPORTED_VERSIONS,
+  }, version));
+});
 
 // Mount v1 router at /api/v1
 app.use('/api/v1', v1Router);
@@ -235,12 +238,6 @@ app.use('/api/v1', v1Router);
 // Mount v2 router (empty — ready for future endpoints)
 const v2Router = createVersionedRouter('v2');
 app.use('/api/v2', v2Router);
-
-// Schemas helper for versioned responses
-const { createVersionedResponse } = require('./utils/schemas');
-const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
-const { ValidationError } = require('./utils/errors');
-const { getCompressionStats } = require('./middleware/compression');
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -251,6 +248,9 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Swagger API documentation
+setupSwagger(app, DEFAULT_VERSION);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -272,10 +272,6 @@ app.use('/api/v:version*', (req, res, next) => {
     next();
   }
 });
-
-// Global error handler
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', { error: err.message, stack: err.stack, requestId: req.requestId });
 
 // Global error handler - must be last
 app.use(errorHandler);

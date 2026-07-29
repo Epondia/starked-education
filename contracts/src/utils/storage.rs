@@ -215,7 +215,7 @@ impl StorageUtils {
             .storage()
             .instance()
             .get(&key)
-            .unwrap_or_else(|| Vec::new(env));
+            .unwrap_or_else(|| Vec::new(&env));
 
         if !list.contains(&id) {
             list.push_back(id);

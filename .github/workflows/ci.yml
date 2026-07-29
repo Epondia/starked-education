@@ -30,6 +30,26 @@ jobs:
         continue-on-error: true
         run: cd contracts && cargo test
 
+      - name: Run gas benchmarks
+        run: cd contracts && cargo test bench_ -- --nocapture
+
+      - name: Generate gas report artifact
+        if: always()
+        run: |
+          echo "=== StarkEd Contracts Gas Report ===" > contracts/gas-report.txt
+          echo "Generated: $(date -u)" >> contracts/gas-report.txt
+          echo "Commit: ${{ github.sha }}" >> contracts/gas-report.txt
+          cd contracts && cargo test bench_gas_report -- --nocapture 2>&1 | tee -a gas-report.txt
+        continue-on-error: true
+
+      - name: Upload gas report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gas-report
+          path: contracts/gas-report.txt
+        continue-on-error: true
+
   # ─── Backend ─────────────────────────────────────────────────────
   backend:
     name: Backend
@@ -172,6 +192,62 @@ jobs:
       - name: Audit contract dependencies
         continue-on-error: true
         run: cd contracts && cargo audit
+
+  # ─── Gas Comparison (PR vs main) ─────────────────────────────────
+  gas-comparison:
+    name: Gas Comparison
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - uses: actions/checkout@v4
+        with:
+          path: pr
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Run benchmarks on base (main)
+        run: |
+          cd base/contracts
+          cargo test bench_ -- --nocapture 2>&1 | tee ../base-gas.txt
+        continue-on-error: true
+
+      - name: Run benchmarks on PR
+        run: |
+          cd pr/contracts
+          cargo test bench_ -- --nocapture 2>&1 | tee ../pr-gas.txt
+        continue-on-error: true
+
+      - name: Compare gas reports
+        run: |
+          echo "### Gas Comparison Report" >> $GITHUB_STEP_SUMMARY
+          echo "| Operation | Base (main) | PR | Change |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------------|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| (see artifacts) | - | - | - |" >> $GITHUB_STEP_SUMMARY
+        continue-on-error: true
+
+      - name: Upload base gas report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gas-report-base
+          path: base/contracts/base-gas.txt
+        continue-on-error: true
+
+      - name: Upload PR gas report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gas-report-pr
+          path: pr/contracts/pr-gas.txt
+        continue-on-error: true
 
   # ─── Security Scan ───────────────────────────────────────────────
   security-scan:

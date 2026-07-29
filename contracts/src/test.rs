@@ -180,6 +180,7 @@ fn test_cross_chain_proof_invalidated_on_revocation() {
 #[test]
 fn test_cross_chain_proof_hash_integrity() {
     let env = Env::default();
+    env.mock_all_auths();
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
     let relayer = Address::generate(&env);
