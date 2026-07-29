@@ -23,11 +23,9 @@ jobs:
           toolchain: 1.85.0
 
       - name: Build contracts
-        continue-on-error: true
         run: cd contracts && cargo build --lib
 
       - name: Run contract tests
-        continue-on-error: true
         run: cd contracts && cargo test
 
       - name: Run gas benchmarks
@@ -86,6 +84,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
         uses: nick-fields/retry@v3
@@ -96,14 +96,13 @@ jobs:
           command: cd backend && npm ci
 
       - name: Type check
-        run: cd backend && npx tsc --noEmit
+        run: cd backend && npm run typecheck
 
       - name: Lint
         continue-on-error: true
         run: cd backend && npm run lint
 
       - name: Test
-        continue-on-error: true
         timeout-minutes: 10
         run: cd backend && npm run test:ci
         env:
@@ -126,6 +125,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         uses: nick-fields/retry@v3
@@ -137,19 +138,17 @@ jobs:
 
       - name: Type check
         continue-on-error: true
-        run: cd frontend && npx tsc --noEmit
+        run: cd frontend && npm run type-check
 
       - name: Lint
         continue-on-error: true
         run: cd frontend && npm run lint
 
       - name: Test
-        continue-on-error: true
         timeout-minutes: 10
         run: cd frontend && npm run test:ci
 
       - name: Build
-        continue-on-error: true
         timeout-minutes: 15
         run: cd frontend && NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
@@ -165,6 +164,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
 
       - name: Audit backend dependencies (high/critical)
         continue-on-error: true
@@ -211,7 +211,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: 1.85.0
 
       - name: Run benchmarks on base (main)
         run: |
