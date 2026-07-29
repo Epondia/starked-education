@@ -1,5 +1,6 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec};
+use soroban_sdk::xdr::ToXdr;
 
 pub mod governance;
 #[cfg(test)]
@@ -63,7 +64,7 @@ pub struct Credential {
 
 /// Credential status for cross-chain verification
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CredentialStatus {
     Active = 0,
     Expired = 1,
@@ -526,19 +527,20 @@ mod test {
         let admin = Address::generate(&env);
         let recipient = Address::generate(&env);
 
-        let contract_id = env.register(StarkEdContract, ());
+        let contract_id = env.register_contract(None, StarkEdContract);
         let client = StarkEdContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);
 
         // Issue 5 credentials
+        let course_names = ["course-0", "course-1", "course-2", "course-3", "course-4"];
         let mut ids = Vec::new(&env);
-        for i in 0..5u64 {
+        for name in course_names.iter() {
             let id = client.issue_credential(
                 &admin,
                 &recipient,
                 &String::from_str(&env, "Test Course"),
-                &String::from_str(&env, format!("course-{}", i).as_str()),
+                &String::from_str(&env, name),
                 &String::from_str(&env, "ipfs://test"),
             );
             ids.push_back(id);
@@ -561,7 +563,7 @@ mod test {
         let admin = Address::generate(&env);
         let recipient = Address::generate(&env);
 
-        let contract_id = env.register(StarkEdContract, ());
+        let contract_id = env.register_contract(None, StarkEdContract);
         let client = StarkEdContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);
@@ -591,16 +593,20 @@ mod test {
         let results = client.verify_credentials_batch(&ids);
         assert_eq!(results.len(), 4);
 
-        // Collect results for indexed access
-        let result_vec: std::vec::Vec<BatchVerificationResult> = results.iter().collect();
-        assert!(result_vec[0].verified);
-        assert_eq!(result_vec[0].credential_id, id1);
-        assert!(result_vec[1].verified);
-        assert_eq!(result_vec[1].credential_id, id2);
-        assert!(!result_vec[2].verified);
-        assert_eq!(result_vec[2].credential_id, 9999);
-        assert!(!result_vec[3].verified);
-        assert_eq!(result_vec[3].credential_id, 8888);
+        // Verify each result individually, checking by credential_id
+        for result in results.iter() {
+            if result.credential_id == id1 {
+                assert!(result.verified);
+            } else if result.credential_id == id2 {
+                assert!(result.verified);
+            } else if result.credential_id == 9999 {
+                assert!(!result.verified);
+            } else if result.credential_id == 8888 {
+                assert!(!result.verified);
+            } else {
+                panic!("unexpected credential_id in batch result");
+            }
+        }
     }
 
     #[test]
@@ -610,7 +616,7 @@ mod test {
 
         let admin = Address::generate(&env);
 
-        let contract_id = env.register(StarkEdContract, ());
+        let contract_id = env.register_contract(None, StarkEdContract);
         let client = StarkEdContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);
@@ -629,19 +635,24 @@ mod test {
         let admin = Address::generate(&env);
         let recipient = Address::generate(&env);
 
-        let contract_id = env.register(StarkEdContract, ());
+        let contract_id = env.register_contract(None, StarkEdContract);
         let client = StarkEdContractClient::new(&env, &contract_id);
 
         client.initialize(&admin);
 
         // Issue 20 credentials
-        let mut all_ids: Vec<u64> = Vec::new(&env);
-        for i in 0..20u64 {
+        let course_names: [&str; 20] = [
+            "c-0", "c-1", "c-2", "c-3", "c-4", "c-5", "c-6", "c-7",
+            "c-8", "c-9", "c-10", "c-11", "c-12", "c-13", "c-14",
+            "c-15", "c-16", "c-17", "c-18", "c-19",
+        ];
+        let mut all_ids = Vec::new(&env);
+        for name in course_names.iter() {
             let id = client.issue_credential(
                 &admin,
                 &recipient,
                 &String::from_str(&env, "Test"),
-                &String::from_str(&env, format!("c-{}", i).as_str()),
+                &String::from_str(&env, name),
                 &String::from_str(&env, "ipfs://t"),
             );
             all_ids.push_back(id);
