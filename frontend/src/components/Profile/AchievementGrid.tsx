@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { Loader2 } from 'lucide-react';
 
 export interface Achievement {
   id: string;
@@ -10,9 +11,15 @@ export interface Achievement {
   requirement: string;
 }
 
+const DEFAULT_PAGE_SIZE = 12;
+
 interface AchievementGridProps {
   achievements: Achievement[];
   newAchievements?: string[];
+  /** Enable infinite scroll pagination */
+  paginate?: boolean;
+  /** Page size (default: 12) */
+  pageSize?: number;
 }
 
 const rarityColors: Record<
@@ -44,10 +51,16 @@ const rarityColors: Record<
 export function AchievementGrid({
   achievements,
   newAchievements = [],
+  paginate = false,
+  pageSize = DEFAULT_PAGE_SIZE,
 }: AchievementGridProps) {
   const [animatingIds, setAnimatingIds] = useState<Set<string>>(
     new Set(newAchievements),
   );
+  const [visibleEarnedCount, setVisibleEarnedCount] = useState(pageSize);
+  const [visibleLockedCount, setVisibleLockedCount] = useState(pageSize);
+  const [isLoadingMoreEarned, setIsLoadingMoreEarned] = useState(false);
+  const [isLoadingMoreLocked, setIsLoadingMoreLocked] = useState(false);
 
   useEffect(() => {
     if (newAchievements.length > 0) {
@@ -61,6 +74,32 @@ export function AchievementGrid({
 
   const earnedAchievements = achievements.filter((a) => a.earnedDate);
   const lockedAchievements = achievements.filter((a) => !a.earnedDate);
+
+  // Paginated versions
+  const paginatedEarned = paginate ? earnedAchievements.slice(0, visibleEarnedCount) : earnedAchievements;
+  const paginatedLocked = paginate ? lockedAchievements.slice(0, visibleLockedCount) : lockedAchievements;
+  const hasMoreEarned = paginate && visibleEarnedCount < earnedAchievements.length;
+  const hasMoreLocked = paginate && visibleLockedCount < lockedAchievements.length;
+
+  const loadMoreEarned = useCallback(() => {
+    if (isLoadingMoreEarned) return;
+    setIsLoadingMoreEarned(true);
+    setVisibleEarnedCount((prev) => prev + pageSize);
+    setIsLoadingMoreEarned(false);
+  }, [isLoadingMoreEarned, pageSize]);
+
+  const loadMoreLocked = useCallback(() => {
+    if (isLoadingMoreLocked) return;
+    setIsLoadingMoreLocked(true);
+    setVisibleLockedCount((prev) => prev + pageSize);
+    setIsLoadingMoreLocked(false);
+  }, [isLoadingMoreLocked, pageSize]);
+
+  // Reset visible counts when achievements change
+  useEffect(() => {
+    setVisibleEarnedCount(pageSize);
+    setVisibleLockedCount(pageSize);
+  }, [achievements, pageSize]);
 
   return (
     <div className="w-full space-y-8">
@@ -114,7 +153,7 @@ export function AchievementGrid({
             Earned Achievements ({earnedAchievements.length})
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {earnedAchievements.map((achievement) => {
+            {paginatedEarned.map((achievement) => {
               const colors = rarityColors[achievement.rarity];
               const isAnimating = animatingIds.has(achievement.id);
 
@@ -156,6 +195,35 @@ export function AchievementGrid({
               );
             })}
           </div>
+
+          {/* Load more button for earned achievements */}
+          {hasMoreEarned && (
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={loadMoreEarned}
+                disabled={isLoadingMoreEarned}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                {isLoadingMoreEarned ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Loading…
+                  </>
+                ) : (
+                  <>
+                    Show more achievements ({earnedAchievements.length - paginatedEarned.length} remaining)
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* End of list message */}
+          {!hasMoreEarned && paginate && earnedAchievements.length > pageSize && (
+            <p className="mt-6 text-center text-sm text-slate-400 dark:text-slate-500">
+              Showing all {earnedAchievements.length} earned achievements
+            </p>
+          )}
         </div>
       )}
 
@@ -166,7 +234,7 @@ export function AchievementGrid({
             Locked Achievements ({lockedAchievements.length})
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {lockedAchievements.map((achievement) => (
+            {paginatedLocked.map((achievement) => (
               <div
                 key={achievement.id}
                 className="relative rounded-lg p-6 border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/50 dark:bg-slate-800/30 opacity-60 transition-all duration-300 hover:opacity-80 cursor-pointer group"
@@ -194,6 +262,28 @@ export function AchievementGrid({
               </div>
             ))}
           </div>
+
+          {/* Load more button for locked achievements */}
+          {hasMoreLocked && (
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={loadMoreLocked}
+                disabled={isLoadingMoreLocked}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                {isLoadingMoreLocked ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Loading…
+                  </>
+                ) : (
+                  <>
+                    Show more ({lockedAchievements.length - paginatedLocked.length} remaining)
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
