@@ -206,7 +206,7 @@ const nextConfig = {
   },
   i18n: {
     ...i18n,
-    localeDetection: true,
+    localeDetection: false,
   },
   async rewrites() {
     return [
