@@ -14,6 +14,9 @@ pub mod marketplace;
 #[cfg(test)]
 pub mod marketplace_test;
 pub mod utils;
+pub mod credential_registry;
+#[cfg(test)]
+mod credential_registry_test;
 
 /// Core storage keys
 #[contracttype]
