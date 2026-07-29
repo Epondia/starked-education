@@ -3,6 +3,8 @@ import { useBiometrics } from '../../hooks/useBiometrics';
 import { motion } from 'framer-motion';
 import { Wind, ShieldCheck, Heart } from 'lucide-react';
 
+const breathingPulseTransition: { repeat: number; duration: number; ease: string } = { repeat: Infinity, duration: 4, ease: "easeInOut" };
+
 export const BioFeedbackModule: React.FC = () => {
   const { biometrics, simulateEvent, triggerHaptic } = useBiometrics();
   const [phase, setPhase] = useState<'idle' | 'breathing' | 'success'>('idle');
@@ -62,7 +64,7 @@ export const BioFeedbackModule: React.FC = () => {
           <div className="relative">
             <motion.div
               animate={{ scale: [1, 1.5, 1] }}
-              transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+              transition={breathingPulseTransition}
               className="w-32 h-32 bg-indigo-500/30 rounded-full flex items-center justify-center"
             />
             <div className="absolute inset-0 flex items-center justify-center">
