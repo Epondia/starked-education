@@ -500,6 +500,7 @@ impl Governance {
         }
     }
 
+    #[allow(dead_code)]
     fn validate_proposal(
         env: &Env,
         proposer: Address,
