@@ -908,41 +908,21 @@ export const markAsReadSchema: ValidationSchema = {
 };
 
 export const markAllAsReadSchema: ValidationSchema = {
-  body: Joi.object({
-    userId: Joi.string()
-      .trim()
-      .min(1)
-      .required()
-      .messages({ "any.required": '"userId" is required' }),
-  }),
+  // userId is obtained from the authenticated request (req.user.id)
 };
 
 export const updatePreferencesSchema: ValidationSchema = {
-  params: Joi.object({
-    userId: Joi.string().trim().min(1).required(),
-  }),
   body: Joi.object({
     emailNotifications: Joi.boolean().optional(),
     pushNotifications: Joi.boolean().optional(),
     inAppNotifications: Joi.boolean().optional(),
-    digestFrequency: Joi.string().valid("daily", "weekly", "never").optional(),
-    quietHoursStart: Joi.string()
-      .regex(/^\d{2}:\d{2}$/)
-      .optional(),
-    quietHoursEnd: Joi.string()
-      .regex(/^\d{2}:\d{2}$/)
-      .optional(),
-  })
-    .min(1)
-    .messages({
-      "object.min": "At least one preference field must be provided",
-    }),
+    digestFrequency: Joi.string().valid('daily', 'weekly', 'never').optional(),
+    quietHoursStart: Joi.string().regex(/^\d{2}:\d{2}$/).optional(),
+    quietHoursEnd: Joi.string().regex(/^\d{2}:\d{2}$/).optional(),
+  }).min(1).unknown(false).messages({ 'object.min': 'At least one preference field must be provided' }),
 };
 
 export const getNotificationsSchema: ValidationSchema = {
-  params: Joi.object({
-    userId: Joi.string().trim().min(1).required(),
-  }),
   query: Joi.object({
     page: Joi.number().integer().min(1).optional(),
     limit: Joi.number().integer().min(1).max(100).optional(),
