@@ -3,9 +3,8 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { GlobalShell } from '@/components/PWA/GlobalShell';
-import { Breadcrumb } from '@/components/Breadcrumb';
-import { OrganizationJsonLd } from '@/components/SEO';
-import { createMetadata } from '@/lib/seo';
+import { CommandPalette } from '@/components/ui/command-palette';
+import { OnboardingGate } from '@/components/onboarding/OnboardingWizard';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -56,11 +55,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider>
           <GlobalShell />
-          <OrganizationJsonLd />
-          <div className="mx-auto w-full max-w-7xl px-4 pt-4">
-            <Breadcrumb />
-          </div>
-          {children}
+          <OnboardingGate>{children}</OnboardingGate>
         </ThemeProvider>
       </body>
     </html>
