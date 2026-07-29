@@ -23,11 +23,9 @@ jobs:
           toolchain: 1.85.0
 
       - name: Build contracts
-        continue-on-error: true
         run: cd contracts && cargo build --lib
 
       - name: Run contract tests
-        continue-on-error: true
         run: cd contracts && cargo test
 
       - name: Run gas benchmarks
@@ -213,7 +211,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: 1.85.0
 
       - name: Run benchmarks on base (main)
         run: |
