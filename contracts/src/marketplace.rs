@@ -1,7 +1,6 @@
-#![no_std]
 use crate::utils::storage::{PackedTimestamps, StorageKey, StorageUtils};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec, U256,
+    contract, contractimpl, contracttype, symbol_short, Address, Env, String,
 };
 
 #[contracttype]

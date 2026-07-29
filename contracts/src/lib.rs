@@ -1,5 +1,6 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol};
+use soroban_sdk::xdr::ToXdr;
 
 pub mod governance;
 #[cfg(test)]
@@ -63,7 +64,7 @@ pub struct Credential {
 
 /// Credential status for cross-chain verification
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CredentialStatus {
     Active = 0,
     Expired = 1,

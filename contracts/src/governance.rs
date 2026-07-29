@@ -159,7 +159,7 @@ impl Governance {
         per_recipient: i128,
         max_recipients: u32,
         eligibility: EligibilityCriteria,
-        application_window: u64, // seconds after execution during which students can apply
+        _application_window: u64, // seconds after execution during which students can apply
     ) -> u64 {
         if per_recipient <= 0 || total_amount < per_recipient as i128 {
             panic!("Invalid scholarship amounts");
@@ -459,7 +459,7 @@ impl Governance {
             .set(&GovernanceDataKey::TreasuryBalance, &(current + amount));
     }
 
-    pub fn withdraw_from_treasury(env: Env, amount: i128, recipient: Address) {
+    pub fn withdraw_from_treasury(env: Env, amount: i128, _recipient: Address) {
         let current: i128 = env
             .storage()
             .instance()
