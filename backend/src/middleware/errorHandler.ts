@@ -46,7 +46,14 @@ export const errorHandler = (
   let message = 'Internal server error';
   let details: any = undefined;
 
-  if (err instanceof AppError) {
+  // Handle CircuitBreakerOpenError
+  if (err.name === 'CircuitBreakerOpenError') {
+    statusCode = 503;
+    errorCode = 'CIRCUIT_BREAKER_OPEN';
+    message = err.message;
+    const cbErr = err as any;
+    details = { circuitName: cbErr.circuitName, state: cbErr.state };
+  } else if (err instanceof AppError) {
     statusCode = err.statusCode;
     errorCode = err.errorCode;
     message = err.message;

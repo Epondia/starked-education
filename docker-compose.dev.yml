@@ -1,0 +1,181 @@
+# =============================================================================
+# StarkEd Education Platform — Development Docker Compose
+# =============================================================================
+# Usage: docker compose -f docker-compose.dev.yml up
+# Features: hot-reload (nodemon for backend, next dev for frontend),
+#           source code mounted as volumes, exposed debug ports.
+# =============================================================================
+
+version: "3.8"
+
+services:
+  # ─── Frontend ──────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: starked-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+      - NEXT_PUBLIC_STELLAR_NETWORK=${STELLAR_NETWORK:-testnet}
+      - NEXT_PUBLIC_CONTRACT_ADDRESS=${CONTRACT_ADDRESS:-}
+      - NEXT_PUBLIC_STELLAR_RECEIVER_ADDRESS=${STELLAR_RECEIVER_ADDRESS:-}
+      - WATCHPACK_POLLING=true
+    env_file:
+      - .env
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/package.json:/app/package.json
+      - ./frontend/next.config.js:/app/next.config.js
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/tailwind.config.js:/app/tailwind.config.js
+      - ./frontend/next-i18next.config.js:/app/next-i18next.config.js
+      # Named volume for node_modules to avoid overwriting by host
+      - frontend_node_modules:/app/node_modules
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      - backend
+    networks:
+      - starked-network-dev
+
+  # ─── Backend ───────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: starked-backend-dev
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+      - "9229:9229"  # Debug port
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-starked}:${POSTGRES_PASSWORD:-starked123}@postgres:5432/${POSTGRES_DB:-starked_education}
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - IPFS_HOST=ipfs
+      - IPFS_PORT=5001
+      - IPFS_PROTOCOL=http
+      - IPFS_API_URL=http://ipfs:5001/api/v0
+      - IPFS_GATEWAY_URL=http://ipfs:8080/ipfs/
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-24h}
+      - STELLAR_NETWORK=${STELLAR_NETWORK:-testnet}
+      - STELLAR_SECRET_KEY=${STELLAR_SECRET_KEY:-}
+      - STELLAR_HORIZON_URL=${STELLAR_HORIZON_URL:-https://horizon-testnet.stellar.org}
+      - STELLAR_RPC_URL=${STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}
+      - CONTRACT_ADDRESS=${CONTRACT_ADDRESS:-}
+      - MONGODB_URI=${MONGODB_URI:-}
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
+      - ENABLE_CORS=true
+    env_file:
+      - .env
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/package.json:/app/package.json
+      - ./backend/tsconfig.json:/app/tsconfig.json
+      - ./backend/requirements.txt:/app/requirements.txt
+      # Named volume for node_modules
+      - backend_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - starked-network-dev
+
+  # ─── PostgreSQL ────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: starked-postgres-dev
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-starked}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-starked123}
+      - POSTGRES_DB=${POSTGRES_DB:-starked_education}
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-starked} -d ${POSTGRES_DB:-starked_education}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - starked-network-dev
+
+  # ─── Redis ─────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: starked-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - starked-network-dev
+
+  # ─── IPFS ──────────────────────────────────────────────────────────────
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: starked-ipfs-dev
+    restart: unless-stopped
+    ports:
+      - "4001:4001"   # Swarm
+      - "5001:5001"   # API
+      - "8080:8080"   # Gateway
+    volumes:
+      - ipfs_data_dev:/data/ipfs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/v0/id"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - starked-network-dev
+
+# ─── Volumes ─────────────────────────────────────────────────────────────
+volumes:
+  postgres_data_dev:
+    driver: local
+  redis_data_dev:
+    driver: local
+  ipfs_data_dev:
+    driver: local
+  frontend_node_modules:
+    driver: local
+  backend_node_modules:
+    driver: local
+
+# ─── Networks ────────────────────────────────────────────────────────────
+networks:
+  starked-network-dev:
+    driver: bridge

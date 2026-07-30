@@ -13,7 +13,6 @@
 
 import React from 'react';
 import dynamic from 'next/dynamic';
-import { LanguageSwitcher } from '../LanguageSwitcher';
 
 // GlobalPWA uses hooks that depend on `window`, so load it dynamically and
 // disable SSR to avoid hydration mismatches.
@@ -29,6 +28,13 @@ const ThemeToggle = dynamic(() => import('../ui/ThemeToggle'), { ssr: false });
 
 // GlobalSearch is client-only (uses window, debounce, API calls)
 const GlobalSearch = dynamic(() => import('../GlobalSearch').then((m) => m.GlobalSearch), { ssr: false });
+// LanguageSwitcher pulls in the entire i18n chain (i18next, react-i18next,
+// browser-only backends). Loading it with ssr:false prevents SSR crashes
+// caused by browser APIs (document, localStorage) referenced at module level.
+const LanguageSwitcher = dynamic(
+  () => import('../LanguageSwitcher').then((m) => m.LanguageSwitcher),
+  { ssr: false }
+);
 
 export const GlobalShell: React.FC = () => {
   return (
