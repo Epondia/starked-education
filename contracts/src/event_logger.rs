@@ -10,6 +10,7 @@ pub enum EventType {
     UserAchievement,
     ProfileUpdate,
     CourseEnrollment,
+    BatchEnrollment,
 }
 
 // Marketplace-specific events
@@ -179,6 +180,33 @@ impl EventLoggerContract {
             None,
             None,
             metadata,
+        );
+
+        event_id
+    }
+
+    /// Log a batch enrollment event
+    pub fn log_batch_enrollment(
+        env: Env,
+        user: Address,
+        course_id: String,
+        metadata: String,
+    ) -> u64 {
+        user.require_auth();
+
+        let event_id = Self::create_event(
+            env.clone(),
+            EventType::BatchEnrollment,
+            user.clone(),
+            Some(course_id),
+            None,
+            None,
+            metadata,
+        );
+
+        env.events().publish(
+            (symbol_short!("batch"), symbol_short!("enroll")),
+            (user, event_id),
         );
 
         event_id
