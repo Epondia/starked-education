@@ -50,7 +50,7 @@ fn setup_with_achievements<'a>(
 }
 
 fn verify_achievements(
-    env: &Env,
+    _env: &Env,
     profile: &UserProfileContractClient,
     admin: &Address,
     user: &Address,

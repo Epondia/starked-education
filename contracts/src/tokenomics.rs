@@ -1,4 +1,3 @@
-#![no_std]
 use crate::user_profile::UserProfileContractClient;
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,

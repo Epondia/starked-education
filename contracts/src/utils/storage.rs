@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, Env, String, Vec};
 
 /// Bit-packed storage utilities for gas optimization
 #[contracttype]
