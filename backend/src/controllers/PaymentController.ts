@@ -7,6 +7,8 @@ import { Request, Response } from 'express';
 import { PaymentService } from '../services/PaymentService';
 import { StellarPaymentService } from '../services/StellarPaymentService';
 import { NotificationService } from '../services/notificationService';
+import { webhookService } from '../services/webhookService';
+import { WebhookEventType } from '../models/Webhook';
 import { getEmailService } from '../services/emailService';
 import { 
   Payment, 
@@ -142,6 +144,22 @@ export class PaymentController {
         transaction.userId,
         transaction
       );
+
+      // Emit payment.received webhook event (best-effort, non-blocking)
+      try {
+        const tenantId = (req as any).user?.id || transaction.userId;
+        await webhookService.emitEvent(tenantId, WebhookEventType.PAYMENT_RECEIVED, {
+          paymentId: transaction.id || paymentIntentId,
+          enrollmentId: transaction.enrollmentId,
+          userId: transaction.userId,
+          courseId: transaction.courseId,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          method: transaction.method || 'stellar',
+          status: transaction.status || 'completed',
+          receivedAt: new Date().toISOString(),
+        });
+      } catch (_whErr) { /* non-blocking */ }
 
       // Send payment receipt email
       try {

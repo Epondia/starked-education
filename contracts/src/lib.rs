@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol};
 
 pub mod governance;
 #[cfg(test)]
@@ -10,7 +10,12 @@ pub mod tokenomics_test;
 pub mod user_profile;
 #[cfg(test)]
 pub mod user_profile_test;
+pub mod marketplace;
+#[cfg(test)]
+pub mod marketplace_test;
 pub mod utils;
+#[cfg(test)]
+pub mod gas_benchmark;
 
 /// Core storage keys
 #[contracttype]
@@ -21,6 +26,8 @@ pub enum DataKey {
     CourseCount,
     Course(u64),
     AchievementCount,
+    ProofValidityWindow,        // u64: seconds a cross-chain proof remains valid
+    CrossChainProof(u64),       // CrossChainProof stored by credential_id
 }
 
 /// Credential with issuer/recipient data
@@ -34,6 +41,34 @@ pub struct Credential {
     pub course_id: String,
     pub ipfs_hash: String,
     pub timestamp: u64,
+    pub status: CredentialStatus,
+    pub expires_at: u64,
+}
+
+/// Credential status for cross-chain verification
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CredentialStatus {
+    Active = 0,
+    Expired = 1,
+    Revoked = 2,
+    Pending = 3,
+}
+
+/// Cross-chain verification proof for relay to external chains
+/// Compact proof that relayers can verify against on-chain state.
+#[contracttype]
+#[derive(Clone)]
+pub struct CrossChainProof {
+    pub credential_id: u64,
+    pub issuer: Address,
+    pub issued_at: u64,
+    pub status: CredentialStatus,
+    pub proof_timestamp: u64,
+    pub expires_at: u64,
+    /// SHA-256 hash of (credential_id || issued_at || status as u8 || issuer)
+    /// for integrity verification by relayers
+    pub proof_hash: BytesN<32>,
 }
 
 /// Course data
@@ -71,9 +106,9 @@ impl StarkEdContract {
             .instance()
             .set(&DataKey::CredentialCount, &0u64);
         env.storage().instance().set(&DataKey::CourseCount, &0u64);
-        env.storage()
-            .instance()
-            .set(&DataKey::AchievementCount, &0u64);
+        env.storage().instance().set(&DataKey::AchievementCount, &0u64);
+        // Default proof validity window: 1 hour (3600 seconds)
+        env.storage().instance().set(&DataKey::ProofValidityWindow, &3600u64);
     }
 
     /// Issue a new credential
@@ -108,6 +143,8 @@ impl StarkEdContract {
             course_id,
             ipfs_hash,
             timestamp: env.ledger().timestamp(),
+            status: CredentialStatus::Active,
+            expires_at: env.ledger().timestamp() + 31536000, // 1 year default
         };
         env.storage()
             .instance()
@@ -201,5 +238,246 @@ impl StarkEdContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("Not initialized"))
+    }
+
+    // ─── Cross-Chain Credential Verification Relay ──────────────
+
+    /// Compute integrity hash for a cross-chain proof.
+    /// Hash = SHA-256(credential_id || issued_at || status || issuer)
+    fn compute_proof_hash(
+        env: &Env,
+        credential_id: u64,
+        issued_at: u64,
+        status: &CredentialStatus,
+        issuer: &Address,
+    ) -> BytesN<32> {
+        let mut input = Bytes::new(env);
+        // Append credential_id as 8 bytes (big-endian u64)
+        let id_bytes = credential_id.to_be_bytes();
+        for b in id_bytes.iter() {
+            input.push_back(*b);
+        }
+        // Append issued_at as 8 bytes (big-endian u64)
+        let ts_bytes = issued_at.to_be_bytes();
+        for b in ts_bytes.iter() {
+            input.push_back(*b);
+        }
+        // Append status as single byte
+        input.push_back(match status {
+            CredentialStatus::Active => 0u8,
+            CredentialStatus::Expired => 1u8,
+            CredentialStatus::Revoked => 2u8,
+            CredentialStatus::Pending => 3u8,
+        });
+        // Append issuer address as raw bytes (use string representation for determinism)
+        let issuer_bytes = issuer.to_xdr(env);
+        input.append(&issuer_bytes);
+        env.crypto().sha256(&input)
+    }
+
+    /// Set the validity window (in seconds) for cross-chain proofs.
+    /// Only callable by the admin.
+    pub fn set_proof_validity_window(
+        env: Env,
+        admin: Address,
+        window_seconds: u64,
+    ) {
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("Not initialized"));
+        if admin != stored_admin {
+            panic!("Only admin can set proof validity window");
+        }
+        if window_seconds == 0 {
+            panic!("Validity window must be greater than zero");
+        }
+        env.storage().instance().set(&DataKey::ProofValidityWindow, &window_seconds);
+
+        env.events().publish(
+            (Symbol::new(&env, "relay"), Symbol::new(&env, "validity_window_updated")),
+            window_seconds,
+        );
+    }
+
+    /// Get the current proof validity window in seconds.
+    pub fn get_proof_validity_window(env: Env) -> u64 {
+        env.storage().instance()
+            .get(&DataKey::ProofValidityWindow)
+            .unwrap_or(3600)
+    }
+
+    /// Generate a compact cross-chain verification proof for a credential.
+    /// The proof includes credential ID, issuance timestamp, revocation status,
+    /// issuer identity, and a cryptographic hash for integrity verification.
+    /// Emits a cross-chain relay event for off-chain relayers to detect.
+    pub fn generate_credential_proof(
+        env: Env,
+        credential_id: u64,
+        relayer: Address,
+    ) -> CrossChainProof {
+        relayer.require_auth();
+
+        // Fetch the credential
+        let credential: Credential = env.storage().instance()
+            .get(&DataKey::Credential(credential_id))
+            .unwrap_or_else(|| panic!("Credential not found"));
+
+        // Get the validity window
+        let validity_window: u64 = env.storage().instance()
+            .get(&DataKey::ProofValidityWindow)
+            .unwrap_or(3600);
+
+        let current_time = env.ledger().timestamp();
+
+        // Build proof hash: SHA-256(credential_id || issued_at || status || issuer)
+        let proof_hash = Self::compute_proof_hash(
+            &env,
+            credential_id,
+            credential.timestamp,
+            &credential.status,
+            &credential.issuer,
+        );
+
+        let proof = CrossChainProof {
+            credential_id,
+            issuer: credential.issuer.clone(),
+            issued_at: credential.timestamp,
+            status: credential.status,
+            proof_timestamp: current_time,
+            expires_at: current_time + validity_window,
+            proof_hash,
+        };
+
+        // Store the proof for later verification
+        env.storage().instance()
+            .set(&DataKey::CrossChainProof(credential_id), &proof);
+
+        // Emit cross-chain relay event for off-chain relayers
+        env.events().publish(
+            (Symbol::new(&env, "relay"), Symbol::new(&env, "proof_generated")),
+            (proof.clone(), relayer),
+        );
+
+        proof
+    }
+
+    /// Verify a cross-chain proof against on-chain credential state.
+    /// Returns true if the proof is valid (credential exists, proof not expired,
+    /// credential not revoked, and proof hash matches).
+    pub fn verify_cross_chain_proof(
+        env: Env,
+        proof: CrossChainProof,
+    ) -> bool {
+        let current_time = env.ledger().timestamp();
+
+        // Check 1: Proof has not expired
+        if current_time >= proof.expires_at {
+            env.events().publish(
+                (Symbol::new(&env, "relay"), Symbol::new(&env, "proof_expired")),
+                (proof.credential_id, current_time),
+            );
+            return false;
+        }
+
+        // Check 2: Credential exists
+        let credential: Credential = match env.storage().instance()
+            .get(&DataKey::Credential(proof.credential_id))
+        {
+            Some(c) => c,
+            None => {
+                env.events().publish(
+                    (Symbol::new(&env, "relay"), Symbol::new(&env, "credential_not_found")),
+                    proof.credential_id,
+                );
+                return false;
+            }
+        };
+
+        // Check 3: Credential is not revoked
+        if credential.status == CredentialStatus::Revoked {
+            env.events().publish(
+                (Symbol::new(&env, "relay"), Symbol::new(&env, "credential_revoked")),
+                proof.credential_id,
+            );
+            return false;
+        }
+
+        // Check 4: Proof hash integrity — recompute and compare
+        let computed_hash = Self::compute_proof_hash(
+            &env,
+            proof.credential_id,
+            proof.issued_at,
+            &proof.status,
+            &proof.issuer,
+        );
+        if computed_hash != proof.proof_hash {
+            env.events().publish(
+                (Symbol::new(&env, "relay"), Symbol::new(&env, "proof_hash_mismatch")),
+                proof.credential_id,
+            );
+            return false;
+        }
+
+        // Check 5: Proof status matches credential status
+        if proof.status != credential.status {
+            env.events().publish(
+                (Symbol::new(&env, "relay"), Symbol::new(&env, "status_mismatch")),
+                (proof.credential_id, proof.status.clone(), credential.status.clone()),
+            );
+            return false;
+        }
+
+        // All checks passed — proof is valid
+        env.events().publish(
+            (Symbol::new(&env, "relay"), Symbol::new(&env, "proof_verified")),
+            (proof.credential_id, current_time),
+        );
+
+        true
+    }
+
+    /// Retrieve a previously generated cross-chain proof.
+    pub fn get_cross_chain_proof(
+        env: Env,
+        credential_id: u64,
+    ) -> CrossChainProof {
+        env.storage().instance()
+            .get(&DataKey::CrossChainProof(credential_id))
+            .unwrap_or_else(|| panic!("No cross-chain proof found for this credential"))
+    }
+
+    /// Revoke a credential (updates status to Revoked).
+    /// Only callable by the admin.
+    pub fn revoke_credential(
+        env: Env,
+        admin: Address,
+        credential_id: u64,
+    ) {
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("Not initialized"));
+        if admin != stored_admin {
+            panic!("Only admin can revoke credentials");
+        }
+
+        let mut credential: Credential = env.storage().instance()
+            .get(&DataKey::Credential(credential_id))
+            .unwrap_or_else(|| panic!("Credential not found"));
+
+        credential.status = CredentialStatus::Revoked;
+        env.storage().instance()
+            .set(&DataKey::Credential(credential_id), &credential);
+
+        // Invalidate any existing cross-chain proof
+        if env.storage().instance().has(&DataKey::CrossChainProof(credential_id)) {
+            env.storage().instance().remove(&DataKey::CrossChainProof(credential_id));
+        }
+
+        env.events().publish(
+            (Symbol::new(&env, "credential"), Symbol::new(&env, "revoked")),
+            credential_id,
+        );
     }
 }

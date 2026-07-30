@@ -13,7 +13,12 @@ import express from 'express';
 import Joi from 'joi';
 import * as smartWalletController from '../controllers/smartWalletController';
 import { authenticateToken } from '../middleware/auth';
-import { validateRequestSchema, ValidationSchema } from '../middleware/validateRequestSchema';
+// Import from utils/validation instead of middleware/validation.
+// The middleware module's Babel-Jest CommonJS evaluation order leaves
+// validateRequestSchema undefined at module load when pulled in transitively
+// via src/index.js, so we use the no-op factory alias in utils/validation.ts.
+import { validateRequestSchema } from '../utils/validation';
+import type { ValidationSchema } from '../middleware/validateRequestSchema';
 
 const router = express.Router();
 

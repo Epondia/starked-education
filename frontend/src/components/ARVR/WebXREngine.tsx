@@ -100,6 +100,13 @@ const DEFAULT_SETTINGS: XRSettings = {
   performanceMode: 'balanced'
 };
 
+// Module-level typed const for framer-motion Transition overload disambiguation
+const spinningGlobeTransition: { repeat: number; duration: number; ease: string } = {
+  repeat: Infinity,
+  duration: 20,
+  ease: "linear"
+};
+
 export function WebXREngine({
   onSessionStart,
   onSessionEnd,
@@ -507,7 +514,19 @@ export function WebXREngine({
         id: 'error',
         mode,
         state: 'error',
-        device: availableDevices[0] || { id: 'unknown', name: 'Unknown', type: mode, capabilities: {}, supported: false },
+        device: availableDevices[0] || {
+          id: 'unknown',
+          name: 'Unknown',
+          type: mode === 'ar' ? 'ar' as const : 'vr' as const,
+          capabilities: {
+            handTracking: false,
+            spatialTracking: false,
+            eyeTracking: false,
+            controllers: false,
+            passthrough: false
+          },
+          supported: false
+        },
         startTime: Date.now(),
         frameRate: 0,
         latency: 0,
@@ -628,7 +647,7 @@ export function WebXREngine({
       drawCalls: 0, // Would be calculated from WebGL stats
       triangles: 0, // Would be calculated from geometry stats
       memoryUsage: 0, // Would be calculated from memory stats
-      trackingQuality: frame.trackingQuality || 'high'
+      trackingQuality: 'high' as const
     };
 
     setPerformanceStats(stats);
@@ -699,7 +718,7 @@ export function WebXREngine({
       
       const session = currentSession;
       if (session) {
-        const endedSession = { ...session, state: 'ending' };
+        const endedSession: XRSessionInfo = { ...session, state: 'ending' as XRSessionState };
         setCurrentSession(endedSession);
         onSessionEnd?.(endedSession);
       }
@@ -1120,6 +1139,39 @@ export function WebXREngine({
           </div>
         </div>
       )}
+
+      {/* XR Scene Placeholder */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+          {currentSession?.state === 'active' ? (
+            <>
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={spinningGlobeTransition}
+                className="mb-4"
+              >
+                <Globe className="h-16 w-16 text-blue-400" />
+              </motion.div>
+              <h3 className="text-white text-xl font-semibold mb-2">
+                {currentSession.mode.toUpperCase()} Session Active
+              </h3>
+              <p className="text-gray-400 text-sm">
+                {currentSession.device.name}
+              </p>
+            </>
+          ) : (
+            <>
+              <Monitor className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-white text-xl font-semibold mb-2">
+                WebXR Ready
+              </h3>
+              <p className="text-gray-400 text-sm">
+                Select a device to start
+              </p>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
