@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+
+export const dynamic = 'force-dynamic';
+
 import { VirtualScienceLab } from '../../components/Lab';
 import ErrorBoundary from '../../components/ErrorBoundary';
 

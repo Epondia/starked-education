@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+
+export const dynamic = 'force-dynamic';
+
 import { MetaverseCampus } from '../../components/Metaverse';
 import ErrorBoundary from '../../components/ErrorBoundary';
 

@@ -2,17 +2,25 @@
 
 use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
 
-use crate::governance::{
-    EligibilityCriteria, Governance, GovernanceDataKey, ProposalStatus, ScholarshipProposal,
+use crate::{
+    governance::{
+        EligibilityCriteria, Governance, GovernanceDataKey, ProposalStatus, ScholarshipProposal,
+    },
+    StarkEdContract,
 };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-fn setup(env: &Env) -> (Address, Address, Address) {
-    let proposer = Address::generate(env);
-    let student_a = Address::generate(env); // eligible
-    let student_b = Address::generate(env); // ineligible
-    (proposer, student_a, student_b)
+fn setup() -> (Env, Address, Address, Address) {
+    let env = Env::default();
+    // Register a contract so require_auth has a host context
+    env.register_contract(None, StarkEdContract);
+    env.mock_all_auths();
+
+    let proposer = Address::generate(&env);
+    let student_a = Address::generate(&env); // eligible
+    let student_b = Address::generate(&env); // ineligible
+    (env, proposer, student_a, student_b)
 }
 
 fn eligibility(env: &Env) -> EligibilityCriteria {
@@ -49,9 +57,7 @@ fn create_valid_proposal(env: &Env, proposer: Address, title: &str) -> u64 {
 
 #[test]
 fn test_create_proposal_with_valid_input() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, proposer, _, _) = setup();
 
     let pid = create_valid_proposal(&env, proposer, "CS Scholarship");
 
@@ -67,9 +73,7 @@ fn test_create_proposal_with_valid_input() {
 #[test]
 #[should_panic(expected = "InvalidTitle: title must be non-empty")]
 fn test_create_proposal_rejects_empty_title() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, proposer, _, _) = setup();
 
     Governance::create_proposal(
         env.clone(),
@@ -84,9 +88,7 @@ fn test_create_proposal_rejects_empty_title() {
 #[test]
 #[should_panic(expected = "InvalidTitle: title exceeds 200 bytes")]
 fn test_create_proposal_rejects_title_over_200_bytes() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, proposer, _, _) = setup();
 
     Governance::create_proposal(
         env.clone(),
@@ -101,15 +103,13 @@ fn test_create_proposal_rejects_title_over_200_bytes() {
 #[test]
 #[should_panic(expected = "InvalidDescription: description exceeds 2000 bytes")]
 fn test_create_proposal_rejects_description_over_2000_bytes() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, proposer, _, _) = setup();
 
     Governance::create_proposal(
         env.clone(),
         proposer,
         String::from_str(&env, "CS Scholarship"),
-        String::from_str(&env, "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
+        String::from_str(&env, "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
         3600,
         10,
     );
@@ -118,9 +118,7 @@ fn test_create_proposal_rejects_description_over_2000_bytes() {
 #[test]
 #[should_panic(expected = "InvalidVotingPeriod: voting period out of bounds")]
 fn test_create_proposal_rejects_short_voting_period() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, proposer, _, _) = setup();
 
     Governance::create_proposal(
         env.clone(),
@@ -135,9 +133,7 @@ fn test_create_proposal_rejects_short_voting_period() {
 #[test]
 #[should_panic(expected = "InvalidVotingPeriod: voting period out of bounds")]
 fn test_create_proposal_rejects_long_voting_period() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, proposer, _, _) = setup();
 
     Governance::create_proposal(
         env.clone(),
@@ -152,9 +148,7 @@ fn test_create_proposal_rejects_long_voting_period() {
 #[test]
 #[should_panic(expected = "DuplicateProposal: proposer submitted same title within cooldown")]
 fn test_create_proposal_rejects_duplicate_title_within_cooldown() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, proposer, _, _) = setup();
 
     create_valid_proposal(&env, proposer.clone(), "CS Scholarship");
     create_valid_proposal(&env, proposer, "CS Scholarship");
@@ -162,9 +156,7 @@ fn test_create_proposal_rejects_duplicate_title_within_cooldown() {
 
 #[test]
 fn test_create_proposal_allows_duplicate_title_after_cooldown() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, proposer, _, _) = setup();
 
     let first = create_valid_proposal(&env, proposer.clone(), "CS Scholarship");
     advance(&env, 24 * 60 * 60);
@@ -177,9 +169,7 @@ fn test_create_proposal_allows_duplicate_title_after_cooldown() {
 /// 1. Create a scholarship proposal and verify it is stored correctly.
 #[test]
 fn test_create_scholarship_proposal() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, proposer, _, _) = setup();
     fund_treasury(&env, 2000);
 
     let pid = Governance::create_scholarship_proposal(
@@ -214,9 +204,7 @@ fn test_create_scholarship_proposal() {
 /// 2. Full happy path: vote → execute → apply → disburse.
 #[test]
 fn test_scholarship_full_flow() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, student_a, _) = setup(&env);
+    let (env, proposer, student_a, _) = setup();
     fund_treasury(&env, 2000);
 
     let pid = Governance::create_scholarship_proposal(
@@ -278,9 +266,7 @@ fn test_scholarship_full_flow() {
 #[test]
 #[should_panic(expected = "Insufficient credentials")]
 fn test_ineligible_student_rejected() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, student_b) = setup(&env);
+    let (env, proposer, _, student_b) = setup();
     fund_treasury(&env, 2000);
 
     let pid = Governance::create_scholarship_proposal(
@@ -311,9 +297,7 @@ fn test_ineligible_student_rejected() {
 /// 4. Unclaimed funds are returned to treasury after application window closes.
 #[test]
 fn test_unclaimed_funds_returned_to_treasury() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, student_a, _) = setup(&env);
+    let (env, proposer, student_a, _) = setup();
     fund_treasury(&env, 2000);
 
     let pid = Governance::create_scholarship_proposal(
@@ -366,9 +350,7 @@ fn test_unclaimed_funds_returned_to_treasury() {
 /// 5. Defeated proposal returns its reserved funds immediately.
 #[test]
 fn test_defeated_proposal_returns_funds() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, student_a, _) = setup(&env);
+    let (env, proposer, student_a, _) = setup();
     fund_treasury(&env, 2000);
 
     let pid = Governance::create_scholarship_proposal(
@@ -410,9 +392,7 @@ fn test_defeated_proposal_returns_funds() {
 #[test]
 #[should_panic(expected = "Already applied")]
 fn test_duplicate_application_rejected() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, student_a, _) = setup(&env);
+    let (env, proposer, student_a, _) = setup();
     fund_treasury(&env, 2000);
 
     let pid = Governance::create_scholarship_proposal(

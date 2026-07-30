@@ -1,5 +1,6 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol};
+use soroban_sdk::xdr::ToXdr;
 
 pub mod governance;
 #[cfg(test)]
@@ -17,6 +18,21 @@ pub mod utils;
 #[cfg(test)]
 pub mod gas_benchmark;
 
+/// ─── Admin authorization helper ──────────────────────────────
+/// Verifies the caller is the stored admin. Panics if not.
+/// Deduplicates the admin-check pattern used across multiple methods,
+/// reducing WASM binary size.
+fn check_admin(env: &Env, caller: &Address) {
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .unwrap_or_else(|| panic!("Not initialized"));
+    if *caller != admin {
+        panic!("Only admin can perform this action");
+    }
+}
+
 /// Core storage keys
 #[contracttype]
 pub enum DataKey {
@@ -31,6 +47,7 @@ pub enum DataKey {
 }
 
 /// Credential with issuer/recipient data
+/// `expires_at` is None for non-expiring credentials, saving 8 bytes per entry.
 #[contracttype]
 #[derive(Clone)]
 pub struct Credential {
@@ -42,12 +59,12 @@ pub struct Credential {
     pub ipfs_hash: String,
     pub timestamp: u64,
     pub status: CredentialStatus,
-    pub expires_at: u64,
+    pub expires_at: Option<u64>,
 }
 
 /// Credential status for cross-chain verification
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CredentialStatus {
     Active = 0,
     Expired = 1,
@@ -112,6 +129,8 @@ impl StarkEdContract {
     }
 
     /// Issue a new credential
+    /// `expires_at` is stored as None by default (no expiration), saving 8 bytes
+    /// of storage per credential compared to always storing a default timestamp.
     pub fn issue_credential(
         env: Env,
         issuer: Address,
@@ -121,14 +140,7 @@ impl StarkEdContract {
         ipfs_hash: String,
     ) -> u64 {
         issuer.require_auth();
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("Not initialized"));
-        if issuer != admin {
-            panic!("Only admin can issue credentials");
-        }
+        check_admin(&env, &issuer);
         let count: u64 = env
             .storage()
             .instance()
@@ -144,7 +156,7 @@ impl StarkEdContract {
             ipfs_hash,
             timestamp: env.ledger().timestamp(),
             status: CredentialStatus::Active,
-            expires_at: env.ledger().timestamp() + 31536000, // 1 year default
+            expires_at: None,
         };
         env.storage()
             .instance()
@@ -179,14 +191,7 @@ impl StarkEdContract {
         price: u64,
     ) -> u64 {
         instructor.require_auth();
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("Not initialized"));
-        if instructor != admin {
-            panic!("Only admin can create courses");
-        }
+        check_admin(&env, &instructor);
         let course_count: u64 = env
             .storage()
             .instance()
@@ -252,14 +257,11 @@ impl StarkEdContract {
         issuer: &Address,
     ) -> BytesN<32> {
         let mut input = Bytes::new(env);
-        // Append credential_id as 8 bytes (big-endian u64)
-        let id_bytes = credential_id.to_be_bytes();
-        for b in id_bytes.iter() {
+        // Append credential_id and issued_at as big-endian u64 (inlined for size)
+        for b in credential_id.to_be_bytes().iter() {
             input.push_back(*b);
         }
-        // Append issued_at as 8 bytes (big-endian u64)
-        let ts_bytes = issued_at.to_be_bytes();
-        for b in ts_bytes.iter() {
+        for b in issued_at.to_be_bytes().iter() {
             input.push_back(*b);
         }
         // Append status as single byte
@@ -269,9 +271,8 @@ impl StarkEdContract {
             CredentialStatus::Revoked => 2u8,
             CredentialStatus::Pending => 3u8,
         });
-        // Append issuer address as raw bytes (use string representation for determinism)
-        let issuer_bytes = issuer.to_xdr(env);
-        input.append(&issuer_bytes);
+        // Append issuer XDR bytes for deterministic hashing
+        input.append(&issuer.to_xdr(env));
         env.crypto().sha256(&input)
     }
 
@@ -283,12 +284,7 @@ impl StarkEdContract {
         window_seconds: u64,
     ) {
         admin.require_auth();
-        let stored_admin: Address = env.storage().instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("Not initialized"));
-        if admin != stored_admin {
-            panic!("Only admin can set proof validity window");
-        }
+        check_admin(&env, &admin);
         if window_seconds == 0 {
             panic!("Validity window must be greater than zero");
         }
@@ -455,12 +451,7 @@ impl StarkEdContract {
         credential_id: u64,
     ) {
         admin.require_auth();
-        let stored_admin: Address = env.storage().instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("Not initialized"));
-        if admin != stored_admin {
-            panic!("Only admin can revoke credentials");
-        }
+        check_admin(&env, &admin);
 
         let mut credential: Credential = env.storage().instance()
             .get(&DataKey::Credential(credential_id))

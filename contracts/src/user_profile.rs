@@ -1,5 +1,4 @@
-#![no_std]
-use crate::utils::storage::{PackedTimestamps, PackedUserFlags, StorageUtils};
+use crate::utils::storage::{PackedTimestamps, PackedUserFlags};
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec};
 
 /// Achievement tier with weight
