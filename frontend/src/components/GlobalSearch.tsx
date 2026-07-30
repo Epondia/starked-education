@@ -152,7 +152,7 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
     debounceRef.current = setTimeout(async () => {
       try {
         const sessionId = window.sessionStorage.getItem('starked-discovery-session') ||
-          `globalsearch_${Math.random().toString(36).slice(2, 10)}`;
+          `globalsearch_${crypto.randomUUID()}`;
         // Persist session ID for consistency
         if (!window.sessionStorage.getItem('starked-discovery-session')) {
           window.sessionStorage.setItem('starked-discovery-session', sessionId);
