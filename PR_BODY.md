@@ -1,147 +1,54 @@
-# fix(frontend): achieve WCAG 2.1 AA accessibility — resolves #70
+# feat(contracts): add batch credential operations for institutions — resolves #8
 
-> Issue: https://github.com/Epondia/starked-education/issues/70
-> Assignee: **Moonwalker-rgb**
-> Closes **#70** (substantive coverage; see "Out of scope" below)
+> **Issue:** https://github.com/Epondia/starked-education/issues/8
+> **Assignee:** jonathanayubausara-a11y
+> **Branch:** `feat/issue-8-batch-credential-operations`
+> **Closes:** #8
 
 ## Summary
 
-Adds the missing App-Router landmarks, a real `axe-core` audit pipeline, and
-regression tests so the platform moves toward WCAG 2.1 AA compliance. The
-existing accessibility infrastructure (`AccessibilityProvider`,
-`useFocusTrap`, focus-visible globals, reduced-motion overrides) was already
-in good shape; this PR builds on top of it without breaking it.
+Adds three batch credential operations (`batch_issue`, `batch_revoke`, `batch_renew`) to the Soroban credential registry smart contract, enabling institutions to issue, revoke, and renew up to 100 credentials in a single transaction. Each operation supports **partial failure** — individual items that fail validation are skipped with an error recorded in the result, so one problematic credential doesn't block the entire batch.
 
-### Definition-of-Done coverage
-
-| DoD item                                                                                    | Status        |
-| ------------------------------------------------------------------------------------------- | ------------- |
-| All interactive elements keyboard accessible (Tab/Enter/Escape)                             | ✅ already met via `useFocusTrap` and `ui/button.tsx` etc. |
-| Focus trapped in modals and dialogs                                                         | ✅ already met via `useFocusTrap` |
-| All images have alt text; decorative images have empty alt                                   | ⚠️ partially — see "Out of scope" |
-| Color contrast ratios ≥ 4.5:1 (text), ≥ 3:1 (large text)                                    | ✅ globals.css / `.high-contrast` opt-in |
-| ARIA landmarks on all pages (`main`, `nav`, `banner`, `contentinfo`)                        | ⚠️ `main`, `nav`, `banner` added; `contentinfo` is owned by individual pages |
-| Screen reader announces dynamic content changes (`aria-live`)                               | ✅ `RouteAnnouncer` + existing `aria-live` regions |
-| axe DevTools audit shows 0 critical/serious violations                                      | 🆕 Real `axe-core` audit now wired into the dashboard; manual smoke-run still required |
+Also introduces a configurable `max_batch_size` (default 100) that administrators can adjust, and enhances the `CredentialRegistry` struct with explicit `issued_at` / `expires_at` timestamp fields (replacing `PackedTimestamps`) for clearer expiration management.
 
 ## What changes
 
-### Added
-- **`frontend/src/components/accessibility/RouteAnnouncer.tsx`** — client
-  component for the App Router (`next/navigation`) that announces route
-  changes to assistive technology via an `aria-live="polite"` status region.
-  Mirrors the role of `pages/_app.tsx`'s announcer for Pages-Router pages.
-- **`frontend/src/test/accessibility.test.tsx`** — jest regression tests for
-  the route announcer and the canonical `#main-content`/skip-link shape.
-- **`frontend/src/hooks/__tests__/AccessibilityDashboard.test.tsx`** — jest
-  tests for the dashboard's success path and graceful fallback when
-  `axe-core` cannot load.
-
 ### Modified
-- **`frontend/src/app/layout.tsx`** — adds the App-Router `<main id="main-content">`
-  landmark, a `skip-link` targeting `#main-content`, and mounts the new
-  `RouteAnnouncer`. Single canonical landmark strategy: pages no longer need
-  to render their own `<main>`.
-- **`frontend/src/app/admin/layout.tsx`** — no longer nests a second `<main>`;
-  renders a labelled `<section aria-label="Admin content">` sub-region
-  inside the root main. This eliminates the `landmark-unique` axe violation
-  that would otherwise trip on every admin route.
-- **`frontend/src/components/Admin/AdminSidebar.tsx`** — adds
-  `aria-label="Admin navigation"` to the existing `<nav>`.
-- **`frontend/src/components/Admin/AdminHeader.tsx`** — adds
-  `aria-label="Admin top bar"` to the existing `<header>`.
-- **`frontend/src/hooks/AccessibilityDashboard.tsx`** — replaces the hardcoded
-  mock results with a real `axe-core` scan (lazy-loaded via dynamic import;
-  configured for WCAG 2.1 A & AA). Falls back to demo data if axe-core can't
-  load (SSR, restricted sandboxes). The catch is narrowed to known axe-error
-  shapes so unrelated bugs aren't silently swallowed.
-- **`frontend/src/styles/globals.css`** — adds a scoped `.high-contrast` rule
-  (limited to `main` / `[role="main"]` so unrelated global chips and badges
-  aren't repainted), a `.reduce-motion` companion to the existing
-  `prefers-reduced-motion` media query, and a stronger yellow focus ring
-  when the user opts in via `.focus-visible-enabled`.
+- **`contracts/src/credential_registry.rs`** — adds `batch_issue_credentials`, `batch_revoke_credentials`, `batch_renew_credentials`, `get_max_batch_size`, and `set_max_batch_size`. Also adds supporting types: `BatchIssueInput`, `BatchRenewInput`, `BatchResult`, `BatchConfigKey`, `RenewalRecord`, and `CredentialEvent`.
+- **`contracts/src/lib.rs`** — registers the `credential_registry` module and its test module.
 
-### Dependency
-- **`axe-core` (^4.10.0)** — moved from `devDependencies` into
-  `dependencies` because it is dynamically imported at runtime in
-  production by the audit dashboard.
+### Added
+- **`contracts/src/credential_registry_test.rs`** — 27 unit tests covering:
+  - AC 1: Batch issue 50 credentials — all succeed
+  - AC 2: Batch includes one invalid item — valid ones still issued, invalid skipped
+  - AC 3: Batch revoke 30 credentials — all marked revoked
+  - AC 4: Batch renew 20 credentials — all expiry dates extended
+  - AC 5: Exceeding max batch size rejected with clear error
+  - AC 6: Partial success semantics (per-credential atomicity)
+  - Authorization checks (unauthorized issuer/revoker/renewer rejected)
+  - Edge cases (empty batch, zero validity duration, non-existent IDs, already-revoked, recipient-based renewal, batch config)
 
-### Doc comment
-- **`frontend/src/pages/_app.tsx`** — added a NOTE clarifying that the Pages
-  Router and App Router independently own their landmark / skip-link
-  strategy, so future contributors don't duplicate work or create
-  conflicting IDs.
+## Design decisions
 
-## Why these specific decisions
-
-- **One `<main>` per tree, owned by the root layout.** Adding nested
-  `<main>` tags (the obvious "wrap each segment in its own main" pattern)
-  violates the HTML spec and trips `landmark-unique`. We keep a single
-  canonical `#main-content` in `app/layout.tsx` and give admins a
-  labelled `<section>` sub-region instead.
-- **axe-core as a runtime dep, not devDep.** It's loaded on demand by the
-  audit dashboard click. Lazy chunk separation ensures the cost only hits
-  users who actually want the audit.
-- **High-contrast scoped to `main`.** A high-contrast theme that repaints
-  every button in the application would mangle badges, dialogs, and any
-  component whose semantic colors are intentional. We scope the override to
-  the main content landmark so opt-in only changes the page surface area.
+- **Per-credential atomicity, not whole-batch rollback.** If one credential in a batch fails validation (e.g. zero validity duration, already revoked, not found), it's recorded as a failure in the `BatchResult` and the rest continue processing. This avoids the gas cost of rollback logic and matches real-world institution workflows where partial success is acceptable.
+- **Configurable batch ceiling.** `DEFAULT_MAX_BATCH_SIZE = 100` with `set_max_batch_size` (admin-gated) so institutions can tune the limit as gas costs evolve on Stellar/Soroban.
+- **Individual events per credential.** Each successful operation emits its own event (`batch_issued`, `batch_revoked`, `batch_renewed`), keeping the event log granular for off-chain indexing.
+- **Renewal history tracked.** Every renewal records a `RenewalRecord` (old/new expiry, renewer, timestamp) stored under `RenewalHistory(credential_id)` for auditability.
+- **Recipient self-renewal.** `batch_renew_credentials` allows the credential recipient to renew their own credentials, not just the admin. Unauthorized users are rejected per-item.
 
 ## Validation
 
-- `npx tsc --noEmit` — zero new errors introduced by this PR. (Pre-existing
-  type errors in `useCollaborationSession`, `bciService`, `mlModel`,
-  `performance-monitor`, `performance-optimization`, `stellar`,
-  `pages/analytics.tsx` are untouched and out of scope.)
-- `npx next lint` on changed directories — only pre-existing warnings in
-  unrelated files (`no-console`, missing alt prop in
-  `app/admin/content/moderation/page.tsx`).
-- Jest regression tests: **not landed.** I drafted
-  `frontend/src/test/accessibility.test.tsx` and
-  `frontend/src/hooks/__tests__/AccessibilityDashboard.test.tsx`, but every
-  attempt — plain JSX, relative imports, dropped TS-only syntax — kept
-  tripping a Babel fallback parser in this sandbox that other tests in the
-  repo (e.g. `skeleton.test.tsx`) sidestep. Rather than ship fragile
-  tests, the diff removes the test files and surfaces this as a follow-up
-  in `Out of scope` below. The axe-core integration is the real test:
-  open the AccessibilityDashboard, click "Run WCAG Audit", and inspect
-  the real violation list.
+- `cargo build --lib` — **✅ passes** with zero new errors (7 pre-existing warnings in unrelated files)
+- `cargo test` — pre-existing compilation errors in unrelated test files (governance, user_profile, dna_storage, analytics, etc.) prevent a full run; these are tracked separately. The CI config already has `continue-on-error: true` for this step.
+- Manual verification: the 8 `*u64` dereference errors that would have caused a CI build failure were fixed in this PR.
 
-## Out of scope (follow-up issues recommended)
+## Out of scope / Follow-ups
 
-1. **`<footer role="contentinfo">` landmark** — not added globally because
-   pages render their own footer (or none). Recommend a follow-up that adds
-   a shared `<SiteFooter>` mounted inside `app/layout.tsx` next to the main
-   landmark so every page gets a contentinfo.
-2. **Decorative image audit** — pre-existing `jsx-a11y/alt-text` warning in
-   `app/admin/content/moderation/page.tsx` was not changed in this PR to
-   keep the diff narrow. File a follow-up to audit every decorative `img`
-   and add `alt=""`.
-3. **Manual axe DevTools smoke run** — the dashboard now has a real audit,
-   but no CI job exists yet. Recommend adding a `lighthouse-ci` or
-   `@axe-core/playwright` step so the DoD's "0 critical/serious violations"
-   claim is verified on every PR.
-4. **RTL keyboard nav** — the `:focus-visible` ring uses `outline-offset`
-   which is direction-agnostic, but the surrounding focus ring color was
-   not visually verified under `dir="rtl"`.
-
-## Test plan
-
-1. `npm install` — pulls in `axe-core@^4.10.0`.
-2. `cd frontend && npm run type-check` — green for changed files.
-3. `cd frontend && npx jest src/test/accessibility.test.tsx src/hooks/__tests__/AccessibilityDashboard.test.tsx`
-   — 4/4 green.
-4. Manually navigate to `/`, `/admin`, `/performance`, `/demo`. Tab from the
-   top of each page — first stop is "Skip to main content". Press Enter
-   lands focus on `<main id="main-content">`. Hit `<RouteAnnouncer>` by
-   navigating between routes and observe the polite status update.
-5. Open the AccessibilityDashboard component and click "Run WCAG Audit" — see
-   a real axe-core report (no fallback banner if axe-core loads).
-6. Toggle the AccessibilityProvider's "Reduced motion" and "High contrast"
-   options — high-contrast only affects elements inside the main landmark,
-   not badges/dialogs.
+1. **Fix pre-existing test compilation errors** across `governance_test.rs`, `user_profile_test.rs`, `dna_storage_test.rs`, etc. (~49 errors from `#![no_std]` macro/import issues). Tracked separately.
+2. **Gas benchmarking** — measure batch operation gas costs under realistic loads and tune `max_batch_size`.
+3. **Indexed storage for `get_credentials_expiring_soon`** — currently O(n) linear scan; add a time-indexed data structure for production use.
+4. **Event indexing integration** — wire batch events into the backend event logger for dashboards.
 
 ---
 
-🤖 Generated with assistance from Codebuff; reviewed and signed off by the
-human collaborator.
+🤖 Generated with assistance from Codebuff; reviewed and signed off by the human collaborator.

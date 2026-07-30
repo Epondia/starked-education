@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, Env, String, Vec};
 
 /// Bit-packed storage utilities for gas optimization
 #[contracttype]
@@ -215,7 +215,7 @@ impl StorageUtils {
             .storage()
             .instance()
             .get(&key)
-            .unwrap_or_else(|| Vec::new(env));
+            .unwrap_or_else(|| Vec::new(&env));
 
         if !list.contains(&id) {
             list.push_back(id);
