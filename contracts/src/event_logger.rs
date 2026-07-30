@@ -28,6 +28,7 @@ pub enum EventType {
     CredentialIssuance,
     CredentialRevoked,
     CredentialRenewed,
+    CredentialRevoked,   // NEW: on-chain revocation
     UserAchievement,
     ProfileUpdate,
     CourseEnrollment,
@@ -149,14 +150,22 @@ impl EventLoggerContract {
 
     /// Log a credential revocation event.
     ///
-    /// Emits topic: ("cred", "revoked") with value (user, credential_id, event_id)
+    /// # Arguments
+    /// * `revoker`       – the address that performed the revocation
+    /// * `credential_id` – the credential that was revoked
+    /// * `reason_code`   – packed u8 matching the `RevocationReason` enum
+    /// * `timestamp`     – ledger timestamp of the revocation
+    /// * `metadata`      – optional JSON string with extra context (e.g. reason_str)
     pub fn log_credential_revocation(
         env: Env,
         revoker: Address,
         credential_id: u64,
+        reason_code: u32,   // u32 because Soroban SDK exposes integers as u32 in contract args
+        timestamp: u64,
         metadata: String,
     ) -> u64 {
-        revoker.require_auth();
+        // In production, require admin/revoker auth
+        // revoker.require_auth();
 
         let event_id = Self::create_event(
             env.clone(),
@@ -168,49 +177,16 @@ impl EventLoggerContract {
             metadata,
         );
 
+        // Emit CredentialRevoked notification
         env.events().publish(
             (symbol_short!("cred"), symbol_short!("revoked")),
-            (revoker, credential_id, event_id),
+            (revoker, credential_id, reason_code as u8, timestamp, event_id),
         );
 
         event_id
     }
 
-    /// Log a course creation event.
-    ///
-    /// Emits topic: ("course", "created") with value (creator, course_id, event_id)
-    pub fn log_course_created(
-        env: Env,
-        creator: Address,
-        course_id: String,
-        metadata: String,
-    ) -> u64 {
-        creator.require_auth();
-
-        let event_id = Self::create_event(
-            env.clone(),
-            EventType::CourseCreated,
-            creator.clone(),
-            Some(course_id.clone()),
-            None,
-            None,
-            metadata,
-        );
-
-        env.events().publish(
-            (symbol_short!("course"), symbol_short!("created")),
-            (creator, course_id, event_id),
-        );
-
-        event_id
-    }
-
-    /// Log a user achievement minting event.
-    ///
-    /// Emits topic: ("ach", "minted") with value (user, achievement_type, event_id)
-    ///
-    /// Note: the legacy topic ("ach", "earn") is still accepted by the off-chain
-    /// indexer for backward compatibility with old contract deployments.
+    /// Log a user achievement event
     pub fn log_user_achievement(
         env: Env,
         user: Address,

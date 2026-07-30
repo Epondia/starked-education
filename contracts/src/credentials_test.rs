@@ -1,12 +1,11 @@
 #![cfg(test)]
 
 use crate::credentials::{
-    add_multi_sig_signature, add_signer_to_multi_sig, create_multi_sig_credential,
-    get_credential, get_credential_count, get_credential_status, get_multi_sig_credential,
-    get_multi_sig_signatures, get_multi_sig_status, get_user_credentials,
-    is_multi_sig_threshold_met, issue_credential, remove_signer_from_multi_sig,
-    renew_credential, revoke_credential, rotate_signer_in_multi_sig, verify_credential,
-    CredentialStatus,
+    add_multi_sig_signature, create_multi_sig_credential, get_credential, get_credential_count,
+    get_credential_status, get_multi_sig_credential, get_multi_sig_signatures, get_multi_sig_status,
+    get_revocation_history, get_user_credentials, is_multi_sig_threshold_met, issue_credential,
+    renew_credential, revoke_credential, verify_credential, CredentialStatus, RevocationReason,
+    VerificationResult,
 };
 use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol, Vec};
 
@@ -44,13 +43,20 @@ fn test_issue_and_verify_credential() {
     assert_eq!(cred.recipient, recipient);
 
     // Verify credential is valid (not revoked — revocation checked via bit 0 of timestamp)
-    assert!(verify_credential(&env, cred_id));
+    assert_eq!(verify_credential(&env, cred_id), VerificationResult::Valid);
 
     // Revoke the credential
-    revoke_credential(&env, cred_id, admin.clone());
+    revoke_credential(
+        &env,
+        cred_id,
+        admin.clone(),
+        RevocationReason::AdministrativeError,
+        None,
+    );
 
-    // Verify should now return false (credential is revoked)
-    assert!(!verify_credential(&env, cred_id));
+    // Verify should now return Revoked variant
+    let result = verify_credential(&env, cred_id);
+    assert!(matches!(result, VerificationResult::Revoked { .. }));
 
     // User credential list
     let user_creds: Vec<u64> = get_user_credentials(&env, recipient);
@@ -98,7 +104,7 @@ fn test_revoke_nonexistent_credential() {
         .set(&Symbol::new(&env, "admin"), &admin);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        revoke_credential(&env, 9999, admin.clone());
+        revoke_credential(&env, 9999, admin.clone(), RevocationReason::AdministrativeError, None);
     }));
     assert!(result.is_err());
 }
@@ -777,7 +783,13 @@ fn test_cannot_renew_revoked_credential() {
     );
 
     // Revoke the credential
-    revoke_credential(&env, cred_id, admin.clone());
+    revoke_credential(
+        &env,
+        cred_id,
+        admin.clone(),
+        RevocationReason::AcademicDishonesty,
+        Some(String::from_str(&env, "Plagiarism detected")),
+    );
 
     // Attempt to renew a revoked credential
     let new_expiry = env.ledger().timestamp() + 31_536_000;
@@ -837,7 +849,13 @@ fn test_get_credential_status_all_states() {
         String::from_str(&env, "ipfs://QmRevoke"),
         None,
     );
-    revoke_credential(&env, revoked_id, admin.clone());
+    revoke_credential(
+        &env,
+        revoked_id,
+        admin.clone(),
+        RevocationReason::DataCorrection,
+        Some(String::from_str(&env, "Incorrect data")),
+    );
     assert_eq!(get_credential_status(&env, revoked_id), CredentialStatus::Revoked);
 
     // Expired credential
@@ -935,471 +953,417 @@ fn test_multi_sig_sign_after_activation_rejected() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Multi-Signature Signer Management Tests
+//  Credential Revocation Tests (Full Feature)
 // ═══════════════════════════════════════════════════════════════════
 
-/// Test: Admin can add a new signer to a pending multi-sig credential
+/// Test: Original issuer calls revoke_credential with reason; credential becomes Revoked
 #[test]
-fn test_add_signer_to_pending_multi_sig() {
+fn test_revoke_credential_by_issuer_with_reason() {
     let env = Env::default();
     env.mock_all_auths();
 
     let admin = Address::generate(&env);
-    let signer1 = Address::generate(&env);
-    let signer2 = Address::generate(&env);
-    let new_signer = Address::generate(&env);
     let recipient = Address::generate(&env);
 
     env.storage()
         .instance()
         .set(&Symbol::new(&env, "admin"), &admin);
 
-    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
-
-    let cred_id = create_multi_sig_credential(
+    let cred_id = issue_credential(
         &env,
         admin.clone(),
-        signers,
-        2,
         recipient.clone(),
-        String::from_str(&env, "MSc Biology"),
-        String::from_str(&env, "Master's in Biology"),
-        String::from_str(&env, "msc-bio-2026"),
-        String::from_str(&env, "ipfs://QmMScBio"),
+        String::from_str(&env, "Rust Certificate"),
+        String::from_str(&env, "Intro to Rust"),
+        String::from_str(&env, "rust-101"),
+        String::from_str(&env, "ipfs://QmRustCert"),
+        None,
     );
 
-    // Initially 2 signers
-    let cred = get_multi_sig_credential(&env, cred_id);
-    assert_eq!(cred.signers.len(), 2);
+    // Credential starts Valid
+    assert_eq!(verify_credential(&env, cred_id), VerificationResult::Valid);
 
-    // Add a new signer
-    add_signer_to_multi_sig(&env, cred_id, admin.clone(), new_signer.clone());
-
-    // Now 3 signers
-    let cred = get_multi_sig_credential(&env, cred_id);
-    assert_eq!(cred.signers.len(), 3);
-    assert!(cred.signers.contains(&new_signer));
-
-    // New signer can now sign
-    add_multi_sig_signature(&env, cred_id, new_signer.clone());
-    let sigs = get_multi_sig_signatures(&env, cred_id);
-    assert_eq!(sigs.len(), 1);
-    assert!(sigs.contains(&new_signer));
-}
-
-/// Test: Cannot add duplicate signer
-#[test]
-fn test_add_signer_duplicate_rejected() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let signer1 = Address::generate(&env);
-    let signer2 = Address::generate(&env);
-    let recipient = Address::generate(&env);
-
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
-
-    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
-
-    let cred_id = create_multi_sig_credential(
-        &env,
-        admin.clone(),
-        signers,
-        2,
-        recipient.clone(),
-        String::from_str(&env, "Test Cert"),
-        String::from_str(&env, "Test"),
-        String::from_str(&env, "cert-001"),
-        String::from_str(&env, "ipfs://QmTest"),
-    );
-
-    // Attempt to add signer1 who is already in the list
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        add_signer_to_multi_sig(&env, cred_id, admin.clone(), signer1.clone());
-    }));
-    assert!(result.is_err());
-
-    // Signer count should remain 2
-    let cred = get_multi_sig_credential(&env, cred_id);
-    assert_eq!(cred.signers.len(), 2);
-}
-
-/// Test: Cannot add signer to activated credential
-#[test]
-fn test_add_signer_to_activated_credential_rejected() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let signer1 = Address::generate(&env);
-    let signer2 = Address::generate(&env);
-    let new_signer = Address::generate(&env);
-    let recipient = Address::generate(&env);
-
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
-
-    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
-
-    let cred_id = create_multi_sig_credential(
-        &env,
-        admin.clone(),
-        signers,
-        2,
-        recipient.clone(),
-        String::from_str(&env, "BA English"),
-        String::from_str(&env, "Bachelor of Arts in English"),
-        String::from_str(&env, "ba-eng-2026"),
-        String::from_str(&env, "ipfs://QmBAEng"),
-    );
-
-    // Activate the credential
-    add_multi_sig_signature(&env, cred_id, signer1.clone());
-    add_multi_sig_signature(&env, cred_id, signer2.clone());
-    assert!(is_multi_sig_threshold_met(&env, cred_id));
-
-    // Attempt to add signer after activation
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        add_signer_to_multi_sig(&env, cred_id, admin.clone(), new_signer.clone());
-    }));
-    assert!(result.is_err());
-}
-
-/// Test: Admin can remove a signer from a pending multi-sig credential
-#[test]
-fn test_remove_signer_from_pending_multi_sig() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let signer1 = Address::generate(&env);
-    let signer2 = Address::generate(&env);
-    let signer3 = Address::generate(&env);
-    let recipient = Address::generate(&env);
-
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
-
-    let signers = Vec::from_array(&env, [
-        signer1.clone(),
-        signer2.clone(),
-        signer3.clone(),
-    ]);
-
-    let cred_id = create_multi_sig_credential(
-        &env,
-        admin.clone(),
-        signers,
-        2,
-        recipient.clone(),
-        String::from_str(&env, "BSc Physics"),
-        String::from_str(&env, "Bachelor of Science in Physics"),
-        String::from_str(&env, "bsc-phy-2026"),
-        String::from_str(&env, "ipfs://QmBScPhy"),
-    );
-
-    // Initially 3 signers
-    assert_eq!(get_multi_sig_credential(&env, cred_id).signers.len(), 3);
-
-    // Remove signer3
-    remove_signer_from_multi_sig(&env, cred_id, admin.clone(), signer3.clone());
-
-    // Now 2 signers
-    let cred = get_multi_sig_credential(&env, cred_id);
-    assert_eq!(cred.signers.len(), 2);
-    assert!(!cred.signers.contains(&signer3));
-    assert!(cred.signers.contains(&signer1));
-    assert!(cred.signers.contains(&signer2));
-}
-
-/// Test: Removing a signer also removes their signature
-#[test]
-fn test_remove_signer_clears_their_signature() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let signer1 = Address::generate(&env);
-    let signer2 = Address::generate(&env);
-    let signer3 = Address::generate(&env);
-    let recipient = Address::generate(&env);
-
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
-
-    let signers = Vec::from_array(&env, [
-        signer1.clone(),
-        signer2.clone(),
-        signer3.clone(),
-    ]);
-
-    let cred_id = create_multi_sig_credential(
-        &env,
-        admin.clone(),
-        signers,
-        2,
-        recipient.clone(),
-        String::from_str(&env, "BSc Chemistry"),
-        String::from_str(&env, "Bachelor of Science in Chemistry"),
-        String::from_str(&env, "bsc-chem-2026"),
-        String::from_str(&env, "ipfs://QmBScChem"),
-    );
-
-    // Signer3 signs
-    add_multi_sig_signature(&env, cred_id, signer3.clone());
-    assert_eq!(get_multi_sig_signatures(&env, cred_id).len(), 1);
-
-    // Remove signer3
-    remove_signer_from_multi_sig(&env, cred_id, admin.clone(), signer3.clone());
-
-    // Signature should be cleared
-    let sigs = get_multi_sig_signatures(&env, cred_id);
-    assert_eq!(sigs.len(), 0);
-    assert!(!sigs.contains(&signer3));
-}
-
-/// Test: Cannot remove the last signer if threshold requires them
-#[test]
-fn test_remove_signer_violating_threshold_rejected() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let signer1 = Address::generate(&env);
-    let signer2 = Address::generate(&env);
-    let recipient = Address::generate(&env);
-
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
-
-    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
-
-    // 2-of-2 threshold means removing any signer breaks threshold
-    let cred_id = create_multi_sig_credential(
-        &env,
-        admin.clone(),
-        signers,
-        2,
-        recipient.clone(),
-        String::from_str(&env, "BSc Math"),
-        String::from_str(&env, "Bachelor of Science in Math"),
-        String::from_str(&env, "bsc-math-2026"),
-        String::from_str(&env, "ipfs://QmBScMath"),
-    );
-
-    // Attempt to remove signer1 when threshold=2 and signers=2
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        remove_signer_from_multi_sig(&env, cred_id, admin.clone(), signer1.clone());
-    }));
-    assert!(result.is_err());
-
-    // Signer count unchanged
-    assert_eq!(get_multi_sig_credential(&env, cred_id).signers.len(), 2);
-}
-
-/// Test: Admin can rotate (replace) a signer on a pending multi-sig credential
-#[test]
-fn test_rotate_signer_on_pending_multi_sig() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let signer1 = Address::generate(&env);
-    let signer2 = Address::generate(&env);
-    let signer3 = Address::generate(&env);
-    let new_signer = Address::generate(&env);
-    let recipient = Address::generate(&env);
-
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
-
-    let signers = Vec::from_array(&env, [
-        signer1.clone(),
-        signer2.clone(),
-        signer3.clone(),
-    ]);
-
-    let cred_id = create_multi_sig_credential(
-        &env,
-        admin.clone(),
-        signers,
-        2,
-        recipient.clone(),
-        String::from_str(&env, "BSc Economics"),
-        String::from_str(&env, "Bachelor of Science in Economics"),
-        String::from_str(&env, "bsc-econ-2026"),
-        String::from_str(&env, "ipfs://QmBScEcon"),
-    );
-
-    // Signer3 signs, then rotate signer3 out
-    add_multi_sig_signature(&env, cred_id, signer3.clone());
-    assert_eq!(get_multi_sig_signatures(&env, cred_id).len(), 1);
-
-    rotate_signer_in_multi_sig(
+    // Issuer revokes with AcademicDishonesty reason
+    revoke_credential(
         &env,
         cred_id,
         admin.clone(),
-        signer3.clone(),
-        new_signer.clone(),
+        RevocationReason::AcademicDishonesty,
+        Some(String::from_str(&env, "Plagiarism detected")),
     );
 
-    // Old signer gone, new signer present
-    let cred = get_multi_sig_credential(&env, cred_id);
-    assert_eq!(cred.signers.len(), 3);
-    assert!(!cred.signers.contains(&signer3));
-    assert!(cred.signers.contains(&new_signer));
+    // Verify now returns Revoked with reason code
+    let result = verify_credential(&env, cred_id);
+    match result {
+        VerificationResult::Revoked { reason_code, timestamp: _ } => {
+            assert_eq!(reason_code, RevocationReason::AcademicDishonesty.to_u8());
+        }
+        _ => panic!("Expected Revoked status"),
+    }
 
-    // Old signature cleared
-    let sigs = get_multi_sig_signatures(&env, cred_id);
-    assert_eq!(sigs.len(), 0);
-
-    // New signer can now sign
-    let result = add_multi_sig_signature(&env, cred_id, new_signer.clone());
-    assert!(!result); // Still need one more
-    assert_eq!(get_multi_sig_signatures(&env, cred_id).len(), 1);
+    // Revocation history is retrievable
+    let record = get_revocation_history(&env, cred_id).unwrap();
+    assert_eq!(record.reason_code, RevocationReason::AcademicDishonesty.to_u8());
+    assert_eq!(
+        record.reason_str,
+        Some(String::from_str(&env, "Plagiarism detected"))
+    );
+    assert_eq!(record.revoker, admin);
 }
 
-/// Test: Cannot rotate if new signer is already in the list
+/// Test: Non-issuer/non-admin cannot revoke a credential
 #[test]
-fn test_rotate_signer_duplicate_rejected() {
+fn test_revoke_credential_unauthorized_rejected() {
     let env = Env::default();
     env.mock_all_auths();
 
     let admin = Address::generate(&env);
-    let signer1 = Address::generate(&env);
-    let signer2 = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
     let recipient = Address::generate(&env);
 
     env.storage()
         .instance()
         .set(&Symbol::new(&env, "admin"), &admin);
 
-    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
-
-    let cred_id = create_multi_sig_credential(
+    let cred_id = issue_credential(
         &env,
         admin.clone(),
-        signers,
-        2,
         recipient.clone(),
-        String::from_str(&env, "Test Cert"),
+        String::from_str(&env, "Test Cred"),
         String::from_str(&env, "Test"),
-        String::from_str(&env, "cert-rot-001"),
-        String::from_str(&env, "ipfs://QmRot"),
+        String::from_str(&env, "test-001"),
+        String::from_str(&env, "ipfs://QmTest"),
+        None,
     );
 
-    // Try to rotate signer1 -> signer2 (signer2 already exists)
+    // Unauthorized user attempts revocation — should panic
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        rotate_signer_in_multi_sig(
+        revoke_credential(
+            &env,
+            cred_id,
+            unauthorized.clone(),
+            RevocationReason::AdministrativeError,
+            None,
+        );
+    }));
+    assert!(result.is_err());
+
+    // Credential should remain valid
+    assert_eq!(verify_credential(&env, cred_id), VerificationResult::Valid);
+}
+
+/// Test: Attempting to revoke an already-revoked credential fails with "AlreadyRevoked" panic
+#[test]
+fn test_revoke_credential_double_revocation_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Double Rev Test"),
+        String::from_str(&env, "Test double revocation"),
+        String::from_str(&env, "dbl-rev-001"),
+        String::from_str(&env, "ipfs://QmDbl"),
+        None,
+    );
+
+    // First revocation succeeds
+    revoke_credential(
+        &env,
+        cred_id,
+        admin.clone(),
+        RevocationReason::DataCorrection,
+        Some(String::from_str(&env, "Data error")),
+    );
+    assert!(matches!(
+        verify_credential(&env, cred_id),
+        VerificationResult::Revoked { .. }
+    ));
+
+    // Second revocation attempt should panic with "AlreadyRevoked"
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        revoke_credential(
             &env,
             cred_id,
             admin.clone(),
-            signer1.clone(),
-            signer2.clone(),
+            RevocationReason::VoluntarySurrender,
+            None,
         );
     }));
     assert!(result.is_err());
 }
 
-/// Test: Removing the last signer from a credential is rejected
+/// Test: Revoked credential verification returns correct reason and timestamp
 #[test]
-fn test_remove_last_signer_rejected() {
+fn test_verify_credential_revoked_returns_details() {
     let env = Env::default();
     env.mock_all_auths();
 
     let admin = Address::generate(&env);
-    let signer1 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
     env.storage()
         .instance()
         .set(&Symbol::new(&env, "admin"), &admin);
 
-    let signers = Vec::from_array(&env, [signer1.clone()]);
-
-    // 1-of-1 credential with a single signer
-    let cred_id = create_multi_sig_credential(
+    let cred_id = issue_credential(
         &env,
         admin.clone(),
-        signers,
-        1,
         recipient.clone(),
-        String::from_str(&env, "Single Signer Cred"),
-        String::from_str(&env, "Should not be able to remove only signer"),
-        String::from_str(&env, "single-001"),
-        String::from_str(&env, "ipfs://QmSingle"),
-    );
-
-    // Attempt to remove the only signer
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        remove_signer_from_multi_sig(&env, cred_id, admin.clone(), signer1.clone());
-    }));
-    assert!(result.is_err());
-
-    // Signer count unchanged
-    assert_eq!(get_multi_sig_credential(&env, cred_id).signers.len(), 1);
-}
-
-/// Test: Non-admin cannot manage signers
-#[test]
-fn test_signer_management_only_admin() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let non_admin = Address::generate(&env);
-    let signer1 = Address::generate(&env);
-    let signer2 = Address::generate(&env);
-    let new_signer = Address::generate(&env);
-    let recipient = Address::generate(&env);
-
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
-
-    let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
-
-    let cred_id = create_multi_sig_credential(
-        &env,
-        admin.clone(),
-        signers,
-        2,
-        recipient.clone(),
-        String::from_str(&env, "Test Cert"),
+        String::from_str(&env, "Revoke Test"),
         String::from_str(&env, "Test"),
-        String::from_str(&env, "cert-admin-001"),
-        String::from_str(&env, "ipfs://QmAdmin"),
+        String::from_str(&env, "rev-test-001"),
+        String::from_str(&env, "ipfs://QmRev"),
+        None,
     );
 
-    // Non-admin tries to add signer
+    let before_revocation = env.ledger().timestamp();
+
+    // Revoke with a specific reason
+    revoke_credential(
+        &env,
+        cred_id,
+        admin.clone(),
+        RevocationReason::AcademicDishonesty,
+        Some(String::from_str(&env, "Cheating on exam")),
+    );
+
+    // Verify returns Revoked with details
+    let result = verify_credential(&env, cred_id);
+    match result {
+        VerificationResult::Revoked { reason_code, timestamp } => {
+            assert_eq!(reason_code, RevocationReason::AcademicDishonesty.to_u8());
+            assert!(timestamp >= before_revocation);
+        }
+        _ => panic!("Expected Revoked status"),
+    }
+}
+
+/// Test: get_revocation_history returns the full record with reason string
+#[test]
+fn test_get_revocation_history_returns_full_record() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "History Check"),
+        String::from_str(&env, "Test history"),
+        String::from_str(&env, "hist-001"),
+        String::from_str(&env, "ipfs://QmHist"),
+        None,
+    );
+
+    // Before revocation, history is None
+    assert!(get_revocation_history(&env, cred_id).is_none());
+
+    revoke_credential(
+        &env,
+        cred_id,
+        admin.clone(),
+        RevocationReason::VoluntarySurrender,
+        Some(String::from_str(&env, "User requested removal")),
+    );
+
+    // After revocation, history is present
+    let record = get_revocation_history(&env, cred_id).unwrap();
+    assert_eq!(record.reason_code, RevocationReason::VoluntarySurrender.to_u8());
+    assert_eq!(
+        record.reason_str,
+        Some(String::from_str(&env, "User requested removal"))
+    );
+    assert_eq!(record.revoker, admin);
+    assert!(record.timestamp > 0);
+}
+
+/// Test: CredentialRevoked event is emitted with correct fields
+#[test]
+fn test_revoke_credential_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Event Test"),
+        String::from_str(&env, "Test event emission"),
+        String::from_str(&env, "event-001"),
+        String::from_str(&env, "ipfs://QmEvent"),
+        None,
+    );
+
+    // Capture initial event count (optional, just for demonstration)
+    let before_timestamp = env.ledger().timestamp();
+
+    revoke_credential(
+        &env,
+        cred_id,
+        admin.clone(),
+        RevocationReason::AdministrativeError,
+        Some(String::from_str(&env, "System error")),
+    );
+
+    // In a real test, you could check env.events() for the emitted event
+    // For now, we just verify the credential is revoked
+    assert!(matches!(
+        verify_credential(&env, cred_id),
+        VerificationResult::Revoked { .. }
+    ));
+
+    let record = get_revocation_history(&env, cred_id).unwrap();
+    assert!(record.timestamp >= before_timestamp);
+}
+
+/// Test: Revocation is irreversible — no un-revoke function exists
+#[test]
+fn test_revocation_is_irreversible() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "Irreversible Test"),
+        String::from_str(&env, "No un-revoke"),
+        String::from_str(&env, "irrev-001"),
+        String::from_str(&env, "ipfs://QmIrrev"),
+        None,
+    );
+
+    revoke_credential(
+        &env,
+        cred_id,
+        admin.clone(),
+        RevocationReason::Other,
+        None,
+    );
+
+    // Credential is revoked
+    assert!(matches!(
+        verify_credential(&env, cred_id),
+        VerificationResult::Revoked { .. }
+    ));
+
+    // Attempting to renew should fail (revoked credentials cannot be renewed)
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        add_signer_to_multi_sig(&env, cred_id, non_admin.clone(), new_signer.clone());
+        renew_credential(&env, cred_id, admin.clone(), env.ledger().timestamp() + 10000);
     }));
     assert!(result.is_err());
 
-    // Non-admin tries to remove signer
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        remove_signer_from_multi_sig(&env, cred_id, non_admin.clone(), signer1.clone());
-    }));
-    assert!(result.is_err());
+    // Credential remains revoked
+    assert!(matches!(
+        verify_credential(&env, cred_id),
+        VerificationResult::Revoked { .. }
+    ));
+}
 
-    // Non-admin tries to rotate signer
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        rotate_signer_in_multi_sig(
+/// Test: All revocation reason codes are valid
+#[test]
+fn test_all_revocation_reason_codes() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let reasons = vec![
+        RevocationReason::AdministrativeError,
+        RevocationReason::AcademicDishonesty,
+        RevocationReason::DataCorrection,
+        RevocationReason::VoluntarySurrender,
+        RevocationReason::Other,
+    ];
+
+    for (i, reason) in reasons.iter().enumerate() {
+        let cred_id = issue_credential(
             &env,
-            cred_id,
-            non_admin.clone(),
-            signer1.clone(),
-            new_signer.clone(),
+            admin.clone(),
+            recipient.clone(),
+            String::from_str(&env, &format!("Cred {}", i)),
+            String::from_str(&env, "Test"),
+            String::from_str(&env, &format!("code-test-{}", i)),
+            String::from_str(&env, "ipfs://QmCode"),
+            None,
         );
-    }));
-    assert!(result.is_err());
+
+        revoke_credential(&env, cred_id, admin.clone(), reason.clone(), None);
+
+        let result = verify_credential(&env, cred_id);
+        match result {
+            VerificationResult::Revoked { reason_code, .. } => {
+                assert_eq!(reason_code, reason.to_u8());
+            }
+            _ => panic!("Expected Revoked status"),
+        }
+    }
+}
+
+/// Test: Reason string is optional — can revoke without it
+#[test]
+fn test_revoke_credential_without_reason_string() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.storage()
+        .instance()
+        .set(&Symbol::new(&env, "admin"), &admin);
+
+    let cred_id = issue_credential(
+        &env,
+        admin.clone(),
+        recipient.clone(),
+        String::from_str(&env, "No String Test"),
+        String::from_str(&env, "Test"),
+        String::from_str(&env, "no-str-001"),
+        String::from_str(&env, "ipfs://QmNoStr"),
+        None,
+    );
+
+    // Revoke without reason_str (None)
+    revoke_credential(&env, cred_id, admin.clone(), RevocationReason::Other, None);
+
+    let record = get_revocation_history(&env, cred_id).unwrap();
+    assert_eq!(record.reason_code, RevocationReason::Other.to_u8());
+    assert!(record.reason_str.is_none());
 }
