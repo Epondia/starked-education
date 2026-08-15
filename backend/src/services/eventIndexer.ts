@@ -221,17 +221,30 @@ export class EventIndexer {
       let response: rpc.Api.GetEventsResponse;
 
       try {
-        response = await this.rpc.getEvents({
-          startLedger,
-          filters: [
-            {
-              type: 'contract',
-              contractIds: [contractId],
-            },
-          ],
-          cursor,
-          limit: 200,
-        });
+        // RPC pagination modes are mutually exclusive: use the ledger range
+        // for the first page and the cursor for subsequent pages.
+        response = cursor
+          ? await this.rpc.getEvents({
+              filters: [
+                {
+                  type: 'contract',
+                  contractIds: [contractId],
+                },
+              ],
+              cursor,
+              limit: 200,
+            })
+          : await this.rpc.getEvents({
+              filters: [
+                {
+                  type: 'contract',
+                  contractIds: [contractId],
+                },
+              ],
+              startLedger,
+              endLedger,
+              limit: 200,
+            });
       } catch (rpcErr: any) {
         logger.error(`[EventIndexer] RPC getEvents error for contract ${contractId}: ${rpcErr?.message}`);
         return;
@@ -242,18 +255,18 @@ export class EventIndexer {
 
       // Filter to the requested ledger window (the RPC may return beyond endLedger)
       const inWindow = events.filter((e) => {
-        const ledger = parseInt(e.ledger, 10);
+        const ledger = e.ledger;
         return ledger >= startLedger && ledger <= endLedger;
       });
 
       await this.persistBatch(contractId, inWindow);
 
       // Pagination: the RPC returns a cursor for the next page
-      cursor = (response as any).cursor ?? undefined;
+      cursor = response.cursor;
 
       // Stop paginating if there are no more events or we've gone past the window
       const allBeyondWindow = events.length > 0 &&
-        events.every((e) => parseInt(e.ledger, 10) > endLedger);
+        events.every((e) => e.ledger > endLedger);
 
       if (!cursor || events.length === 0 || allBeyondWindow) break;
     } while (true);
@@ -305,7 +318,7 @@ export class EventIndexer {
     contractId: string,
     raw: rpc.Api.EventResponse,
   ): Promise<void> {
-    const ledger = parseInt(raw.ledger, 10);
+    const ledger = raw.ledger;
 
     // event_index: Soroban event IDs are <ledger>-<txIndex>-<eventIndex>
     const parts = raw.id.split('-');
