@@ -18,6 +18,31 @@ jobs:
   backend-load-test:
     name: Backend API Load Test
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: starked_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
     steps:
       - uses: actions/checkout@v4
 
@@ -34,11 +59,11 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: backend
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Build backend
         working-directory: backend
-        run: pnpm run build
+        run: npm run build
 
       - name: Start backend server
         working-directory: backend
@@ -49,7 +74,7 @@ jobs:
           PORT: 3000
           NODE_ENV: test
         run: |
-          pnpm run migrate:up
+          npm run migrate:up
           node dist/index.js &
           sleep 5
           # Wait for server to be ready
