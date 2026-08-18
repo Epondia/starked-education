@@ -43,6 +43,7 @@ const defaultOptions: Required<QueueManagerOptions> = {
  */
 class QueueManager {
   private queue: QueuedItem[] = [];
+  private deadLetterQueue: QueuedItem[] = [];
   private processing = false;
   private processHandler: ProcessItemHandler | null = null;
   private options: Required<QueueManagerOptions>;
@@ -102,12 +103,26 @@ class QueueManager {
 
     if (next.retryCount >= this.options.maxRetries) {
       this.queue.splice(index, 1);
-      logger.warn(`Sync queue: dropped item ${item.id} after ${this.options.maxRetries} retries: ${error}`);
+      this.deadLetterQueue.push(next);
+      logger.warn(`Sync queue: dead-lettered item ${item.id} after ${this.options.maxRetries} retries: ${error}`);
       return;
     }
 
     this.queue[index] = next;
     logger.debug(`Sync queue: will retry item ${item.id}, retry ${next.retryCount}/${this.options.maxRetries}`);
+  }
+
+  getDeadLetterCount(): number {
+    return this.deadLetterQueue.length;
+  }
+
+  getDeadLetterItems(): ReadonlyArray<QueuedItem> {
+    return [...this.deadLetterQueue];
+  }
+
+  clearDeadLetter(): void {
+    this.deadLetterQueue = [];
+    logger.debug('Sync queue: dead-letter queue cleared');
   }
 
   async processQueue(): Promise<{ processed: number; failed: number }> {
@@ -184,6 +199,7 @@ class QueueManager {
 
   clear(): void {
     this.queue = [];
+    this.deadLetterQueue = [];
     logger.debug('Sync queue: cleared');
   }
 

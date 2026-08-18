@@ -201,6 +201,37 @@ describe('Email Templates', () => {
       expect(rendered.text).toContain('Lagos, Nigeria');
       expect(rendered.text).toContain('Unrecognized device');
     });
+
+    it('should HTML-escape template variables to prevent injection', () => {
+      const rendered = emailTemplates.render({
+        type: 'enrollmentConfirmation',
+        data: enrollmentTemplateData({
+          studentName: '<script>alert("xss")</script>',
+          courseName: 'Intro <b>to</b> Blockchain & DeFi',
+        }),
+      });
+
+      // Markup in variables must be neutralized in the HTML body.
+      expect(rendered.html).not.toContain('<script>alert');
+      expect(rendered.html).toContain('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
+      expect(rendered.html).not.toContain('<b>to</b>');
+      expect(rendered.html).toContain('Intro &lt;b&gt;to&lt;/b&gt; Blockchain &amp; DeFi');
+
+      // The plain-text fallback is not HTML, so it stays verbatim.
+      expect(rendered.text).toContain('<script>alert("xss")</script>');
+    });
+
+    it('should escape quotes to prevent attribute breakout in HTML', () => {
+      const rendered = emailTemplates.render({
+        type: 'enrollmentConfirmation',
+        data: enrollmentTemplateData({
+          courseUrl: 'https://example.com/?a=1&b=2" onmouseover="alert(1)',
+        }),
+      });
+
+      expect(rendered.html).not.toContain('onmouseover="alert(1)"');
+      expect(rendered.html).toContain('a=1&amp;b=2&quot; onmouseover=&quot;alert(1)');
+    });
   });
 
   describe('Template Subject Lines', () => {

@@ -178,13 +178,33 @@ const TEMPLATE_SIMPLE_TEXT: Record<string, (data: any) => string> = {
 };
 
 /**
+ * Escape a value for safe inclusion in an HTML context.
+ * Prevents template variables from injecting markup (e.g. `<script>`)
+ * or breaking out of attribute values via quotes.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
  * Simple Handlebars-style template rendering.
  * Replaces {{variableName}} placeholders in the template string.
+ * When `escape` is true (HTML templates), substituted values are
+ * HTML-escaped to avoid injection.
  */
-function renderTemplate(template: string, data: Record<string, any>): string {
+function renderTemplate(template: string, data: Record<string, any>, escape = false): string {
   return template.replace(/\{\{(.+?)\}\}/g, (_match, key: string) => {
     const trimmedKey = key.trim();
-    return data[trimmedKey] !== undefined ? String(data[trimmedKey]) : '';
+    if (data[trimmedKey] === undefined) {
+      return '';
+    }
+    const value = String(data[trimmedKey]);
+    return escape ? escapeHtml(value) : value;
   });
 }
 
@@ -232,9 +252,10 @@ class EmailTemplates {
 
     // Load and render HTML template
     const rawHtml = this.loadTemplate(type);
-    // Apply conditionals first, then variable substitution
+    // Apply conditionals first, then variable substitution.
+    // Variables are HTML-escaped to prevent markup injection.
     const conditionalHtml = renderConditionals(rawHtml, data);
-    const html = renderTemplate(conditionalHtml, data);
+    const html = renderTemplate(conditionalHtml, data, true);
 
     // Generate plain-text fallback
     const textGenerator = TEMPLATE_SIMPLE_TEXT[type];
