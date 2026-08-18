@@ -46,6 +46,9 @@ const { compressionMiddleware } = require('./middleware/compression');
 // Import versioning middleware
 const { versionExtractor, createVersionedRouter, SUPPORTED_VERSIONS, DEFAULT_VERSION } = require('./middleware/versioning');
 
+// Import error handler
+const { errorHandler } = require('./middleware/errorHandler');
+
 // Load environment variables
 dotenv.config();
 
