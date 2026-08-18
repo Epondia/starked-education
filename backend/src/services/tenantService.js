@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Tenant = require('../models/Tenant');
 const TenantUser = require('../models/TenantUser');
 const bcrypt = require('bcryptjs');
@@ -7,14 +8,63 @@ const { v4: uuidv4 } = require('uuid');
 class TenantService {
   /**
    * Validates that a tenant exists and is accessible.
-   * Throws if not found.
+   * Throws if not found or inactive.
+   *
+   * @param {string|mongoose.Types.ObjectId} tenantId
+   * @returns {Promise<import('../models/Tenant')>}
    */
   async validateTenantAccess(tenantId) {
+    if (!tenantId || !mongoose.Types.ObjectId.isValid(tenantId)) {
+      throw new Error('Invalid tenant identifier');
+    }
     const tenant = await Tenant.findById(tenantId);
     if (!tenant) {
       throw new Error('Tenant not found');
     }
+    if (!tenant.isActive) {
+      throw new Error('Tenant is inactive or expired');
+    }
     return tenant;
+  }
+
+  /**
+   * Returns a MongoDB filter object that is always scoped to tenantId.
+   * Use this as the base filter for every tenant-owned resource query so the
+   * tenant constraint can never be accidentally dropped.
+   *
+   * Example:
+   *   const filter = tenantService.scopedFilter(req.tenantId, { status: 'active' });
+   *   const courses = await Course.find(filter);
+   *
+   * @param {string|mongoose.Types.ObjectId} tenantId
+   * @param {object} [additionalFilter={}]
+   * @returns {object}
+   */
+  scopedFilter(tenantId, additionalFilter = {}) {
+    if (!tenantId) {
+      throw new Error('tenantId is required — refusing to build an unscoped filter');
+    }
+    return { ...additionalFilter, tenantId };
+  }
+
+  /**
+   * Asserts that a document belongs to the expected tenant.
+   * Throws with a standardised message if the tenantId fields do not match,
+   * so service methods can call this before returning any record to a caller.
+   *
+   * @param {object} document - Mongoose document with a tenantId field.
+   * @param {string|mongoose.Types.ObjectId} expectedTenantId
+   * @throws {Error} On mismatch.
+   */
+  assertTenantOwnership(document, expectedTenantId) {
+    if (!document || !document.tenantId) {
+      throw new Error('Resource not found');
+    }
+    if (document.tenantId.toString() !== expectedTenantId.toString()) {
+      throw Object.assign(new Error('Cross-tenant access denied'), {
+        code: 'CROSS_TENANT_ACCESS_DENIED'
+      });
+    }
   }
 
   /**
@@ -59,31 +109,25 @@ class TenantService {
   }
   
   /**
-   * Create a user within a tenant
+   * Create a user within a tenant.
+   * Validates that the target tenant exists, is active, and is within its user
+   * limit before creating the record.
    */
   async createTenantUser(tenantId, userData) {
     try {
-      // Verify tenant exists and is active
-      const tenant = await Tenant.findById(tenantId);
-      if (!tenant) {
-        throw new Error('Tenant not found');
-      }
-      
-      if (!tenant.isActive) {
-        throw new Error('Tenant is not active');
-      }
-      
+      // Verify tenant exists and is active (includes ObjectId validation)
+      const tenant = await this.validateTenantAccess(tenantId);
+
       // Check if user can be added (plan limits)
       if (!tenant.canAddUser()) {
         throw new Error('User limit exceeded for current plan');
       }
-      
-      // Check if email already exists in tenant
-      const existingUser = await TenantUser.findOne({
-        tenantId,
-        'profile.email': userData.profile.email.toLowerCase()
-      });
-      
+
+      // Check if email already exists in THIS tenant (scoped lookup)
+      const existingUser = await TenantUser.findOne(
+        this.scopedFilter(tenantId, { 'profile.email': userData.profile.email.toLowerCase() })
+      );
+
       if (existingUser) {
         throw new Error('Email already exists in this tenant');
       }
@@ -118,15 +162,19 @@ class TenantService {
   }
   
   /**
-   * Authenticate user within tenant context
+   * Authenticate user within tenant context.
+   * The user lookup is scoped to tenantId so credentials from tenant A can
+   * never authenticate against tenant B.
    */
   async authenticateTenantUser(tenantId, email, password) {
     try {
-      // Find user by tenant and email
-      const user = await TenantUser.findOne({
-        tenantId,
-        'profile.email': email.toLowerCase()
-      }).populate('tenantId');
+      // Validate tenant first — rejects invalid/inactive tenants early
+      await this.validateTenantAccess(tenantId);
+
+      // Scoped user lookup: both tenantId AND email must match
+      const user = await TenantUser.findOne(
+        this.scopedFilter(tenantId, { 'profile.email': email.toLowerCase() })
+      ).populate('tenantId');
       
       if (!user) {
         throw new Error('Invalid credentials');
@@ -213,7 +261,8 @@ class TenantService {
   }
   
   /**
-   * Get tenant users with pagination
+   * Get tenant users with pagination and filtering.
+   * All queries are scoped to tenantId — no cross-tenant reads are possible.
    */
   async getTenantUsers(tenantId, options = {}) {
     try {
@@ -227,10 +276,11 @@ class TenantService {
         sortBy = 'createdAt',
         sortOrder = 'desc'
       } = options;
-      
-      const query = { tenantId };
-      
-      // Add filters
+
+      // Start with a tenant-scoped base filter
+      const query = this.scopedFilter(tenantId);
+
+      // Add optional filters
       if (search) {
         query.$or = [
           { 'profile.firstName': { $regex: search, $options: 'i' } },
@@ -238,11 +288,11 @@ class TenantService {
           { 'profile.email': { $regex: search, $options: 'i' } }
         ];
       }
-      
+
       if (role) {
         query.roles = role;
       }
-      
+
       if (status) {
         query.status = status;
       }
