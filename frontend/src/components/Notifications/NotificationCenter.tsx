@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useCallback } from 'react';
-import { Bell, BellRing, Filter, Check, CheckCheck, Trash2, Settings, X, Loader2 } from 'lucide-react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Bell, BellRing, Filter, CheckCheck, Trash2, Settings, X, Loader2 } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
 import NotificationItem from './NotificationItem';
 import PreferencesPanel from './PreferencesPanel';
@@ -14,6 +14,7 @@ const NotificationCenter: React.FC = () => {
     preferences,
     isOpen,
     selectedCategory,
+    isLoading,
     setIsOpen,
     setSelectedCategory,
     markAsRead,
@@ -26,7 +27,7 @@ const NotificationCenter: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, {
     onEscape: () => setIsOpen(false)
-  });
+});
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -53,12 +54,12 @@ const NotificationCenter: React.FC = () => {
     { value: 'achievement', label: 'Achievements', color: 'bg-yellow-100 text-yellow-800' },
   ];
 
-  const [showPreferences, setShowPreferences] = React.useState(false);
-  const [displayCount, setDisplayCount] = React.useState(NOTIFICATIONS_PER_PAGE);
-  const [isLoadingMore, setIsLoadingMore] = React.useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
+  const [displayCount, setDisplayCount] = useState(NOTIFICATIONS_PER_PAGE);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Reset display count when category changes
-  React.useEffect(() => {
+  useEffect(() => {
     setDisplayCount(NOTIFICATIONS_PER_PAGE);
   }, [selectedCategory]);
 
@@ -75,6 +76,13 @@ const NotificationCenter: React.FC = () => {
 
   return (
     <div className="relative" ref={dropdownRef}>
+      {/* aril-live region for screen reader announcements */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {unreadCount > 0
+          ? `${unreadCount} unread notifications`
+          : 'No new notifications'}
+      </div>
+
       {/* Notification Bell Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
@@ -88,7 +96,7 @@ const NotificationCenter: React.FC = () => {
         ) : (
           <Bell size={20} className="text-gray-600" />
         )}
-        
+
         {/* Unread count badge */}
         {unreadCount > 0 && (
           <span aria-hidden="true" className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
@@ -104,9 +112,15 @@ const NotificationCenter: React.FC = () => {
           role="dialog"
           aria-modal="false"
           aria-labelledby="notifications-title"
+          aria-describedby="notifications-desc"
           tabIndex={-1}
           className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-[600px] overflow-hidden"
         >
+          {/* Accessibility description */}
+          <div id="notifications-desc" className="sr-only">
+            Notifications panel with categorized alerts. Use the category filters below to sort notifications. Mark notifications as read or remove them individually.
+          </div>
+
           {/* Header */}
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
@@ -150,6 +164,7 @@ const NotificationCenter: React.FC = () => {
                   <button
                     onClick={markAllAsRead}
                     className="flex items-center gap-1 px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                    aria-label="Mark all notifications as read"
                   >
                     <CheckCheck size={14} />
                     Mark all read
@@ -159,6 +174,7 @@ const NotificationCenter: React.FC = () => {
                   <button
                     onClick={clearAllNotifications}
                     className="flex items-center gap-1 px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                    aria-label="Clear all notifications"
                   >
                     <Trash2 size={14} />
                     Clear all
@@ -174,6 +190,8 @@ const NotificationCenter: React.FC = () => {
                     : 'text-gray-600 hover:bg-gray-100'
                   }
                 `}
+                aria-pressed={showPreferences}
+                aria-label={showPreferences ? 'Show notifications' : 'Show preferences'}
               >
                 <Settings size={14} />
                 Preferences
@@ -182,7 +200,12 @@ const NotificationCenter: React.FC = () => {
           </div>
 
           {/* Content Area */}
-          <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
+          <div
+            className="overflow-y-auto"
+            style={{ maxHeight: '400px' }}
+            aria-live="polite"
+            aria-relevant="additions text"
+          >
             {showPreferences ? (
               <PreferencesPanel
                 preferences={preferences}
@@ -190,15 +213,20 @@ const NotificationCenter: React.FC = () => {
               />
             ) : (
               <>
-                {notifications.length === 0 ? (
+                {isLoading && notifications.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" aria-hidden="true" />
+                    <p className="text-gray-500 text-sm">Loading notifications…</p>
+                  </div>
+                ) : notifications.length === 0 ? (
                   <div className="p-8 text-center">
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <Bell size={24} className="text-gray-400" />
                     </div>
                     <h4 className="text-gray-900 font-medium mb-1">No notifications</h4>
                     <p className="text-gray-500 text-sm">
-                      {selectedCategory === 'all' 
-                        ? "You're all caught up!" 
+                      {selectedCategory === 'all'
+                        ? "You're all caught up!"
                         : `No ${selectedCategory} notifications`}
                     </p>
                   </div>
@@ -222,6 +250,7 @@ const NotificationCenter: React.FC = () => {
                           onClick={handleLoadOlder}
                           disabled={isLoadingMore}
                           className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 disabled:pointer-events-none disabled:opacity-50"
+                          aria-label="Load older notifications"
                         >
                           {isLoadingMore ? (
                             <>
