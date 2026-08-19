@@ -228,7 +228,7 @@ jobs:
         run: cd frontend && npx wait-on http://localhost:3000
 
       - name: Run Lighthouse Audit
-        run: cd frontend && npx @lhci/cli autorun --config=../.github/lighthouse-budget.json
+        run: cd frontend && npx @lhci/cli collect --config=../.github/lighthouse-budget.json && npx @lhci/cli assert --config=../.github/lighthouse-budget.json
         
       - name: Run Accessibility Audit
         run: cd frontend && npx @axe-core/cli http://localhost:3000
