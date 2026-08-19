@@ -1,10 +1,9 @@
-#![no_std]
-use crate::utils::storage::{PackedTimestamps, PackedUserFlags, StorageUtils};
+use crate::utils::storage::{PackedTimestamps, PackedUserFlags};
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec};
 
 /// Achievement tier with weight
 #[contracttype]
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum AchievementTier {
     Bronze = 0,   // Course completion - weight 1
     Silver = 1,   // Multiple courses - weight 2
@@ -30,7 +29,7 @@ pub struct UserProfile {
 
 /// Privacy levels packed into flags
 #[contracttype]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PrivacyLevel {
     Public = 0,
     Private = 1,
@@ -546,7 +545,7 @@ impl UserProfileContract {
     }
 
     /// Add a credential to user's profile with optimized storage
-    pub fn add_credential(env: &Env, user: Address, credential_id: u64) {
+    pub fn add_credential(env: Env, user: Address, credential_id: u64) {
         let mut profile = env
             .storage()
             .instance()
@@ -556,10 +555,10 @@ impl UserProfileContract {
                 let now = env.ledger().timestamp();
                 UserProfile {
                     owner: user.clone(),
-                    username: String::from_str(env, "unknown"),
-                    email_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
-                    bio_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
-                    avatar_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
+                    username: String::from_str(&env, "unknown"),
+                    email_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
+                    bio_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
+                    avatar_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
                     timestamps: PackedTimestamps::new(now, now),
                     achievement_count: 0,
                     credential_count: 0,
@@ -581,8 +580,8 @@ impl UserProfileContract {
             .storage()
             .instance()
             .get(&ProfileKey::UserCredentials(user.clone()))
-            .unwrap_or_else(|| Vec::new(env));
-        if !user_creds.contains(&credential_id) {
+            .unwrap_or_else(|| Vec::new(&env));
+        if !Self::vec_contains_u64(&user_creds, credential_id) {
             user_creds.push_back(credential_id);
             env.storage()
                 .instance()
@@ -591,11 +590,23 @@ impl UserProfileContract {
     }
 
     /// Get all credential IDs for a user (fast path)
-    pub fn get_user_credential_ids(env: &Env, user: Address) -> Vec<u64> {
+    pub fn get_user_credential_ids(env: Env, user: Address) -> Vec<u64> {
         env.storage()
             .instance()
             .get(&ProfileKey::UserCredentials(user))
-            .unwrap_or_else(|| Vec::new(env))
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Check if a soroban-sdk Vec<u64> contains a given value.
+    /// soroban-sdk 20.5.0 Vec has no portable contains across element types,
+    /// so we provide an explicit linear scan.
+    fn vec_contains_u64(vec: &Vec<u64>, target: u64) -> bool {
+        for item in vec.iter() {
+            if item == target {
+                return true;
+            }
+        }
+        false
     }
 
     /// Generate hash for string data

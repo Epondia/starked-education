@@ -77,7 +77,7 @@ interface InteractionPatternOptimizerProps {
   learningStyle: LearningStyle;
   onPatternDetected?: (pattern: InteractionPattern) => void;
   onAdaptationApplied?: (adaptation: AdaptationRecord) => void;
-  onRecommendationGenerated?: (recommendation: InteractionRecommendation) => void;
+  onRecommendationGenerated?: (recommendations: InteractionRecommendation[]) => void;
   enableRealTimeOptimization?: boolean;
   optimizationSensitivity?: 'low' | 'medium' | 'high';
   trackPerformanceMetrics?: boolean;
@@ -254,20 +254,20 @@ export function InteractionPatternOptimizer({
     document.addEventListener('keydown', handleKeyDown);
 
     // Touch events for mobile
-    if ('ontouchstart' in window) {
-      const handleTouchStart = (e: TouchEvent) => {
-        const touch = e.touches[0];
-        if (touch) {
-          trackInteraction({
-            type: 'gesture',
-            target: e.target,
-            clientX: touch.clientX,
-            clientY: touch.clientY,
-            timestamp: Date.now()
-          } as any);
-        }
-      };
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      if (touch) {
+        trackInteraction({
+          type: 'gesture',
+          target: e.target,
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          timestamp: Date.now()
+        } as any);
+      }
+    };
 
+    if ('ontouchstart' in window) {
       document.addEventListener('touchstart', handleTouchStart);
     }
 
@@ -381,10 +381,10 @@ export function InteractionPatternOptimizer({
       return acc;
     }, {} as Record<InteractionType, number>);
 
-    const dominantPatterns = Object.entries(patternFrequency)
+    const dominantPatterns: InteractionType[] = Object.entries(patternFrequency)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 3)
-      .map(([type]) => type);
+      .map(([type]) => type as InteractionType);
 
     // Update performance metrics
     const newMetrics = {

@@ -22,6 +22,7 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
 import { checkDatabaseConnectivity, DependencyHealth } from '../utils/database';
+import { getCompressionStats } from '../middleware/compression';
 
 const router: Router = Router();
 
@@ -30,6 +31,11 @@ const { checkRedisConnectivity } = require('../config/redis');
 
 // Elasticsearch check
 import ElasticsearchService from '../services/search/ElasticsearchService';
+import { getIndexerStatus } from '../services/eventIndexer';
+import { IndexerStatus } from '../models/IndexedEvent';
+
+// Circuit breaker metrics
+const { circuitBreakerRegistry } = require('../utils/circuitBreaker');
 
 // Package version
 const packageJson = require('../../../package.json');
@@ -130,6 +136,34 @@ async function checkAllDependencies() {
 
   return { postgres, redis, stellar, ipfs, elasticsearch };
 }
+/**
+ * Critical dependencies: failure of any of these indicates the service cannot
+ * reliably perform its core functions, so the aggregate status is "unhealthy".
+ * Other dependencies are peripheral; failure leaves the service in "degraded"
+ * mode but still operational.
+ */
+const CRITICAL_DEPENDENCIES: ReadonlyArray<string> = ['postgres', 'redis'];
+
+/**
+ * Compute the aggregated status from a dependency map.
+ * Returns 'unhealthy' if any critical dependency is down, 'degraded' if only
+ * non-critical dependencies are down, and 'healthy' when all are up.
+ */
+function aggregateStatus(
+  dependencies: Record<string, DependencyHealth>,
+): 'healthy' | 'degraded' | 'unhealthy' {
+  const allHealthy = Object.values(dependencies).every(
+    (dep: DependencyHealth) => dep.status === 'healthy',
+  );
+  if (allHealthy) {
+    return 'healthy';
+  }
+
+  const criticalUnhealthy = CRITICAL_DEPENDENCIES.some(
+    (name) => dependencies[name]?.status !== 'healthy',
+  );
+  return criticalUnhealthy ? 'unhealthy' : 'degraded';
+}
 
 /**
  * GET /health/live
@@ -188,22 +222,35 @@ router.get('/ready', async (req: Request, res: Response) => {
 router.get('/', async (req: Request, res: Response) => {
   try {
     const dependencies = await checkAllDependencies();
-    
-    const allHealthy = Object.values(dependencies).every(
-      (dep: DependencyHealth) => dep.status === 'healthy'
-    );
 
     const memory = process.memoryUsage();
 
+    // Safely read the event indexer status (may not be initialised yet)
+    let indexerStatus: Partial<IndexerStatus> = { status: 'stopped' };
+    try {
+      indexerStatus = getIndexerStatus();
+    } catch {
+      // Indexer not yet initialised – report as stopped
+    }
+
     res.status(200).json({
-      status: allHealthy ? 'healthy' : 'degraded',
+      status: aggregateStatus(dependencies),
       version: packageJson.version,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
+      compression: getCompressionStats(),
       memory: {
         heapUsed: memory.heapUsed,
         heapTotal: memory.heapTotal,
         rss: memory.rss
+      },
+      eventIndexer: {
+        status:          indexerStatus.status ?? 'stopped',
+        lastLedger:      indexerStatus.lastLedger ?? 0,
+        eventsProcessed: indexerStatus.eventsProcessed ?? 0,
+        lag:             indexerStatus.lag ?? 0,
+        ...(indexerStatus.errorMessage && { errorMessage: indexerStatus.errorMessage }),
+        ...(indexerStatus.startedAt && { startedAt: indexerStatus.startedAt }),
       },
       dependencies: Object.fromEntries(
         Object.entries(dependencies).map(([key, value]) => {
@@ -227,19 +274,24 @@ router.get('/', async (req: Request, res: Response) => {
       )
     });
   } catch (error) {
-    // Even on error, return 200 for monitoring endpoint
+    // Even on error, return 200 for monitoring endpoint.
+    // If checkAllDependencies() throws, the realistic cause is that a
+    // critical dependency (db / redis) failed synchronously — surface as
+    // 'unhealthy' under the tiered-status contract.
     console.error('Health check error:', error);
-    
+
     res.status(200).json({
-      status: 'degraded',
+      status: 'unhealthy',
       version: packageJson.version,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
+      compression: getCompressionStats(),
       memory: {
         heapUsed: 0,
         heapTotal: 0,
         rss: 0
       },
+      eventIndexer: { status: 'stopped', lastLedger: 0, eventsProcessed: 0, lag: 0 },
       dependencies: {
         postgres: { status: 'unhealthy', latencyMs: 0, error: 'Check failed' },
         redis: { status: 'unhealthy', latencyMs: 0, error: 'Check failed' },

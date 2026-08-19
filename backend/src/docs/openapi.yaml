@@ -1,0 +1,1462 @@
+openapi: "3.0.3"
+info:
+  title: "StarkEd Education Platform API"
+  description: |
+    The StarkEd Education Platform API provides endpoints for a decentralized
+    education platform powered by the Stellar blockchain. This API enables
+    course management, user authentication, credential verification,
+    enrollment, quizzes, real-time collaboration, and more.
+
+    ## Authentication
+    Most endpoints require a Bearer token obtained via the `/auth/login` endpoint.
+    Pass the token in the `Authorization` header as `Bearer <token>`.
+
+    ## Rate Limiting
+    All endpoints are subject to rate limiting. Auth endpoints have stricter limits.
+
+    ## Versioning
+    The API is versioned via URL path prefix: `/api/v1/`, `/api/v2/`, etc.
+    Currently active version: **v1**.
+  version: "1.0.0"
+  contact:
+    name: "StarkEd Team"
+    url: "https://github.com/Epondia/starked-education"
+  license:
+    name: "MIT"
+    url: "https://opensource.org/licenses/MIT"
+
+servers:
+  - url: "http://localhost:3001/api/v1"
+    description: "Local development server"
+  - url: "https://api.starked.education/api/v1"
+    description: "Production server"
+
+tags:
+  - name: "Authentication"
+    description: "User registration, login, and profile management"
+  - name: "Courses"
+    description: "Course content and version management"
+  - name: "Users"
+    description: "User management (admin)"
+  - name: "Enrollments"
+    description: "Course enrollment and payment"
+  - name: "Quizzes"
+    description: "Quiz management and submissions"
+  - name: "Credentials"
+    description: "Blockchain credential issuance and verification"
+  - name: "Collaboration"
+    description: "Real-time collaboration rooms"
+  - name: "Notifications"
+    description: "User notification management"
+  - name: "Analytics"
+    description: "Platform analytics and reporting"
+  - name: "Content"
+    description: "Educational content management"
+  - name: "Health"
+    description: "Health check and monitoring"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained from POST /auth/login.
+        Example: `Authorization: Bearer eyJhbGciOi...`
+
+  schemas:
+    # ── Common ────────────────────────────────────────────────────────────
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "An error occurred"
+        error:
+          type: string
+          example: "Detailed error description"
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 10
+        total:
+          type: integer
+          example: 42
+        pages:
+          type: integer
+          example: 5
+
+    # ── Auth ──────────────────────────────────────────────────────────────
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "user_abc123"
+        username:
+          type: string
+          example: "johndoe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        role:
+          type: string
+          enum: [student, instructor, educator, admin, moderator]
+          example: "student"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: "johndoe"
+        password:
+          type: string
+          format: password
+          example: "securePassword123"
+
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          example: "johndoe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        password:
+          type: string
+          format: password
+          example: "securePassword123"
+        role:
+          type: string
+          enum: [student, instructor, educator]
+          default: "student"
+
+    TokenResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Login successful"
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    # ── Course ────────────────────────────────────────────────────────────
+    Course:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "course_xyz"
+        title:
+          type: string
+          example: "Introduction to Blockchain"
+        description:
+          type: string
+        shortDescription:
+          type: string
+        category:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+        instructor:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            bio: { type: string }
+            avatar: { type: string }
+            rating: { type: number }
+        price:
+          type: number
+          example: 49.99
+        rating:
+          type: number
+          example: 4.5
+        ratingCount:
+          type: integer
+          example: 128
+        enrollmentCount:
+          type: integer
+          example: 1024
+        thumbnail:
+          type: string
+          format: uri
+        tags:
+          type: array
+          items:
+            type: string
+        skills:
+          type: array
+          items:
+            type: string
+        level:
+          type: string
+          enum: [beginner, intermediate, advanced]
+        duration:
+          type: integer
+          description: "Duration in hours"
+          example: 40
+        language:
+          type: string
+          example: "English"
+
+    # ── Enrollment ────────────────────────────────────────────────────────
+    Enrollment:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "enroll_abc"
+        userId:
+          type: string
+        courseId:
+          type: string
+        status:
+          type: string
+          enum: [pending, confirmed, active, completed, cancelled, suspended, refunded, expired]
+        enrolledAt:
+          type: string
+          format: date-time
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 75
+        paymentStatus:
+          type: string
+          enum: [pending, processing, completed, failed, refunded, partially_refunded]
+        amountPaid:
+          type: number
+        totalAmount:
+          type: number
+        currency:
+          type: string
+          example: "USD"
+
+    # ── Credential ────────────────────────────────────────────────────────
+    Credential:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "cred_xyz"
+        issuer:
+          type: string
+          description: "Stellar wallet address of issuer"
+        recipient:
+          type: string
+          description: "Stellar wallet address of recipient"
+        title:
+          type: string
+          example: "Blockchain Fundamentals"
+        courseId:
+          type: string
+        ipfsHash:
+          type: string
+          description: "IPFS content hash of the credential"
+        timestamp:
+          type: integer
+          format: int64
+          description: "Unix timestamp of issuance"
+        status:
+          type: string
+          enum: [Active, Expired, Revoked, Pending]
+
+    # ── Quiz ──────────────────────────────────────────────────────────────
+    Quiz:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        courseId:
+          type: string
+        duration:
+          type: integer
+          description: "Time limit in minutes"
+        totalPoints:
+          type: integer
+        passingScore:
+          type: integer
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuizQuestion"
+
+    QuizQuestion:
+      type: object
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        type:
+          type: string
+          enum: [multiple_choice, true_false, short_answer, essay]
+        options:
+          type: array
+          items:
+            type: string
+        points:
+          type: integer
+
+    # ── Notification ──────────────────────────────────────────────────────
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+          enum: [info, success, warning, error]
+        read:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── Content ───────────────────────────────────────────────────────────
+    ContentVersion:
+      type: object
+      properties:
+        id:
+          type: string
+        contentId:
+          type: string
+        version:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        changes:
+          type: array
+          items:
+            type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        isCurrent:
+          type: boolean
+
+    # ── Health ────────────────────────────────────────────────────────────
+    HealthCheck:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "healthy"
+        uptime:
+          type: number
+          example: 3600.5
+        supportedVersions:
+          type: array
+          items:
+            type: string
+          example: ["v1", "v2"]
+
+  # ── Example responses ──────────────────────────────────────────────────
+  examples:
+    Error400:
+      value:
+        success: false
+        message: "Validation error"
+        error: "Missing required field: email"
+    Error401:
+      value:
+        success: false
+        message: "Authentication required"
+        error: "Invalid or expired token"
+    Error403:
+      value:
+        success: false
+        message: "Access denied"
+        error: "Insufficient permissions"
+    Error404:
+      value:
+        success: false
+        message: "Not found"
+        error: "Resource not found"
+    Error500:
+      value:
+        success: false
+        message: "Internal server error"
+        error: "An unexpected error occurred"
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ── Health ──────────────────────────────────────────────────────────────
+  /health:
+    get:
+      tags: [Health]
+      summary: "Health check"
+      description: "Returns the current health status and uptime of the API."
+      security: []
+      responses:
+        "200":
+          description: "API is healthy"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthCheck"
+
+  # ── Authentication ──────────────────────────────────────────────────────
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: "Register a new user"
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: "User registered successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: "Validation error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingFields:
+                  $ref: "#/components/examples/Error400"
+        "409":
+          description: "User already exists"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: "User login"
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: "Login successful"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: "Missing credentials"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Invalid credentials"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidCreds:
+                  $ref: "#/components/examples/Error401"
+
+  /auth/profile:
+    get:
+      tags: [Authentication]
+      summary: "Get current user profile"
+      responses:
+        "200":
+          description: "User profile"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "User not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [Authentication]
+      summary: "Update user profile"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                currentPassword:
+                  type: string
+                  format: password
+                newPassword:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: "Profile updated"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  user:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: "Validation error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "User not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "Username or email conflict"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/users:
+    get:
+      tags: [Authentication]
+      summary: "List all users (admin only)"
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: role
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Paginated list of users"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Forbidden - admin only"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/assign-role/{userId}:
+    put:
+      tags: [Authentication]
+      summary: "Assign role to user (admin only)"
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [student, instructor, educator, admin, moderator]
+      responses:
+        "200":
+          description: "Role assigned successfully"
+        "400":
+          description: "Invalid role"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Forbidden - admin only"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "User not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/users/{userId}:
+    delete:
+      tags: [Authentication]
+      summary: "Delete user (admin only)"
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "User deleted"
+        "400":
+          description: "Cannot delete self"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Forbidden - admin only"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "User not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Courses ─────────────────────────────────────────────────────────────
+  /courses:
+    get:
+      tags: [Courses]
+      summary: "List courses with search and filtering"
+      security: []
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [beginner, intermediate, advanced]
+        - name: rating
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 5
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [relevance, rating, price-low, price-high, newest, popular]
+      responses:
+        "200":
+          description: "Paginated course list"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  courses:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Course"
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+                  hasMore:
+                    type: boolean
+
+  /courses/{courseId}:
+    get:
+      tags: [Courses]
+      summary: "Get course by ID"
+      security: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Course details"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+        "404":
+          description: "Course not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /courses/{courseId}/versions:
+    get:
+      tags: [Courses]
+      summary: "Get version history for course content"
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: "Version history"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      versions:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ContentVersion"
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+        "404":
+          description: "Course not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [Courses]
+      summary: "Create a new version for course content"
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content, createdBy]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                content:
+                  type: object
+                changes:
+                  type: array
+                  items:
+                    type: string
+                createdBy:
+                  type: string
+      responses:
+        "201":
+          description: "Version created"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/ContentVersion"
+        "400":
+          description: "Validation error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Course not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /courses/{courseId}/versions/current:
+    get:
+      tags: [Courses]
+      summary: "Get current version of course content"
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Current version"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/ContentVersion"
+        "404":
+          description: "Course not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /courses/{courseId}/versions/restore:
+    post:
+      tags: [Courses]
+      summary: "Restore content to a specific version"
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [versionId, restoredBy]
+              properties:
+                versionId:
+                  type: string
+                restoreReason:
+                  type: string
+                restoredBy:
+                  type: string
+      responses:
+        "200":
+          description: "Content restored"
+        "404":
+          description: "Course or version not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /courses/{courseId}/versions/statistics:
+    get:
+      tags: [Courses]
+      summary: "Get version statistics for course content"
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Version statistics"
+        "404":
+          description: "Course not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Enrollments ─────────────────────────────────────────────────────────
+  /enrollments:
+    get:
+      tags: [Enrollments]
+      summary: "List user enrollments"
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, active, completed, cancelled]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: "Paginated enrollment list"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enrollments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Enrollment"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [Enrollments]
+      summary: "Enroll in a course"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId]
+              properties:
+                courseId:
+                  type: string
+                paymentMethod:
+                  type: string
+                  enum: [stellar, credit_card, bank_transfer, crypto]
+                  default: "stellar"
+      responses:
+        "201":
+          description: "Enrollment created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Enrollment"
+        "400":
+          description: "Validation error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Course not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "Already enrolled"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /enrollments/{enrollmentId}:
+    get:
+      tags: [Enrollments]
+      summary: "Get enrollment details"
+      parameters:
+        - name: enrollmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Enrollment details"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Enrollment"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Enrollment not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Quizzes ─────────────────────────────────────────────────────────────
+  /quizzes:
+    get:
+      tags: [Quizzes]
+      summary: "List quizzes"
+      parameters:
+        - name: courseId
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: "Quiz list"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quizzes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Quiz"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+    post:
+      tags: [Quizzes]
+      summary: "Create a quiz"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, courseId]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                courseId:
+                  type: string
+                duration:
+                  type: integer
+                totalPoints:
+                  type: integer
+                passingScore:
+                  type: integer
+                questions:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/QuizQuestion"
+      responses:
+        "201":
+          description: "Quiz created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quiz"
+        "400":
+          description: "Validation error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /quizzes/{quizId}:
+    get:
+      tags: [Quizzes]
+      summary: "Get quiz by ID"
+      parameters:
+        - name: quizId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Quiz details"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quiz"
+        "404":
+          description: "Quiz not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Notifications ───────────────────────────────────────────────────────
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: "List notifications for current user"
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [info, success, warning, error]
+        - name: read
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: "Notification list"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notification"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /notifications/{notificationId}/read:
+    put:
+      tags: [Notifications]
+      summary: "Mark notification as read"
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Notification marked as read"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Notification not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /notifications/read-all:
+    put:
+      tags: [Notifications]
+      summary: "Mark all notifications as read"
+      responses:
+        "200":
+          description: "All notifications marked as read"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Analytics ───────────────────────────────────────────────────────────
+  /analytics/overview:
+    get:
+      tags: [Analytics]
+      summary: "Get platform analytics overview"
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: "Analytics overview"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalUsers:
+                    type: integer
+                  totalCourses:
+                    type: integer
+                  totalEnrollments:
+                    type: integer
+                  totalRevenue:
+                    type: number
+                  activeUsers:
+                    type: integer
+                  completionRate:
+                    type: number
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Forbidden"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Collaboration ───────────────────────────────────────────────────────
+  /collaboration/rooms:
+    get:
+      tags: [Collaboration]
+      summary: "List collaboration rooms"
+      parameters:
+        - name: courseId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "List of collaboration rooms"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [Collaboration]
+      summary: "Create a collaboration room"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, courseId]
+              properties:
+                name:
+                  type: string
+                courseId:
+                  type: string
+                maxParticipants:
+                  type: integer
+      responses:
+        "201":
+          description: "Room created"
+        "400":
+          description: "Validation error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Content ─────────────────────────────────────────────────────────────
+  /content:
+    get:
+      tags: [Content]
+      summary: "List educational content"
+      parameters:
+        - name: courseId
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [video, document, quiz, assignment, interactive]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: "Content list"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /content/{contentId}:
+    get:
+      tags: [Content]
+      summary: "Get content by ID"
+      parameters:
+        - name: contentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Content details"
+        "404":
+          description: "Content not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"

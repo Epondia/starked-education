@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState } from 'react';
 import { useProfile } from '../../hooks/useProfile';
 import { ProfileEditor } from '../../components/ProfileEditor';
