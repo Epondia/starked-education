@@ -48,7 +48,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          # The backend dependency tree (@elastic/transport -> undici) needs
+          # the global `File` API, which only exists on Node 20+.
+          node-version: '20'
 
       - name: Install k6
         run: |
