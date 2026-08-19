@@ -12,6 +12,7 @@ class ABTestingFramework {
         this.redisClient = null;
         this.experiments = new Map();
         this.userAssignments = new Map();
+        this.flags = new Map();
         
         // Configuration
         this.config = {
@@ -21,6 +22,7 @@ class ABTestingFramework {
             redisDb: 4, // Separate DB for A/B testing
             assignmentTTL: 60 * 60 * 24 * 30, // 30 days
             experimentTTL: 60 * 60 * 24 * 90, // 90 days
+            flagTTL: 60 * 60 * 24 * 90, // 90 days
             significanceLevel: 0.05,
             minSampleSize: 100
         };
@@ -70,10 +72,11 @@ class ABTestingFramework {
                 throw new Error('Experiment name and at least 2 variants are required');
             }
 
-            // Validate traffic allocation
+            // Validate traffic allocation. When omitted, default to an even
+            // split across variants (sums to 100%).
             const totalAllocation = trafficAllocation ? 
                 trafficAllocation.reduce((sum, alloc) => sum + alloc, 0) : 
-                variants.length;
+                100;
             
             if (Math.abs(totalAllocation - 100) > 0.01) {
                 throw new Error('Traffic allocation must sum to 100%');
@@ -743,6 +746,210 @@ class ABTestingFramework {
             throw error;
         }
     }
+
+    // ─── Feature Flags ─────────────────────────────────────────────
+
+    /**
+     * Create (or replace) a feature flag.
+     * flagConfig: { name, description?, enabled?, rolloutPercentage?, userOverrides? }
+     */
+    async createFlag(flagConfig) {
+        const {
+            name,
+            description = '',
+            enabled = false,
+            rolloutPercentage = 100,
+            userOverrides = {}
+        } = flagConfig;
+
+        if (!name || typeof name !== 'string') {
+            throw new Error('Flag name is required');
+        }
+        if (typeof rolloutPercentage !== 'number' || rolloutPercentage < 0 || rolloutPercentage > 100) {
+            throw new Error('rolloutPercentage must be a number between 0 and 100');
+        }
+
+        const flag = {
+            name,
+            description,
+            enabled: !!enabled,
+            rolloutPercentage,
+            userOverrides: { ...userOverrides },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+
+        if (this.redisClient) {
+            await this.redisClient.setEx(
+                `flag:${name}`,
+                this.config.flagTTL,
+                JSON.stringify(flag)
+            );
+        } else {
+            this.flags.set(name, flag);
+        }
+
+        console.log(`Feature flag created: ${name}`);
+        return flag;
+    }
+
+    /**
+     * Update an existing flag (toggle, rollout percentage, or per-user
+     * overrides) without a redeploy.
+     */
+    async updateFlag(name, updates = {}) {
+        const flag = await this.getFlag(name);
+        if (!flag) {
+            throw new Error(`Feature flag not found: ${name}`);
+        }
+
+        const { description, enabled, rolloutPercentage, userOverrides } = updates;
+
+        if (description !== undefined) flag.description = description;
+        if (enabled !== undefined) flag.enabled = !!enabled;
+        if (rolloutPercentage !== undefined) {
+            if (typeof rolloutPercentage !== 'number' || rolloutPercentage < 0 || rolloutPercentage > 100) {
+                throw new Error('rolloutPercentage must be a number between 0 and 100');
+            }
+            flag.rolloutPercentage = rolloutPercentage;
+        }
+        if (userOverrides !== undefined) {
+            flag.userOverrides = { ...flag.userOverrides, ...userOverrides };
+        }
+        flag.updatedAt = new Date().toISOString();
+
+        if (this.redisClient) {
+            await this.redisClient.setEx(
+                `flag:${name}`,
+                this.config.flagTTL,
+                JSON.stringify(flag)
+            );
+        } else {
+            this.flags.set(name, flag);
+        }
+
+        console.log(`Feature flag updated: ${name}`);
+        return flag;
+    }
+
+    /**
+     * Get a single flag by name. Unknown flags return null (safe fallback).
+     */
+    async getFlag(name) {
+        try {
+            if (this.redisClient) {
+                const data = await this.redisClient.get(`flag:${name}`);
+                return data ? JSON.parse(data) : null;
+            }
+            return this.flags.get(name) || null;
+        } catch (error) {
+            console.error(`Error getting feature flag ${name}:`, error);
+            return null;
+        }
+    }
+
+    /**
+     * List all flags.
+     */
+    async listFlags() {
+        try {
+            const flags = [];
+
+            if (this.redisClient) {
+                const keys = await this.redisClient.keys('flag:*');
+                for (const key of keys) {
+                    const data = await this.redisClient.get(key);
+                    if (data) flags.push(JSON.parse(data));
+                }
+            } else {
+                for (const flag of this.flags.values()) {
+                    flags.push(flag);
+                }
+            }
+
+            return flags.sort((a, b) =>
+                new Date(b.createdAt) - new Date(a.createdAt)
+            );
+        } catch (error) {
+            console.error('Error listing feature flags:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Delete a flag.
+     */
+    async deleteFlag(name) {
+        try {
+            if (this.redisClient) {
+                await this.redisClient.del(`flag:${name}`);
+            } else {
+                this.flags.delete(name);
+            }
+
+            console.log(`Feature flag deleted: ${name}`);
+            return true;
+        } catch (error) {
+            console.error(`Error deleting feature flag ${name}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Evaluate a single flag for a user. Unknown flags fall back to false.
+     */
+    async isFlagEnabled(name, userId = null) {
+        const flag = await this.getFlag(name);
+        return this.evaluateFlagValue(flag, userId);
+    }
+
+    /**
+     * Evaluate every flag for a user, returning { flagName: boolean }.
+     * Used by the request-context middleware.
+     */
+    async evaluateFlags(userId = null) {
+        const flags = await this.listFlags();
+        const result = {};
+        for (const flag of flags) {
+            result[flag.name] = this.evaluateFlagValue(flag, userId);
+        }
+        return result;
+    }
+
+    /**
+     * Pure flag evaluation. Precedence:
+     *   1. per-user override (force on/off)
+     *   2. master enabled switch
+     *   3. percentage rollout (stable per user)
+     * Unknown flags fall back to false.
+     */
+    evaluateFlagValue(flag, userId) {
+        if (!flag) return false;
+
+        const override = flag.userOverrides && userId != null
+            ? flag.userOverrides[userId]
+            : undefined;
+        if (typeof override === 'boolean') return override;
+
+        if (flag.enabled === false) return false;
+
+        const rollout = flag.rolloutPercentage;
+        if (typeof rollout === 'number' && rollout < 100) {
+            if (userId == null) return false;
+            return this.hashToUnit(userId) < rollout / 100;
+        }
+
+        return true;
+    }
+
+    /**
+     * Normalize the user hash to a value in [0, 1) for percentage rollouts.
+     */
+    hashToUnit(userId) {
+        return this.hashUserId(userId) / 0xFFFFFFFF;
+    }
 }
 
-module.exports = new ABTestingFramework();
+const abTestingFrameworkInstance = new ABTestingFramework();
+module.exports = abTestingFrameworkInstance;
+module.exports.ABTestingFramework = ABTestingFramework;

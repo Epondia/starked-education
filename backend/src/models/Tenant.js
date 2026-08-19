@@ -213,6 +213,87 @@ tenantSchema.pre('save', function(next) {
   next();
 });
 
+// Pre-save middleware to enforce tenant isolation constraints
+tenantSchema.pre('save', function(next) {
+  // Ensure tenant has required isolation fields
+  if (!this.settings) {
+    this.settings = {
+      allowPublicRegistration: true,
+      requireEmailVerification: true,
+      enableSSO: false,
+      defaultLanguage: 'en',
+      timezone: 'UTC',
+      maxUsers: 100,
+      maxStorage: 1024
+    };
+  }
+  
+  // Ensure usage tracking is initialized
+  if (!this.usage) {
+    this.usage = {
+      users: 0,
+      storage: 0,
+      apiCalls: 0,
+      lastReset: new Date()
+    };
+  }
+  
+  // Validate subscription dates
+  if (this.subscription && this.subscription.endDate) {
+    if (this.subscription.startDate && this.subscription.endDate < this.subscription.startDate) {
+      next(new Error('Subscription end date cannot be before start date'));
+      return;
+    }
+  }
+  
+  next();
+});
+
+// Pre-update middleware to prevent cross-tenant modifications
+tenantSchema.pre('findOneAndUpdate', function(next) {
+  const update = this.getUpdate();
+  if (update && update.tenantId) {
+    // Prevent changing tenantId - this would break isolation
+    next(new Error('Cannot modify tenantId - this would break data isolation'));
+    return;
+  }
+  next();
+});
+
+// Static method to validate tenant isolation before operations
+tenantSchema.statics.validateTenantIsolation = function(tenantId, resourceTenantId) {
+  if (!tenantId || !resourceTenantId) {
+    throw new Error('Tenant context required for isolation validation');
+  }
+  if (tenantId.toString() !== resourceTenantId.toString()) {
+    throw new Error('Cross-tenant access denied: tenant isolation violation');
+  }
+  return true;
+};
+
+// Instance method to check if tenant can perform cross-tenant operations
+tenantSchema.methods.canPerformCrossTenantOperation = function(userRoles) {
+  // Only super_admins can perform cross-tenant operations
+  if (!userRoles || !Array.isArray(userRoles)) {
+    return false;
+  }
+  return userRoles.includes('super_admin');
+};
+
+// Instance method to get tenant isolation metadata
+tenantSchema.methods.getIsolationMetadata = function() {
+  return {
+    tenantId: this._id.toString(),
+    subdomain: this.subdomain,
+    domain: this.domain,
+    isActive: this.isActive,
+    isolationLevel: 'strict',
+    requiresTenantContext: true,
+    createdAt: this.createdAt,
+    updatedAt: this.updatedAt
+  };
+};
+
 // Static method to find tenant by domain or subdomain
 tenantSchema.statics.findByDomain = function(domain) {
   const parts = domain.toLowerCase().split('.');
