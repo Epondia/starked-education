@@ -1,4 +1,3 @@
-const { create } = require('ipfs-http-client');
 const { getClientConfig, ipfsConfig } = require('../config/ipfs');
 const {
   validateFile,
@@ -30,15 +29,19 @@ class IpfsService {
    */
   async init() {
     try {
+      // Lazily require ipfs-http-client so a missing/incompatible (ESM-only)
+      // package cannot crash the server at module-load time. IPFS is an
+      // optional external dependency, so degrade gracefully on failure.
+      const { create } = require('ipfs-http-client');
       const config = getClientConfig();
       this.client = create(config);
-      
+
       // Test connection
       await this.client.version();
       console.log('✅ IPFS client initialized successfully');
     } catch (error) {
       console.error('❌ Failed to initialize IPFS client:', error.message);
-      throw createIpfsError('Failed to initialize IPFS client', 'init', { error: error.message });
+      this.client = null;
     }
   }
 

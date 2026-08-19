@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import { GlobalShell } from '@/components/PWA/GlobalShell';
 import { CommandPalette } from '@/components/ui/command-palette';
 import { OnboardingGate } from '@/components/onboarding/OnboardingWizard';
+import { createMetadata } from '@/lib/seo';
 
 const inter = Inter({ subsets: ['latin'] });
 

@@ -11,11 +11,12 @@
  * - Exponential backoff retry on failure
  * - Auto-deactivation after 6 consecutive failures
  * - Secret rotation
- * - Delivery history and manual retry
- * - Deleting a webhook removes pending deliveries
+   * - Delivery history and manual retry
+   * - Idempotency keys for duplicate-delivery prevention
+   * - Deleting a webhook removes pending deliveries
  */
 
-import { WebhookService } from '../webhookService';
+import { WebhookService, IDEMPOTENCY_KEY_HEADER } from '../webhookService';
 import { WebhookEventType, MAX_WEBHOOKS_PER_TENANT, MAX_CONSECUTIVE_FAILURES } from '../../models/Webhook';
 import { WebhookDeliveryStatus } from '../../models/WebhookDelivery';
 
@@ -315,7 +316,7 @@ describe('WebhookService', () => {
       const [url, body, config] = mockedAxios.post.mock.calls[0];
       expect(url).toBe('https://example.com/hook');
 
-      const payload = JSON.parse(body);
+      const payload = JSON.parse(body as string);
       expect(payload.event).toBe('credential.issued');
       expect(payload.tenantId).toBe('tenant-1');
       expect(payload.data.credentialId).toBe('cred-1');
@@ -511,6 +512,88 @@ describe('WebhookService', () => {
       expect(retried.deliveryAttempt).toBe(2);
       expect(retried.status).toBe(WebhookDeliveryStatus.SUCCESS);
       expect(retried.statusCode).toBe(200);
+    });
+  });
+
+  // ─── Idempotency Keys ───────────────────────────────────────────────────────
+
+  describe('idempotency keys', () => {
+    it('should generate, persist, and send an idempotency key on delivery', async () => {
+      mockedAxios.post.mockResolvedValueOnce({ status: 200, data: 'ok' });
+
+      const webhook = await service.registerWebhook('tenant-1', {
+        url: 'https://example.com/hook',
+        events: [WebhookEventType.USER_REGISTERED],
+      });
+
+      await service.emitEvent('tenant-1', WebhookEventType.USER_REGISTERED, {
+        userId: 'u-1',
+      });
+
+      const [, , config] = mockedAxios.post.mock.calls[0];
+      const headers = config!.headers as Record<string, string>;
+      expect(headers[IDEMPOTENCY_KEY_HEADER]).toBeDefined();
+
+      const history = service.getDeliveryHistory(webhook.id, 'tenant-1');
+      expect(history).toHaveLength(1);
+      expect(history[0].idempotencyKey).toBe(headers[IDEMPOTENCY_KEY_HEADER]);
+    });
+
+    it('should reuse the same idempotency key across retries', async () => {
+      mockedAxios.post
+        .mockResolvedValueOnce({ status: 500, data: 'error' })
+        .mockResolvedValueOnce({ status: 200, data: 'ok' });
+
+      const webhook = await service.registerWebhook('tenant-1', {
+        url: 'https://example.com/hook',
+        events: [WebhookEventType.PAYMENT_RECEIVED],
+      });
+
+      await service.emitEvent('tenant-1', WebhookEventType.PAYMENT_RECEIVED, {
+        paymentId: 'pay-1',
+      });
+
+      const [, , firstConfig] = mockedAxios.post.mock.calls[0];
+      const firstHeaders = firstConfig!.headers as Record<string, string>;
+      const originalKey = firstHeaders[IDEMPOTENCY_KEY_HEADER];
+      expect(originalKey).toBeDefined();
+
+      const history = service.getDeliveryHistory(webhook.id, 'tenant-1');
+      expect(history[0].idempotencyKey).toBe(originalKey);
+
+      // Manual retry must reuse the key generated for the original attempt
+      const retried = await service.retryDelivery(webhook.id, history[0].id);
+      expect(retried.idempotencyKey).toBe(originalKey);
+
+      const [, , retryConfig] = mockedAxios.post.mock.calls[1];
+      const retryHeaders = retryConfig!.headers as Record<string, string>;
+      expect(retryHeaders[IDEMPOTENCY_KEY_HEADER]).toBe(originalKey);
+    });
+
+    it('should send a distinct idempotency key per delivery', async () => {
+      mockedAxios.post.mockResolvedValueOnce({ status: 200, data: 'ok' });
+      const webhook = await service.registerWebhook('tenant-1', {
+        url: 'https://example.com/hook',
+        events: [WebhookEventType.USER_REGISTERED],
+      });
+
+      await service.emitEvent('tenant-1', WebhookEventType.USER_REGISTERED, {
+        userId: 'u-1',
+      });
+      await service.emitEvent('tenant-1', WebhookEventType.USER_REGISTERED, {
+        userId: 'u-2',
+      });
+
+      const firstHeaders = mockedAxios.post.mock.calls[0][2]
+        ?.headers as Record<string, string>;
+      const secondHeaders = mockedAxios.post.mock.calls[1][2]
+        ?.headers as Record<string, string>;
+
+      expect(firstHeaders[IDEMPOTENCY_KEY_HEADER]).toBeDefined();
+      expect(secondHeaders[IDEMPOTENCY_KEY_HEADER]).toBeDefined();
+      expect(secondHeaders[IDEMPOTENCY_KEY_HEADER]).not.toBe(
+        firstHeaders[IDEMPOTENCY_KEY_HEADER],
+      );
     });
   });
 

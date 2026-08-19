@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { WalletNetwork } from '@creit.tech/stellar-wallets-kit';
 type WalletType = string | null;
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { stellarWallet, TESTNET_DETAILS, MAINNET_DETAILS } from '../lib/stellar/wallets';
+import { stellarWallet, WalletNetwork, TESTNET_DETAILS, MAINNET_DETAILS } from '../lib/stellar/wallets';
 
 interface WalletContextType {
   address: string | null;
