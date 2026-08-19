@@ -17,6 +17,9 @@ pub mod marketplace_test;
 pub mod utils;
 #[cfg(test)]
 pub mod gas_benchmark;
+pub mod vrf_system;
+#[cfg(test)]
+mod vrf_system_test;
 
 /// ─── Admin authorization helper ──────────────────────────────
 /// Verifies the caller is the stored admin. Panics if not.
