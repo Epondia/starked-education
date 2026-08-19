@@ -45,11 +45,11 @@ exports.down = async function(db) {
 | Command | Description |
 |---------|-------------|
 | `npm run migrate:up` | Apply all pending migrations |
-| `npm run migrate:down` | Rollback the most recent migration |
+| `npm run migrate:down` | Rollback the most recent migration (confirms destructive ops) |
 | `npm run migrate:status` | Show migration status |
 | `npm run migrate:dry-run` | Preview pending migrations without applying |
 | `npm run migrate:down-dry-run` | Preview rollback without executing |
-| `npm run migrate:rollback-all` | Rollback all applied migrations |
+| `npm run migrate:rollback-all` | Rollback all applied migrations (confirms destructive ops) |
 
 ### Manual CLI usage
 
@@ -60,11 +60,11 @@ ts-node src/utils/migrate.ts up
 # Preview what would be applied
 ts-node src/utils/migrate.ts up --dry-run
 
-# Rollback last migration
-ts-node src/utils/migrate.ts down
+# Rollback last migration (requires explicit opt-in for destructive changes)
+ts-node src/utils/migrate.ts down --allow-destructive
 
 # Rollback last 3 migrations
-ts-node src/utils/migrate.ts down --steps=3
+ts-node src/utils/migrate.ts down --steps=3 --allow-destructive
 
 # Preview rollback
 ts-node src/utils/migrate.ts down --dry-run
@@ -72,6 +72,51 @@ ts-node src/utils/migrate.ts down --dry-run
 # Show status
 ts-node src/utils/migrate.ts status
 ```
+
+## Destructive Change Safety Checks
+
+The runner refuses to execute a migration that contains **destructive
+operations** unless the change is explicitly confirmed. The following are
+treated as destructive, in both raw SQL and the Knex schema-builder API:
+
+- `DROP TABLE` / `DROP INDEX` / `DROP COLUMN` / `DROP CONSTRAINT`
+- `DROP VIEW` / `DROP SCHEMA` / `DROP DATABASE` / `DROP FUNCTION` / `DROP TRIGGER`
+- `TRUNCATE`
+- `DELETE FROM` (raw SQL) and `.del()` / `.delete()` (Knex)
+- `dropTableIfExists()` / `dropColumn()` / `dropIndex()` / `dropConstraint()` (Knex)
+
+When a destructive operation is detected the migration is **blocked** and a
+list of the offending statements (with line numbers) is printed. To proceed:
+
+1. Review the change with `--dry-run` first.
+2. Re-run with `--allow-destructive` to confirm.
+
+```bash
+# Blocked — prints the destructive statements and refuses to run
+ts-node src/utils/migrate.ts down
+
+# Preview what would run (never blocked, only warns)
+ts-node src/utils/migrate.ts down --dry-run
+
+# Confirmed — proceeds after explicit opt-in
+ts-node src/utils/migrate.ts down --allow-destructive
+```
+
+The `npm run migrate:down` and `npm run migrate:rollback-all` scripts already
+pass `--allow-destructive` because rolling back is an explicit, intentional
+operation. The guard exists for the raw CLI (and for `up` migrations, which
+should never contain destructive statements) so that destructive changes are
+never applied by accident.
+
+Every migration is also required to declare a **rollback (down) path** before
+it can be applied:
+
+- SQL migrations need a `-- @undo` (or `-- DOWN`) section.
+- JavaScript migrations need both `up` and `down` exports.
+
+A migration without a rollback path is rejected during the `up` validation
+pass — before any migration in the batch is applied — so a migration can never
+be applied that could not later be rolled back.
 
 ## Dry-Run Mode
 
@@ -106,7 +151,7 @@ npm run migrate:down
 
 ```bash
 # Rollback the last 2 migrations
-ts-node src/utils/migrate.ts down --steps=2
+ts-node src/utils/migrate.ts down --steps=2 --allow-destructive
 ```
 
 ### Full Rollback
@@ -135,9 +180,10 @@ npm run migrate:rollback-all
 
 ### Rollback fails
 
-1. Ensure the migration file has a valid `-- @undo` or `-- DOWN` section
-2. Check that the down SQL is valid and doesn't reference non-existent objects
-3. Verify no other processes are holding locks on the affected tables
+1. If the rollback is blocked with a "destructive … blocked by safety check" error, review the listed statements and re-run with `--allow-destructive` (after a `--dry-run`).
+2. Ensure the migration file has a valid `-- @undo` or `-- DOWN` section
+3. Check that the down SQL is valid and doesn't reference non-existent objects
+4. Verify no other processes are holding locks on the affected tables
 
 ### Corrupted migration state
 

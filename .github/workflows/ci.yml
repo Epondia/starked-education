@@ -114,6 +114,14 @@ jobs:
       - name: Build
         run: cd backend && npm run build
 
+      - name: Exercise migration rollback (dry-run + up → down)
+        run: |
+          cd backend
+          npm run migrate:dry-run
+          npm run migrate:up
+          npm run migrate:down
+          npm run migrate:status
+
   # ─── Frontend ────────────────────────────────────────────────────
   frontend:
     name: Frontend
