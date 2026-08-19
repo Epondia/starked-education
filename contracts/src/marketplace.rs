@@ -1,7 +1,5 @@
 use crate::utils::storage::StorageKey;
-use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, String,
-};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -53,7 +51,7 @@ pub struct Dispute {
     pub listing_id: u64,
     pub initiator: Address,
     pub reason: String,
-    pub status: u32, // 0: Open, 1: Resolved, 2: Cancelled
+    pub status: u32,    // 0: Open, 1: Resolved, 2: Cancelled
     pub escrow_id: u64, // 0 if not linked to an escrow
 }
 
@@ -297,7 +295,7 @@ impl MarketplaceContract {
             listing_id,
             initiator: initiator.clone(),
             reason,
-            status: 0, // Open
+            status: 0,    // Open
             escrow_id: 0, // Not linked to escrow by default
         };
 
@@ -398,12 +396,7 @@ impl MarketplaceContract {
 
     /// Create an escrow for a listing. Buyer funds held until delivery confirmed.
     /// The listing is marked inactive (pending) and the escrow is created in Funded state.
-    pub fn create_escrow(
-        env: Env,
-        buyer: Address,
-        listing_id: u64,
-        timeout: u64,
-    ) -> u64 {
+    pub fn create_escrow(env: Env, buyer: Address, listing_id: u64, timeout: u64) -> u64 {
         buyer.require_auth();
 
         if timeout == 0 {
@@ -615,9 +608,10 @@ impl MarketplaceContract {
             .instance()
             .get(&MarketplaceKey::TradeCount(credential_id))
             .unwrap_or(0);
-        env.storage()
-            .instance()
-            .set(&MarketplaceKey::TradeCount(credential_id), &(trade_count + 1));
+        env.storage().instance().set(
+            &MarketplaceKey::TradeCount(credential_id),
+            &(trade_count + 1),
+        );
     }
 
     /// Re-activate a listing (e.g., after refund or cancellation)

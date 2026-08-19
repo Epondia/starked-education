@@ -6,10 +6,7 @@
 /// serve as smoke-tests for the benchmark harness.
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
-use crate::{
-    governance::EligibilityCriteria,
-    StarkEdContract, StarkEdContractClient,
-};
+use crate::{governance::EligibilityCriteria, StarkEdContract, StarkEdContractClient};
 
 /// Gas budget thresholds (documented targets; validated by soroban-cli).
 const GAS_BUDGET_CREDENTIAL_ISSUANCE: u64 = 2_000_000;
@@ -79,10 +76,7 @@ fn bench_course_creation() {
 
     assert!(course_id > 0);
     let course = client.get_course(&course_id);
-    assert_eq!(
-        course.title,
-        String::from_str(&env, "Gas Benchmark Course")
-    );
+    assert_eq!(course.title, String::from_str(&env, "Gas Benchmark Course"));
 }
 
 /// Benchmark: creating a scholarship proposal (governance).

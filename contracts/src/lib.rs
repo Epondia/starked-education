@@ -1,22 +1,24 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol};
 use soroban_sdk::xdr::ToXdr;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol,
+};
 
+#[cfg(test)]
+pub mod gas_benchmark;
 pub mod governance;
 #[cfg(test)]
 pub mod governance_test;
+pub mod marketplace;
+#[cfg(test)]
+pub mod marketplace_test;
 pub mod tokenomics;
 #[cfg(test)]
 pub mod tokenomics_test;
 pub mod user_profile;
 #[cfg(test)]
 pub mod user_profile_test;
-pub mod marketplace;
-#[cfg(test)]
-pub mod marketplace_test;
 pub mod utils;
-#[cfg(test)]
-pub mod gas_benchmark;
 
 /// ─── Admin authorization helper ──────────────────────────────
 /// Verifies the caller is the stored admin. Panics if not.
@@ -42,8 +44,8 @@ pub enum DataKey {
     CourseCount,
     Course(u64),
     AchievementCount,
-    ProofValidityWindow,        // u64: seconds a cross-chain proof remains valid
-    CrossChainProof(u64),       // CrossChainProof stored by credential_id
+    ProofValidityWindow,  // u64: seconds a cross-chain proof remains valid
+    CrossChainProof(u64), // CrossChainProof stored by credential_id
 }
 
 /// Credential with issuer/recipient data
@@ -123,9 +125,13 @@ impl StarkEdContract {
             .instance()
             .set(&DataKey::CredentialCount, &0u64);
         env.storage().instance().set(&DataKey::CourseCount, &0u64);
-        env.storage().instance().set(&DataKey::AchievementCount, &0u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::AchievementCount, &0u64);
         // Default proof validity window: 1 hour (3600 seconds)
-        env.storage().instance().set(&DataKey::ProofValidityWindow, &3600u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::ProofValidityWindow, &3600u64);
     }
 
     /// Issue a new credential
@@ -278,27 +284,29 @@ impl StarkEdContract {
 
     /// Set the validity window (in seconds) for cross-chain proofs.
     /// Only callable by the admin.
-    pub fn set_proof_validity_window(
-        env: Env,
-        admin: Address,
-        window_seconds: u64,
-    ) {
+    pub fn set_proof_validity_window(env: Env, admin: Address, window_seconds: u64) {
         admin.require_auth();
         check_admin(&env, &admin);
         if window_seconds == 0 {
             panic!("Validity window must be greater than zero");
         }
-        env.storage().instance().set(&DataKey::ProofValidityWindow, &window_seconds);
+        env.storage()
+            .instance()
+            .set(&DataKey::ProofValidityWindow, &window_seconds);
 
         env.events().publish(
-            (Symbol::new(&env, "relay"), Symbol::new(&env, "validity_window_updated")),
+            (
+                Symbol::new(&env, "relay"),
+                Symbol::new(&env, "validity_window_updated"),
+            ),
             window_seconds,
         );
     }
 
     /// Get the current proof validity window in seconds.
     pub fn get_proof_validity_window(env: Env) -> u64 {
-        env.storage().instance()
+        env.storage()
+            .instance()
             .get(&DataKey::ProofValidityWindow)
             .unwrap_or(3600)
     }
@@ -315,12 +323,16 @@ impl StarkEdContract {
         relayer.require_auth();
 
         // Fetch the credential
-        let credential: Credential = env.storage().instance()
+        let credential: Credential = env
+            .storage()
+            .instance()
             .get(&DataKey::Credential(credential_id))
             .unwrap_or_else(|| panic!("Credential not found"));
 
         // Get the validity window
-        let validity_window: u64 = env.storage().instance()
+        let validity_window: u64 = env
+            .storage()
+            .instance()
             .get(&DataKey::ProofValidityWindow)
             .unwrap_or(3600);
 
@@ -346,12 +358,16 @@ impl StarkEdContract {
         };
 
         // Store the proof for later verification
-        env.storage().instance()
+        env.storage()
+            .instance()
             .set(&DataKey::CrossChainProof(credential_id), &proof);
 
         // Emit cross-chain relay event for off-chain relayers
         env.events().publish(
-            (Symbol::new(&env, "relay"), Symbol::new(&env, "proof_generated")),
+            (
+                Symbol::new(&env, "relay"),
+                Symbol::new(&env, "proof_generated"),
+            ),
             (proof.clone(), relayer),
         );
 
@@ -361,29 +377,34 @@ impl StarkEdContract {
     /// Verify a cross-chain proof against on-chain credential state.
     /// Returns true if the proof is valid (credential exists, proof not expired,
     /// credential not revoked, and proof hash matches).
-    pub fn verify_cross_chain_proof(
-        env: Env,
-        proof: CrossChainProof,
-    ) -> bool {
+    pub fn verify_cross_chain_proof(env: Env, proof: CrossChainProof) -> bool {
         let current_time = env.ledger().timestamp();
 
         // Check 1: Proof has not expired
         if current_time >= proof.expires_at {
             env.events().publish(
-                (Symbol::new(&env, "relay"), Symbol::new(&env, "proof_expired")),
+                (
+                    Symbol::new(&env, "relay"),
+                    Symbol::new(&env, "proof_expired"),
+                ),
                 (proof.credential_id, current_time),
             );
             return false;
         }
 
         // Check 2: Credential exists
-        let credential: Credential = match env.storage().instance()
+        let credential: Credential = match env
+            .storage()
+            .instance()
             .get(&DataKey::Credential(proof.credential_id))
         {
             Some(c) => c,
             None => {
                 env.events().publish(
-                    (Symbol::new(&env, "relay"), Symbol::new(&env, "credential_not_found")),
+                    (
+                        Symbol::new(&env, "relay"),
+                        Symbol::new(&env, "credential_not_found"),
+                    ),
                     proof.credential_id,
                 );
                 return false;
@@ -393,7 +414,10 @@ impl StarkEdContract {
         // Check 3: Credential is not revoked
         if credential.status == CredentialStatus::Revoked {
             env.events().publish(
-                (Symbol::new(&env, "relay"), Symbol::new(&env, "credential_revoked")),
+                (
+                    Symbol::new(&env, "relay"),
+                    Symbol::new(&env, "credential_revoked"),
+                ),
                 proof.credential_id,
             );
             return false;
@@ -409,7 +433,10 @@ impl StarkEdContract {
         );
         if computed_hash != proof.proof_hash {
             env.events().publish(
-                (Symbol::new(&env, "relay"), Symbol::new(&env, "proof_hash_mismatch")),
+                (
+                    Symbol::new(&env, "relay"),
+                    Symbol::new(&env, "proof_hash_mismatch"),
+                ),
                 proof.credential_id,
             );
             return false;
@@ -418,15 +445,25 @@ impl StarkEdContract {
         // Check 5: Proof status matches credential status
         if proof.status != credential.status {
             env.events().publish(
-                (Symbol::new(&env, "relay"), Symbol::new(&env, "status_mismatch")),
-                (proof.credential_id, proof.status.clone(), credential.status.clone()),
+                (
+                    Symbol::new(&env, "relay"),
+                    Symbol::new(&env, "status_mismatch"),
+                ),
+                (
+                    proof.credential_id,
+                    proof.status.clone(),
+                    credential.status.clone(),
+                ),
             );
             return false;
         }
 
         // All checks passed — proof is valid
         env.events().publish(
-            (Symbol::new(&env, "relay"), Symbol::new(&env, "proof_verified")),
+            (
+                Symbol::new(&env, "relay"),
+                Symbol::new(&env, "proof_verified"),
+            ),
             (proof.credential_id, current_time),
         );
 
@@ -434,40 +471,46 @@ impl StarkEdContract {
     }
 
     /// Retrieve a previously generated cross-chain proof.
-    pub fn get_cross_chain_proof(
-        env: Env,
-        credential_id: u64,
-    ) -> CrossChainProof {
-        env.storage().instance()
+    pub fn get_cross_chain_proof(env: Env, credential_id: u64) -> CrossChainProof {
+        env.storage()
+            .instance()
             .get(&DataKey::CrossChainProof(credential_id))
             .unwrap_or_else(|| panic!("No cross-chain proof found for this credential"))
     }
 
     /// Revoke a credential (updates status to Revoked).
     /// Only callable by the admin.
-    pub fn revoke_credential(
-        env: Env,
-        admin: Address,
-        credential_id: u64,
-    ) {
+    pub fn revoke_credential(env: Env, admin: Address, credential_id: u64) {
         admin.require_auth();
         check_admin(&env, &admin);
 
-        let mut credential: Credential = env.storage().instance()
+        let mut credential: Credential = env
+            .storage()
+            .instance()
             .get(&DataKey::Credential(credential_id))
             .unwrap_or_else(|| panic!("Credential not found"));
 
         credential.status = CredentialStatus::Revoked;
-        env.storage().instance()
+        env.storage()
+            .instance()
             .set(&DataKey::Credential(credential_id), &credential);
 
         // Invalidate any existing cross-chain proof
-        if env.storage().instance().has(&DataKey::CrossChainProof(credential_id)) {
-            env.storage().instance().remove(&DataKey::CrossChainProof(credential_id));
+        if env
+            .storage()
+            .instance()
+            .has(&DataKey::CrossChainProof(credential_id))
+        {
+            env.storage()
+                .instance()
+                .remove(&DataKey::CrossChainProof(credential_id));
         }
 
         env.events().publish(
-            (Symbol::new(&env, "credential"), Symbol::new(&env, "revoked")),
+            (
+                Symbol::new(&env, "credential"),
+                Symbol::new(&env, "revoked"),
+            ),
             credential_id,
         );
     }
