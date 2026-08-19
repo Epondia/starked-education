@@ -18,6 +18,7 @@ get a change merged.
 - [Coding Standards](#coding-standards)
 - [Commit Conventions](#commit-conventions)
 - [Testing Requirements](#testing-requirements)
+- [Dependency Management](#dependency-management)
 - [Pull Request Process](#pull-request-process)
 - [Review Process](#review-process)
 - [Reporting Bugs & Requesting Features](#reporting-bugs--requesting-features)
@@ -228,6 +229,17 @@ all three packages on every pull request. Please make sure these pass locally fi
 - Once approved and green, a maintainer will merge — typically using **squash and merge**
   to keep a clean history.
 - Be patient and responsive; maintainers review on a best-effort basis.
+
+## Dependency Management
+
+Automated dependency updates are managed via Dependabot, running on a weekly schedule.
+
+When adding or updating dependencies manually, please follow our version pinning and range policy:
+- **npm packages**: Use caret ranges (`^`) for automatic minor and patch updates for general dependencies. Use exact versions (no prefix) for highly sensitive build tools or libraries where unexpected updates have historically caused breakages.
+- **Cargo crates**: Rely on default Cargo behavior (which acts like caret ranges) for most dependencies.
+- **Critical Dependencies**: Core blockchain SDKs (e.g., `soroban-sdk`, `@stellar/stellar-sdk`) must be closely monitored. Major version bumps should be heavily tested.
+
+Dependabot PRs are configured to run the full CI pipeline automatically. They will only be merged after a successful build and maintainer review.
 
 ## Reporting Bugs & Requesting Features
 
