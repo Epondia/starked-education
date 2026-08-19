@@ -4,20 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Medal, Crown, TrendingUp, Users, Filter, ChevronDown, Search, Star } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
-
-interface LeaderboardUser {
-  id: string;
-  name: string;
-  avatar?: string;
-  points: number;
-  level: number;
-  streak: number;
-  rank: number;
-  previousRank?: number;
-  badges: number;
-  completedCourses: number;
-  change?: 'up' | 'down' | 'same';
-}
+import { useLeaderboard, LeaderboardUser } from '../../hooks/useLeaderboard';
 
 interface LeaderboardProps {
   initialData?: LeaderboardUser[];
@@ -66,13 +53,29 @@ export function Leaderboard({
   showUserRank = true,
   currentUserId
 }: LeaderboardProps) {
-  const [data, setData] = useState<LeaderboardUser[]>(initialData);
   const [selectedTimeRange, setSelectedTimeRange] = useState(timeRange);
   const [selectedCategory, setSelectedCategory] = useState(category);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [serverData, setServerData] = useState<LeaderboardUser[]>(initialData);
   const [showFilters, setShowFilters] = useState(false);
+
+  const {
+    data: hookData,
+    loading: isLoading,
+    error,
+    refetch
+  } = useLeaderboard({
+    category: selectedTimeRange,
+    limit: maxEntries,
+    currentUserId,
+  });
+
+  const data = useMemo(() => {
+    if (hookData.length > 0) return hookData;
+    if (serverData.length > 0) return serverData;
+    return initialData;
+  }, [hookData, serverData, initialData]);
 
   // Initialize Socket.io for real-time updates
   useEffect(() => {
@@ -81,11 +84,11 @@ export function Leaderboard({
       setSocket(newSocket);
 
       newSocket.on('leaderboard-update', (updatedData: LeaderboardUser[]) => {
-        setData(updatedData);
+        setServerData(updatedData);
       });
 
       newSocket.on('rank-change', ({ userId, newRank, previousRank }: { userId: string; newRank: number; previousRank: number }) => {
-        setData(prevData => 
+        setServerData(prevData => 
           prevData.map(user => 
             user.id === userId 
               ? { 
@@ -105,23 +108,9 @@ export function Leaderboard({
     }
   }, [showRealTime]);
 
-  // Fetch leaderboard data
-  const fetchLeaderboard = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(`/api/leaderboard?timeRange=${selectedTimeRange}&category=${selectedCategory}&limit=${maxEntries}`);
-      const leaderboardData = await response.json();
-      setData(leaderboardData);
-    } catch (error) {
-      console.error('Failed to fetch leaderboard:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchLeaderboard();
-  }, [selectedTimeRange, selectedCategory]);
+    refetch();
+  }, [selectedTimeRange, selectedCategory, refetch]);
 
   // Filter data based on search
   const filteredData = useMemo(() => {
