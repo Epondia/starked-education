@@ -17,6 +17,8 @@
     "audit": "npm audit --audit-level=high",
     "audit:fix": "npm audit fix",
     "audit:ci": "npm audit --audit-level=high --omit=dev",
+    "audit:a11y": "axe http://localhost:3000",
+    "audit:lighthouse": "lhci autorun --config=../.github/lighthouse-budget.json",
     "prepare": "husky install",
     "analyze": "ANALYZE=true next build",
     "lighthouse": "lighthouse http://localhost:3000 --output=json --output-path=./lighthouse-report.json",
@@ -68,6 +70,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/cli": "^4.8.0",
+    "@lhci/cli": "^0.13.0",
     "@next/bundle-analyzer": "^14.0.0",
     "@sentry/webpack-plugin": "^2.10.2",
     "@stellar/freighter-api": "^5.0.0",
@@ -91,7 +95,8 @@
     "jest-environment-jsdom": "^30.4.1",
     "postcss": "^8.4.28",
     "prettier": "^3.0.2",
-    "typescript": "^5.1.6"
+    "typescript": "^5.1.6",
+    "wait-on": "^7.2.0"
   },
   "keywords": [
     "stellar",
