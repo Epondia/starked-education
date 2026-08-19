@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStellarWallet } from '../../context/WalletContext';
-import { WalletNetwork } from '@creit.tech/stellar-wallets-kit';
+import { WalletNetwork } from '../../lib/stellar/wallets';
 import { Wallet, LogOut, Globe, Shield, RefreshCw } from 'lucide-react';
 
 export const WalletConnector: React.FC = () => {
