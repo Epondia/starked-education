@@ -26,6 +26,13 @@ import {
 import logger from '../utils/logger';
 
 /**
+ * HTTP header used to carry the idempotency key on every outgoing delivery
+ * attempt (initial delivery and all retries). Consumers should treat a delivery
+ * with a key they have already processed as a duplicate and skip it.
+ */
+export const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key';
+
+/**
  * WebhookService manages the full lifecycle of webhooks:
  * - Registration and tenant-scoped CRUD
  * - Event dispatch with HMAC-SHA256 signed payloads
@@ -150,15 +157,15 @@ export class WebhookService {
       throw new Error(`Webhook ${webhookId} not found for tenant ${tenantId}`);
     }
 
-    // Cancel any pending retries for this webhook
+    // Cancel any pending retries for this webhook. A delivery may still be
+    // FAILED (last attempt) yet have a retry scheduled in the queue, so check
+    // the queue directly rather than relying on a transient status.
     const deliveries = this.deliveries.get(webhookId) || [];
     for (const delivery of deliveries) {
-      if (delivery.status === WebhookDeliveryStatus.PENDING || delivery.status === WebhookDeliveryStatus.RETRYING) {
-        const handle = this.retryQueue.get(delivery.id);
-        if (handle) {
-          clearTimeout(handle);
-          this.retryQueue.delete(delivery.id);
-        }
+      if (this.retryQueue.has(delivery.id)) {
+        const handle = this.retryQueue.get(delivery.id)!;
+        clearTimeout(handle);
+        this.retryQueue.delete(delivery.id);
       }
     }
 
@@ -280,12 +287,15 @@ export class WebhookService {
 
     const body = JSON.stringify(payload);
     const signature = this.signPayload(body, webhook.secret);
+    // Stable for this delivery and every retry of it so consumers can de-dupe.
+    const idempotencyKey = uuidv4();
 
     const delivery: WebhookDelivery = {
       id: deliveryId,
       webhookId: webhook.id,
       eventType,
       deliveryAttempt: 1,
+      idempotencyKey,
       status: WebhookDeliveryStatus.PENDING,
       createdAt: new Date(),
     };
@@ -301,6 +311,7 @@ export class WebhookService {
           'X-Starked-Webhook-Version': WEBHOOK_PAYLOAD_VERSION,
           'X-Starked-Event': eventType,
           'X-Starked-Delivery-Id': deliveryId,
+          [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
         },
         timeout: 30_000, // 30s timeout
         validateStatus: () => true, // don't throw on non-2xx
@@ -348,8 +359,10 @@ export class WebhookService {
     }
 
     const delayMs = RETRY_BACKOFF_INTERVALS[attemptIndex];
+    // Keep the last attempt's verdict (FAILED) and surface the pending retry via
+    // `nextRetryAt`. Do NOT overwrite the status here — flipping it to RETRYING
+    // would hide the recorded failure details from the delivery history.
     delivery.nextRetryAt = new Date(Date.now() + delayMs);
-    delivery.status = WebhookDeliveryStatus.RETRYING;
     this.updateDelivery(webhook.id, delivery);
 
     const handle = setTimeout(async () => {
@@ -396,6 +409,9 @@ export class WebhookService {
 
     const body = JSON.stringify(payload);
     const signature = this.signPayload(body, webhook.secret);
+    // Reuse the key generated for the original delivery attempt so consumers
+    // can de-duplicate retry deliveries against the first attempt.
+    const idempotencyKey = delivery.idempotencyKey;
 
     try {
       const start = Date.now();
@@ -406,6 +422,7 @@ export class WebhookService {
           'X-Starked-Webhook-Version': WEBHOOK_PAYLOAD_VERSION,
           'X-Starked-Event': delivery.eventType,
           'X-Starked-Delivery-Id': delivery.id,
+          [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
         },
         timeout: 30_000,
         validateStatus: () => true,
