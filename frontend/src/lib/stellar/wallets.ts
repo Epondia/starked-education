@@ -3,9 +3,11 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 
 export const WalletNetwork = {
-  TESTNET: 'testnet' as const,
-  PUBLIC: 'public' as const,
-};
+  TESTNET: 'testnet',
+  PUBLIC: 'public',
+} as const;
+
+export type WalletNetwork = (typeof WalletNetwork)[keyof typeof WalletNetwork];
 
 export const WalletType = {
   FREIGHTER: 'freighter' as const,

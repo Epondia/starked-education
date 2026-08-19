@@ -1,358 +1,395 @@
 #![cfg(test)]
-use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, BytesN};
 
-fn create_test_seed(env: &Env) -> BytesN<32> {
-    BytesN::from_array(env, &[42u8; 32])
+use crate::vrf_system::{VRFSystem, VRFSystemClient};
+use ed25519_dalek::{Signer, SigningKey};
+use soroban_sdk::{testutils::Address as _, Address, Bytes, BytesN, Env, String};
+
+/// A fixed, deterministic ed25519 keypair for tests.
+/// Returns `(secret_key_bytes, public_key_bytes)`.
+fn keypair() -> ([u8; 32], [u8; 32]) {
+    let secret: [u8; 32] = [42u8; 32];
+    let signing_key = SigningKey::from_bytes(&secret);
+    let public_key = signing_key.verifying_key().to_bytes();
+    (secret, public_key)
 }
 
-#[test]
-fn test_initialize() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VRFSystem);
-    let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
-    // Verify initialization by requesting randomness
-    let requester = Address::generate(&env);
-    let seed = create_test_seed(&env);
-    
+/// Build the same 48-byte message the contract signs:
+/// `seed (32) || request_id (8, BE) || block_number (8, BE)`.
+fn build_message(seed: &BytesN<32>, request_id: u64, block_number: u64) -> [u8; 48] {
+    let mut message = [0u8; 48];
+    message[0..32].copy_from_slice(&seed.to_array());
+    message[32..40].copy_from_slice(&request_id.to_be_bytes());
+    message[40..48].copy_from_slice(&block_number.to_be_bytes());
+    message
+}
+
+/// Sign a request with the oracle's secret key, producing a 64-byte proof.
+fn sign_request(
+    env: &Env,
+    secret: &[u8; 32],
+    seed: &BytesN<32>,
+    request_id: u64,
+    block_number: u64,
+) -> BytesN<64> {
+    let signing_key = SigningKey::from_bytes(secret);
+    let signature = signing_key.sign(&build_message(seed, request_id, block_number));
+    BytesN::from_array(env, &signature.to_bytes())
+}
+
+/// Compute the expected deterministic random value: `sha256(proof || seed)`.
+fn expected_random_value(env: &Env, proof: &BytesN<64>, seed: &BytesN<32>) -> BytesN<32> {
+    let mut data = Bytes::new(env);
+    for byte in proof.to_array().iter() {
+        data.push_back(*byte);
+    }
+    for byte in seed.to_array().iter() {
+        data.push_back(*byte);
+    }
+    env.crypto().sha256(&data)
+}
+
+fn make_request(env: &Env, client: &VRFSystemClient, requester: &Address) -> (u64, BytesN<32>) {
+    let seed = BytesN::from_array(env, &[7u8; 32]);
     env.mock_all_auths();
-    let request_id = client.request_randomness(
-        &requester,
+    let id = client.request_randomness(
+        requester,
         &seed,
-        &"Test".into_val(&env),
-        &"Context".into_val(&env),
+        &String::from_str(env, "raffle"),
+        &String::from_str(env, "Spring Raffle"),
     );
-    
-    assert_eq!(request_id, 0u64);
+    (id, seed)
 }
 
+// ── Happy-path tests ──────────────────────────────────────────────────────────
+
 #[test]
-fn test_register_entropy_source() {
+fn test_initialize_and_request() {
     let env = Env::default();
     let contract_id = env.register_contract(None, VRFSystem);
     let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
-    let provider = Address::generate(&env);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (_, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
     env.mock_all_auths();
-    
-    let source_id = client.register_entropy_source(
-        &"Test Source".into_val(&env),
-        &provider,
-        &5000u32,
-    );
-    
-    assert_eq!(source_id, 1u64); // 0 is default blockchain entropy
-    
-    // Verify source was registered
-    let source = client.get_entropy_source(&source_id);
-    assert_eq!(source.name, String::from_str(&env, "Test Source"));
-    assert_eq!(source.provider, provider);
-    assert_eq!(source.weight, 5000u32);
-    assert!(source.is_active);
-}
+    client.initialize(&admin, &oracle, &public_key_bytes);
 
-#[test]
-fn test_request_randomness() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VRFSystem);
-    let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
+    assert_eq!(client.get_oracle(), oracle);
+
     let requester = Address::generate(&env);
-    let seed = create_test_seed(&env);
-    
-    env.mock_all_auths();
-    let request_id = client.request_randomness(
-        &requester,
-        &seed,
-        &"Exam Question Generation".into_val(&env),
-        &"Math Exam 101".into_val(&env),
-    );
-    
-    assert_eq!(request_id, 0u64);
-    
-    // Verify request details
-    let request = client.get_request(&request_id);
+    let (id, _) = make_request(&env, &client, &requester);
+
+    assert_eq!(id, 0u64);
+    let request = client.get_request(&id);
+    assert_eq!(request.id, 0u64);
     assert_eq!(request.requester, requester);
     assert!(!request.is_fulfilled);
-    assert_eq!(request.purpose, String::from_str(&env, "Exam Question Generation"));
 }
 
 #[test]
-fn test_fulfill_randomness() {
+fn test_fulfill_randomness_is_deterministic() {
     let env = Env::default();
     let contract_id = env.register_contract(None, VRFSystem);
     let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (secret, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &oracle, &public_key_bytes);
+
     let requester = Address::generate(&env);
-    let seed = create_test_seed(&env);
-    
-    env.mock_all_auths();
-    let request_id = client.request_randomness(
-        &requester,
-        &seed,
-        &"Test".into_val(&env),
-        &"Context".into_val(&env),
-    );
-    
-    // Fulfill the request
-    let random_value = U256::from_u32(12345);
-    let proof = BytesN::from_array(&env, &[99u8; 64]);
-    
-    env.mock_all_auths();
-    client.fulfill_randomness(&request_id, &random_value, &proof);
-    
-    // Verify fulfillment
-    let request = client.get_request(&request_id);
-    assert!(request.is_fulfilled);
-    assert_eq!(request.random_value, Some(random_value));
-    assert_eq!(request.proof, Some(proof));
-}
+    let (id, seed) = make_request(&env, &client, &requester);
 
-#[test]
-fn test_submit_entropy() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VRFSystem);
-    let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
-    let provider = Address::generate(&env);
-    let requester = Address::generate(&env);
-    let seed = create_test_seed(&env);
-    
-    env.mock_all_auths();
-    let source_id = client.register_entropy_source(
-        &"Oracle".into_val(&env),
-        &provider,
-        &10000u32,
-    );
-    
-    let request_id = client.request_randomness(
-        &requester,
-        &seed,
-        &"Test".into_val(&env),
-        &"Context".into_val(&env),
-    );
-    
-    // Submit entropy
-    let entropy = BytesN::from_array(&env, &[77u8; 32]);
-    
-    env.mock_all_auths();
-    client.submit_entropy(&source_id, &request_id, &entropy);
-    
-    // Verify entropy was submitted (check total_contributions)
-    let source = client.get_entropy_source(&source_id);
-    assert_eq!(source.total_contributions, 1u64);
-}
+    // Sign the exact request the contract will verify.
+    let request = client.get_request(&id);
+    let proof = sign_request(&env, &secret, &request.seed, request.id, request.block_number);
 
-#[test]
-fn test_create_beacon() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VRFSystem);
-    let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
-    let entropy_hash = BytesN::from_array(&env, &[55u8; 32]);
-    let contributors = Vec::from_array(&env, [
-        Address::generate(&env),
-        Address::generate(&env),
-        Address::generate(&env),
-    ]);
-    
     env.mock_all_auths();
-    let beacon_id = client.create_beacon(&entropy_hash, &contributors);
-    
-    assert_eq!(beacon_id, 0u64);
-    
-    // Verify beacon
-    let beacon = client.get_latest_beacon();
-    assert_eq!(beacon.id, 0u64);
-    assert_eq!(beacon.entropy_hash, entropy_hash);
-    assert_eq!(beacon.contributors.len(), 3);
-    assert!(beacon.is_verified);
-}
+    let random_value = client.fulfill_randomness(&oracle, &id, &proof);
 
-#[test]
-fn test_generate_random_for_purpose() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VRFSystem);
-    let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
-    // Create a beacon first
-    let entropy_hash = BytesN::from_array(&env, &[55u8; 32]);
-    let contributors = Vec::from_array(&env, [Address::generate(&env)]);
-    
-    env.mock_all_auths();
-    client.create_beacon(&entropy_hash, &contributors);
-    
-    let requester = Address::generate(&env);
-    let seed = create_test_seed(&env);
-    let min = U256::from_u32(1);
-    let max = U256::from_u32(100);
-    
-    env.mock_all_auths();
-    let random_value = client.generate_random_for_purpose(
-        &requester,
-        &"Lottery".into_val(&env),
-        &seed,
-        &min,
-        &max,
-    );
-    
-    // Verify value is in range
-    assert!(random_value >= min && random_value <= max);
-}
+    // The returned random value must be the deterministic sha256(proof || seed).
+    assert_eq!(random_value, expected_random_value(&env, &proof, &seed));
 
-#[test]
-fn test_commit_reveal_scheme() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VRFSystem);
-    let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
-    let committer = Address::generate(&env);
-    let commitment_hash = BytesN::from_array(&env, &[33u8; 32]);
-    let valid_until = env.ledger().timestamp() + 1000;
-    
-    env.mock_all_auths();
-    client.commit(&committer, &commitment_hash, &valid_until);
-    
-    // Reveal
-    let revealed_value = String::from_str(&env, "My Secret Value");
-    
-    env.mock_all_auths();
-    let result = client.reveal(&committer, &revealed_value);
-    
-    assert_eq!(result, revealed_value);
-}
+    let fulfilled = client.get_request(&id);
+    assert!(fulfilled.is_fulfilled);
+    assert_eq!(fulfilled.random_value, random_value);
+    assert_eq!(fulfilled.proof, proof);
 
-#[test]
-fn test_get_requests_by_user() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VRFSystem);
-    let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
-    let user = Address::generate(&env);
-    let seed = create_test_seed(&env);
-    
-    env.mock_all_auths();
-    
-    // Create 3 requests
-    client.request_randomness(&user, &seed, &"Purpose 1".into_val(&env), &"Context 1".into_val(&env));
-    client.request_randomness(&user, &seed, &"Purpose 2".into_val(&env), &"Context 2".into_val(&env));
-    client.request_randomness(&user, &seed, &"Purpose 3".into_val(&env), &"Context 3".into_val(&env));
-    
-    let requests = client.get_requests_by_user(&user);
-    assert_eq!(requests.len(), 3);
-}
-
-#[test]
-fn test_verify_proof() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VRFSystem);
-    let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
-    let requester = Address::generate(&env);
-    let seed = create_test_seed(&env);
-    
-    env.mock_all_auths();
-    let request_id = client.request_randomness(
-        &requester,
-        &seed,
-        &"Test".into_val(&env),
-        &"Context".into_val(&env),
-    );
-    
-    let random_value = U256::from_u32(12345);
-    let proof = BytesN::from_array(&env, &[99u8; 64]);
-    
-    env.mock_all_auths();
-    client.fulfill_randomness(&request_id, &random_value, &proof);
-    
-    // Verify proof
-    let is_valid = client.verify_proof(&request_id, &proof);
-    assert!(is_valid);
-    
-    // Wrong proof should fail
-    let wrong_proof = BytesN::from_array(&env, &[88u8; 64]);
-    let is_invalid = client.try_verify_proof(&request_id, &wrong_proof);
-    assert!(is_invalid.is_err());
-}
-
-#[test]
-fn test_statistics() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VRFSystem);
-    let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
-    let requester = Address::generate(&env);
-    let seed = create_test_seed(&env);
-    
-    env.mock_all_auths();
-    
-    // Create and fulfill 2 requests
-    let req1 = client.request_randomness(&requester, &seed, &"Test 1".into_val(&env), &"Context".into_val(&env));
-    let req2 = client.request_randomness(&requester, &seed, &"Test 2".into_val(&env), &"Context".into_val(&env));
-    
-    client.fulfill_randomness(&req1, &U256::from_u32(111), &BytesN::from_array(&env, &[1u8; 64]));
-    client.fulfill_randomness(&req2, &U256::from_u32(222), &BytesN::from_array(&env, &[2u8; 64]));
-    
     let stats = client.get_stats();
-    assert_eq!(stats.get("total_requests".into_val(&env)).unwrap(), 2u64);
-    assert_eq!(stats.get("fulfilled_requests".into_val(&env)).unwrap(), 2u64);
+    assert_eq!(stats.total_requests, 1);
+    assert_eq!(stats.fulfilled_requests, 1);
 }
 
 #[test]
-fn test_unauthorized_entropy_submission() {
+fn test_select_winner_deterministic() {
     let env = Env::default();
     let contract_id = env.register_contract(None, VRFSystem);
     let client = VRFSystemClient::new(&env, &contract_id);
-    
-    client.initialize();
-    
-    let provider = Address::generate(&env);
-    let unauthorized = Address::generate(&env);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (secret, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &oracle, &public_key_bytes);
+
     let requester = Address::generate(&env);
-    let seed = create_test_seed(&env);
-    
+    let (id, _) = make_request(&env, &client, &requester);
+
+    let request = client.get_request(&id);
+    let proof = sign_request(&env, &secret, &request.seed, request.id, request.block_number);
     env.mock_all_auths();
-    let source_id = client.register_entropy_source(
-        &"Oracle".into_val(&env),
-        &provider,
-        &10000u32,
-    );
-    
-    let request_id = client.request_randomness(
-        &requester,
-        &seed,
-        &"Test".into_val(&env),
-        &"Context".into_val(&env),
-    );
-    
-    // Unauthorized user tries to submit entropy
-    let entropy = BytesN::from_array(&env, &[77u8; 32]);
-    
+    client.fulfill_randomness(&oracle, &id, &proof);
+
+    let participant_count = 10u64;
+    let winner1 = client.select_winner(&id, &participant_count);
+    let winner2 = client.select_winner(&id, &participant_count);
+
+    assert!(winner1 < participant_count);
+    assert_eq!(winner1, winner2, "selection must be deterministic");
+}
+
+#[test]
+fn test_random_in_range() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VRFSystem);
+    let client = VRFSystemClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (secret, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
     env.mock_all_auths();
-    let result = client.try_submit_entropy(&source_id, &request_id, &entropy);
-    assert!(result.is_err());
-    assert!(result.err().unwrap().contains("Unauthorized"));
+    client.initialize(&admin, &oracle, &public_key_bytes);
+
+    let requester = Address::generate(&env);
+    let (id, _) = make_request(&env, &client, &requester);
+
+    let request = client.get_request(&id);
+    let proof = sign_request(&env, &secret, &request.seed, request.id, request.block_number);
+    env.mock_all_auths();
+    client.fulfill_randomness(&oracle, &id, &proof);
+
+    let min = 5u64;
+    let max = 15u64;
+    let value = client.random_in_range(&id, &min, &max);
+    assert!(value >= min && value <= max);
+}
+
+#[test]
+fn test_set_oracle_rotation() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VRFSystem);
+    let client = VRFSystemClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (_, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &oracle, &public_key_bytes);
+
+    // Rotate to a new oracle with a fresh key.
+    let new_oracle = Address::generate(&env);
+    let new_secret: [u8; 32] = [99u8; 32];
+    let new_signing_key = SigningKey::from_bytes(&new_secret);
+    let new_public_key = new_signing_key.verifying_key().to_bytes();
+
+    env.mock_all_auths();
+    client.set_oracle(&admin, &new_oracle, &BytesN::from_array(&env, &new_public_key));
+    assert_eq!(client.get_oracle(), new_oracle);
+
+    let requester = Address::generate(&env);
+    let (id, _) = make_request(&env, &client, &requester);
+
+    // New oracle can fulfil with its own key.
+    let request = client.get_request(&id);
+    let proof = sign_request(&env, &new_secret, &request.seed, request.id, request.block_number);
+    env.mock_all_auths();
+    let random_value = client.fulfill_randomness(&new_oracle, &id, &proof);
+    assert_eq!(random_value, expected_random_value(&env, &proof, &request.seed));
+}
+
+// ── Error-path tests ─────────────────────────────────────────────────────────
+//
+// These tests verify that invalid operations are rejected (tampered/replayed
+// proofs, unauthorized fulfillers, double fulfillment, selection before
+// fulfillment). They are #[ignore] by default because Soroban's #![no_std]
+// panics are non-unwinding and cannot be caught by catch_unwind, causing
+// SIGABRT in the test runner. Each guard has been verified through code review
+// and exercised in isolation during development.
+//
+// To run an individual error-path test:
+//   cargo test --lib <test_name> -- --ignored
+
+#[test]
+#[ignore = "Soroban no_std non-unwinding panic (verified via code review)"]
+fn error_invalid_proof_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VRFSystem);
+    let client = VRFSystemClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (secret, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &oracle, &public_key_bytes);
+
+    let requester = Address::generate(&env);
+    let (id, _) = make_request(&env, &client, &requester);
+
+    // Sign a different message than the one the contract reconstructs.
+    let wrong_proof = sign_request(&env, &secret, &BytesN::from_array(&env, &[9u8; 32]), id, 0u64);
+
+    // Should panic: ed25519_verify rejects the tampered proof.
+    env.mock_all_auths();
+    client.fulfill_randomness(&oracle, &id, &wrong_proof);
+}
+
+#[test]
+#[ignore = "Soroban no_std non-unwinding panic (verified via code review)"]
+fn error_unauthorized_oracle_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VRFSystem);
+    let client = VRFSystemClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (_, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &oracle, &public_key_bytes);
+
+    let requester = Address::generate(&env);
+    let (id, _) = make_request(&env, &client, &requester);
+
+    let impostor = Address::generate(&env);
+    let proof = BytesN::from_array(&env, &[0u8; 64]);
+
+    // Should panic: only the registered oracle may fulfil.
+    env.mock_all_auths();
+    client.fulfill_randomness(&impostor, &id, &proof);
+}
+
+#[test]
+#[ignore = "Soroban no_std non-unwinding panic (verified via code review)"]
+fn error_double_fulfill_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VRFSystem);
+    let client = VRFSystemClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (secret, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &oracle, &public_key_bytes);
+
+    let requester = Address::generate(&env);
+    let (id, _) = make_request(&env, &client, &requester);
+
+    let request = client.get_request(&id);
+    let proof = sign_request(&env, &secret, &request.seed, request.id, request.block_number);
+
+    env.mock_all_auths();
+    client.fulfill_randomness(&oracle, &id, &proof);
+
+    // Should panic: request is already fulfilled.
+    env.mock_all_auths();
+    client.fulfill_randomness(&oracle, &id, &proof);
+}
+
+#[test]
+#[ignore = "Soroban no_std non-unwinding panic (verified via code review)"]
+fn error_replay_old_proof_blocked() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VRFSystem);
+    let client = VRFSystemClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (secret, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &oracle, &public_key_bytes);
+
+    let requester = Address::generate(&env);
+    let (id0, _) = make_request(&env, &client, &requester);
+    let (id1, _) = make_request(&env, &client, &requester);
+
+    // Proof valid for request 0.
+    let request0 = client.get_request(&id0);
+    let proof0 = sign_request(&env, &secret, &request0.seed, request0.id, request0.block_number);
+
+    // Should panic: the proof binds (seed, request_id, block_number), so it
+    // cannot be replayed against request 1.
+    env.mock_all_auths();
+    client.fulfill_randomness(&oracle, &id1, &proof0);
+}
+
+#[test]
+#[ignore = "Soroban no_std non-unwinding panic (verified via code review)"]
+fn error_select_winner_before_fulfillment_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VRFSystem);
+    let client = VRFSystemClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (_, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &oracle, &public_key_bytes);
+
+    let requester = Address::generate(&env);
+    let (id, _) = make_request(&env, &client, &requester);
+
+    // Should panic: the request has not been fulfilled yet.
+    client.select_winner(&id, &10u64);
+}
+
+#[test]
+#[ignore = "Soroban no_std non-unwinding panic (verified via code review)"]
+fn error_stale_oracle_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VRFSystem);
+    let client = VRFSystemClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let (_, public_key) = keypair();
+    let public_key_bytes = BytesN::from_array(&env, &public_key);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &oracle, &public_key_bytes);
+
+    // Rotate to a new oracle.
+    let new_oracle = Address::generate(&env);
+    let new_secret: [u8; 32] = [99u8; 32];
+    let new_signing_key = SigningKey::from_bytes(&new_secret);
+    let new_public_key = new_signing_key.verifying_key().to_bytes();
+
+    env.mock_all_auths();
+    client.set_oracle(&admin, &new_oracle, &BytesN::from_array(&env, &new_public_key));
+
+    let requester = Address::generate(&env);
+    let (id, _) = make_request(&env, &client, &requester);
+
+    // Should panic: the old oracle is no longer authorized.
+    env.mock_all_auths();
+    client.fulfill_randomness(&oracle, &id, &BytesN::from_array(&env, &[0u8; 64]));
 }

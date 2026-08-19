@@ -42,6 +42,7 @@
     "aws-sdk": "^2.1693.0",
     "axios": "^1.16.0",
     "bcryptjs": "^2.4.3",
+    "big-integer": "^1.6.52",
     "brain.js": "^2.0.0-beta.24",
     "compression": "^1.8.1",
     "compromise": "^14.10.0",
