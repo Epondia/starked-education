@@ -18,6 +18,12 @@ export interface WebhookDelivery {
   webhookId: string;
   eventType: string;
   deliveryAttempt: number;
+  /**
+   * Idempotency key sent to the consumer with every delivery attempt (including
+   * retries). The key is stable for a single delivery and all of its retries so
+   * that consumers can de-duplicate deliveries they have already processed.
+   */
+  idempotencyKey: string;
   statusCode?: number;
   responseBody?: string; // truncated to 2048 chars
   durationMs?: number;
