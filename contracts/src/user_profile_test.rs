@@ -42,7 +42,10 @@ fn test_create_profile() {
 
     assert_eq!(profile.owner, user);
     assert_eq!(profile.username, username);
-    assert_eq!(PrivacyLevel::from_u32(profile.flags.privacy_level()), privacy_level);
+    assert_eq!(
+        PrivacyLevel::from_u32(profile.flags.privacy_level()),
+        privacy_level
+    );
     assert_eq!(profile.achievement_count, 0);
 }
 
@@ -226,7 +229,10 @@ fn test_update_privacy_level() {
     assert_eq!(result, true);
 
     let profile = client.get_profile(&user).unwrap();
-    assert_eq!(PrivacyLevel::from_u32(profile.flags.privacy_level()), PrivacyLevel::Private);
+    assert_eq!(
+        PrivacyLevel::from_u32(profile.flags.privacy_level()),
+        PrivacyLevel::Private
+    );
 }
 
 #[test]

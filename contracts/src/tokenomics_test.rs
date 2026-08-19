@@ -1,6 +1,9 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env, String,
+};
 
 use crate::tokenomics::{TokenomicsContract, TokenomicsContractClient};
 use crate::user_profile::{UserProfileContract, UserProfileContractClient};

@@ -142,7 +142,7 @@ jobs:
           path: .lighthouseci/
           retention-days: 30
 
-  # ─── Smart Contract Gas Benchmarks ──────────────────────────────
+    # ─── Smart Contract Gas Benchmarks ──────────────────────────────
   contract-gas-benchmark:
     name: Contract Gas Benchmark
     runs-on: ubuntu-latest
@@ -166,12 +166,16 @@ jobs:
         working-directory: contracts
         run: |
           mkdir -p ../benchmark-results
-          cargo bench -- --save-baseline ci-baseline 2>&1 | tee ../benchmark-results/contract-gas.txt || true
+          # Run the benchmark example and capture its JSON output
+          cargo run --release --example bench_gas | tee ../benchmark-results/contract-gas-raw.json
+
+      - name: Parse benchmark results
+        run: |
+          node scripts/parse-bench-results.js benchmark-results/contract-gas-raw.json benchmark-results/current.json
 
       - name: Check gas regression
         run: |
-          # Compare gas usage against baseline (fail if >10% regression)
-          node scripts/check-gas-regression.js benchmark-results/contract-gas.txt || true
+          node scripts/check-gas-regression.js
 
       - name: Upload gas benchmark results
         uses: actions/upload-artifact@v4

@@ -537,7 +537,9 @@ impl Governance {
             panic!("InvalidVotingPeriod: voting period out of bounds");
         }
 
-        if let Some(last_created_at) = env.storage().instance()
+        if let Some(last_created_at) = env
+            .storage()
+            .instance()
             .get::<_, u64>(&GovernanceDataKey::ProposalByProposerTitle(proposer, title))
         {
             let now = env.ledger().timestamp();
