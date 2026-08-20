@@ -4,6 +4,9 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol,
 };
 
+pub mod credential_registry;
+#[cfg(test)]
+pub mod credential_registry_test;
 #[cfg(test)]
 pub mod gas_benchmark;
 pub mod governance;
@@ -12,6 +15,7 @@ pub mod governance_test;
 pub mod marketplace;
 #[cfg(test)]
 pub mod marketplace_test;
+pub mod pause;
 pub mod tokenomics;
 #[cfg(test)]
 pub mod tokenomics_test;
