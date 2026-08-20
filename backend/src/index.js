@@ -147,7 +147,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Structured request/response logging middleware
 const requestLogger = require('./middleware/requestLogger');
+const auditLogger = require('./middleware/auditLogger');
 app.use(requestLogger);
+app.use(auditLogger);
 
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
 const healthRoutes = require('./routes/health').default || require('./routes/health');
