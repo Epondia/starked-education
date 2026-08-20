@@ -166,8 +166,11 @@ jobs:
         working-directory: contracts
         run: |
           mkdir -p ../benchmark-results
-          # Run the benchmark example and capture its JSON output
-          cargo run --release --example bench_gas | tee ../benchmark-results/contract-gas-raw.json
+          # Run the benchmark example and capture its JSON output.
+          # testutils is required: the contractimpl macro only generates the
+          # ContractFunctionSet impl (needed by env.register_contract) under
+          # cfg(any(test, feature = "testutils")).
+          cargo run --release --example bench_gas --features testutils | tee ../benchmark-results/contract-gas-raw.json
 
       - name: Parse benchmark results
         run: |
