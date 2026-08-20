@@ -1,15 +1,98 @@
 import {
   Notification,
   INotification,
+  NotificationType,
   NotificationPreference,
   INotificationPreference,
 } from "../models/Notification";
 import { getWebsocketService } from "./websocketService";
+import { webhookService } from "./webhookService";
+import { WebhookEventType } from "../models/Webhook";
 import logger from "../utils/logger";
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
 import { Twilio } from "twilio";
 import webpush from "web-push";
+
+// HTML entity escaping to prevent XSS in email content
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+// Helper: validate URL to prevent open redirects and SSRF
+function validateActionUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return undefined;
+    // Block private/internal IP ranges to prevent SSRF
+    const hostname = parsed.hostname;
+    const isPrivateIPv4 =
+      hostname === 'localhost' ||
+      hostname === '0.0.0.0' ||
+      /^127\./.test(hostname) ||
+      /^0\./.test(hostname) ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('10.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      hostname.startsWith('169.254.');
+    const isPrivateIPv6 =
+      hostname === '::1' ||
+      hostname === '::' ||
+      hostname.startsWith('fc00:') ||
+      hostname.startsWith('fd') ||
+      hostname.startsWith('fe80:') ||
+      hostname === '0:0:0:0:0:0:0:1' ||
+      hostname === '0000:0000:0000:0000:0000:0000:0000:0001' ||
+      hostname.startsWith('::ffff:127.') ||
+      hostname.startsWith('::ffff:10.') ||
+      hostname.startsWith('::ffff:192.168.') ||
+      /^::ffff:172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+    // Block IP obfuscation bypasses: decimal (http://2130706433), hex (http://0x7f000001), octal
+    if (/^[0-9]+$/.test(hostname) || /^0x[0-9a-fA-F]+$/.test(hostname) || /^0[0-7]+$/.test(hostname)) {
+      return undefined;
+    }
+
+    if (isPrivateIPv4 || isPrivateIPv6) {
+      return undefined;
+    }
+    return url;
+  } catch {
+    return undefined;
+  }
+}
+
+// Blocked metadata keys: MongoDB operators ($) and prototype pollution vectors
+const BLOCKED_META_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+// Allowed preference fields for explicit whitelist-based updates to prevent injection
+const ALLOWED_PREFERENCE_FIELDS = new Set([
+  'emailNotifications', 'pushNotifications', 'inAppNotifications',
+  'digestFrequency', 'quietHoursStart', 'quietHoursEnd',
+]);
+
+// Helper: sanitize log strings to prevent log injection (strip newlines/returns and control chars)
+function sanitizeLog(data: unknown): string {
+  // eslint-disable-next-line no-control-regex
+  return String(data).replace(/[\x00-\x1f\x7f-\x9f]/g, '_');
+}
+
+// Helper: sanitize metadata to prevent MongoDB operator injection and prototype pollution
+function sanitizeMetadata(meta: Record<string, any> | undefined): Record<string, any> | undefined {
+  if (!meta) return undefined;
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    // Reject keys starting with $ (MongoDB operators) and prototype pollution keys
+    if (key.startsWith('$') || BLOCKED_META_KEYS.has(key)) continue;
+    sanitized[key] = value;
+  }
+  return sanitized;
+}
 
 // Initialize services with environment variables
 const transporter = nodemailer.createTransport({
@@ -47,6 +130,7 @@ if (process.env.VAPID_PUBLIC_KEY) {
 
 interface NotificationFilter {
   userId?: string;
+  type?: NotificationType;
   category?: "course" | "message" | "system" | "achievement";
   isRead?: boolean;
   priority?: "low" | "medium" | "high";
@@ -74,6 +158,7 @@ class NotificationService {
     message: string,
     category: "course" | "message" | "system" | "achievement",
     options?: {
+      type?: NotificationType;
       priority?: "low" | "medium" | "high";
       deliveryMethods?: ("email" | "push" | "websocket")[];
       actionUrl?: string;
@@ -82,15 +167,19 @@ class NotificationService {
     },
   ): Promise<INotification> {
     try {
+      if (typeof title !== 'string' || typeof message !== 'string') {
+        throw new Error('title and message must be strings');
+      }
       const notification = new Notification({
         userId,
+        type: options?.type || "system_alert",
         title,
         message,
         category,
         priority: options?.priority || "medium",
         deliveryMethods: options?.deliveryMethods || ["websocket"],
-        actionUrl: options?.actionUrl,
-        metadata: options?.metadata,
+        actionUrl: validateActionUrl(options?.actionUrl),
+        metadata: sanitizeMetadata(options?.metadata),
         scheduledTime: options?.scheduledTime,
       });
 
@@ -103,7 +192,7 @@ class NotificationService {
         await this.deliverNotification(notification, preferences);
       }
 
-      logger.info(`Notification created for user ${userId}: ${title}`);
+      logger.info(`Notification created for user ${sanitizeLog(userId)}: ${sanitizeLog(title)}`);
       return notification;
     } catch (error) {
       logger.error("Error creating notification:", error);
@@ -121,9 +210,12 @@ class NotificationService {
       notification.sentTime = new Date();
       await notification.save();
 
-      const deliveryPromises: Promise<void>[] = [];
+      // Validate actionUrl to prevent open redirects
+      if (notification.actionUrl) {
+        notification.actionUrl = validateActionUrl(notification.actionUrl);
+      }
 
-      // Deliver via each specified method
+      const deliveryPromises: Promise<void>[] = [];
       if (preferences.deliveryMethods.includes("websocket")) {
         // Deliver via websocket if user is online
         const websocketService = getWebsocketService();
@@ -174,8 +266,8 @@ class NotificationService {
     try {
       const userEmail = notification.metadata?.email;
 
-      if (!userEmail) {
-        logger.warn(`No email found for user ${notification.userId}`);
+      if (!userEmail || typeof userEmail !== 'string') {
+        logger.warn(`No valid email found for user ${sanitizeLog(notification.userId)}`);
         return;
       }
 
@@ -186,15 +278,17 @@ class NotificationService {
         to: userEmail,
         subject: notification.title,
         text: notification.message,
-        html: `<p>${notification.message}</p>`,
+        html: `<h3>${escapeHtml(notification.title)}</h3><p>${escapeHtml(notification.message)}</p>`,
       });
+      // Log masked email to avoid PII exposure
       logger.info(
-        `Email sent to ${userEmail} for notification ${notification._id}`,
+        `Email sent to ${userEmail.replace(/(.{3}).*(@.*)/, '$1***$2')} for notification ${sanitizeLog(String(notification._id))}`,
       );
     } catch (error) {
+      // Only log error message and stack to avoid leaking request bodies/auth headers
+      const err = error instanceof Error ? error.message : String(error);
       logger.error(
-        `Error sending email for notification ${notification._id}:`,
-        error,
+        `Error sending email for notification ${notification._id}: ${err}`,
       );
       throw error;
     }
@@ -215,11 +309,20 @@ class NotificationService {
             actionUrl: notification.actionUrl || "",
           },
         });
-        logger.info(`FCM Push sent to ${notification.userId}`);
+        logger.info(`FCM Push sent to ${sanitizeLog(notification.userId)}`);
       }
 
       // Web Push
       if (notification.metadata?.webPushSubscription) {
+        // Validate push subscription endpoint to prevent SSRF
+        const sub = notification.metadata.webPushSubscription;
+        if (sub && typeof sub.endpoint === 'string') {
+          const endpointUrl = validateActionUrl(sub.endpoint);
+          if (!endpointUrl) {
+            logger.warn(`Rejected web push with unsafe endpoint for user ${sanitizeLog(notification.userId)}`);
+            return;
+          }
+        }
         await webpush.sendNotification(
           notification.metadata.webPushSubscription,
           JSON.stringify({
@@ -229,12 +332,12 @@ class NotificationService {
             url: notification.actionUrl,
           }),
         );
-        logger.info(`Web Push sent to ${notification.userId}`);
+        logger.info(`Web Push sent to ${sanitizeLog(notification.userId)}`);
       }
     } catch (error) {
+      const err = error instanceof Error ? error.message : String(error);
       logger.error(
-        `Error sending push for notification ${notification._id}:`,
-        error,
+        `Error sending push for notification ${notification._id}: ${err}`,
       );
       throw error;
     }
@@ -250,9 +353,11 @@ class NotificationService {
         from: process.env.TWILIO_PHONE_NUMBER,
         to: userPhone,
       });
-      logger.info(`SMS sent to ${userPhone} for user ${notification.userId}`);
+      // Log masked phone number to avoid PII exposure
+      const maskedPhone = userPhone.slice(-4).padStart(userPhone.length, '*');
+      logger.info(`SMS sent to ${maskedPhone} for user ${sanitizeLog(notification.userId)}`);
     } catch (error) {
-      logger.error(`Error sending SMS for user ${notification.userId}:`, error);
+      logger.error(`Error sending SMS for user ${sanitizeLog(notification.userId)}:`, error);
     }
   }
 
@@ -260,15 +365,17 @@ class NotificationService {
     filter: NotificationFilter,
   ): Promise<{ notifications: INotification[]; totalCount: number }> {
     try {
-      const query: any = {};
+      const query: Record<string, unknown> = {};
 
-      if (filter.userId) query.userId = filter.userId;
-      if (filter.category) query.category = filter.category;
-      if (filter.isRead !== undefined) query.isRead = filter.isRead;
-      if (filter.priority) query.priority = filter.priority;
+      // Only assign primitive values to query to prevent NoSQL operator injection
+      if (filter.userId && typeof filter.userId === 'string') query.userId = filter.userId;
+      if (filter.type && typeof filter.type === 'string') query.type = filter.type;
+      if (filter.category && typeof filter.category === 'string') query.category = filter.category;
+      if (filter.isRead !== undefined && typeof filter.isRead === 'boolean') query.isRead = filter.isRead;
+      if (filter.priority && typeof filter.priority === 'string') query.priority = filter.priority;
 
-      const limit = filter.limit || 20;
-      const skip = filter.skip || 0;
+      const limit = typeof filter.limit === 'number' ? filter.limit : 20;
+      const skip = typeof filter.skip === 'number' ? filter.skip : 0;
 
       const [notifications, totalCount] = await Promise.all([
         Notification.find(query)
@@ -355,12 +462,19 @@ class NotificationService {
     preferences: Partial<INotificationPreference>,
   ): Promise<void> {
     try {
+      // Build update fields via whitelist to prevent MongoDB operator injection
+      const updateFields: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(preferences)) {
+        if (ALLOWED_PREFERENCE_FIELDS.has(key)) {
+          updateFields[key] = value;
+        }
+      }
       await NotificationPreference.findOneAndUpdate(
         { userId },
-        { $set: preferences },
+        { $set: updateFields },
         { upsert: true, new: true },
       );
-      logger.info(`Updated notification preferences for user ${userId}`);
+      logger.info(`Updated notification preferences for user ${sanitizeLog(userId)}`);
     } catch (error) {
       logger.error("Error setting notification preferences:", error);
       throw error;
@@ -389,7 +503,7 @@ class NotificationService {
 
       return preferences;
     } catch (error) {
-      logger.error(`Error fetching preferences for user ${userId}:`, error);
+      logger.error(`Error fetching preferences for user ${sanitizeLog(userId)}:`, error);
       throw error;
     }
   }
@@ -453,12 +567,29 @@ class NotificationService {
         );
         successCount++;
       } catch (error) {
-        logger.error(`Failed to send notification to user ${userId}:`, error);
+        logger.error(`Failed to send notification to user ${sanitizeLog(userId)}:`, error);
         failedCount++;
       }
     }
 
     return { success: successCount, failed: failedCount };
+  }
+
+  // ─── Webhook event emission helper ─────────────────────────────────────────
+
+  /**
+   * Emit a webhook event for the given tenant (best-effort, never throws).
+   */
+  public async emitWebhookEvent(
+    tenantId: string,
+    eventType: WebhookEventType,
+    data: Record<string, any>,
+  ): Promise<void> {
+    try {
+      await webhookService.emitEvent(tenantId, eventType, data);
+    } catch (error) {
+      logger.error(`Failed to emit webhook event ${eventType}:`, error);
+    }
   }
 
   // Stub methods for controller compatibility
@@ -483,7 +614,199 @@ class NotificationService {
   }
 
   public async notifyGradeCreated(userId: string, _grade: any): Promise<void> {
-    await this.createNotification(userId, 'Grade Posted', 'Your grade has been posted.', 'course');
+    await this.createNotification(userId, 'Grade Posted', 'Your grade has been posted.', 'course', { type: 'assignment_graded' });
+  }
+
+  /// Get unread notification count for a user
+  public async getUnreadCount(userId: string): Promise<number> {
+    try {
+      return await Notification.countDocuments({ userId, isRead: false });
+    } catch (error) {
+      const err = error instanceof Error ? error.message : String(error);
+      logger.error(`Error getting unread count for user ${sanitizeLog(userId)}: ${sanitizeLog(err)}`);
+      throw error;
+    }
+  }
+
+  /// Create a notification and push it immediately via WebSocket (no duplicate delivery)
+  public async createAndPushNotification(
+    userId: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    category: "course" | "message" | "system" | "achievement",
+    options?: {
+      priority?: "low" | "medium" | "high";
+      actionUrl?: string;
+      metadata?: Record<string, any>;
+      deliveryMethods?: ("email" | "push" | "websocket")[];
+    },
+  ): Promise<INotification> {
+    // Validate input types at the DB boundary to prevent NoSQL operator injection
+    if (typeof title !== 'string' || typeof message !== 'string') {
+      throw new Error('title and message must be strings');
+    }
+    // Create notification directly without auto-delivery to avoid duplicate push
+    const notification = new Notification({
+        userId,
+        type,
+        title,
+        message,
+        category,
+        priority: options?.priority || "medium",
+        deliveryMethods: options?.deliveryMethods || ["websocket"],
+        actionUrl: validateActionUrl(options?.actionUrl),
+        metadata: sanitizeMetadata(options?.metadata),
+      });
+
+    await notification.save();
+
+    // Push via WebSocket immediately (only delivery method)
+    try {
+      const websocketService = getWebsocketService();
+      websocketService.sendNotification(userId, notification);
+      notification.isDelivered = true;
+      notification.deliveredAt = new Date();
+      await notification.save();
+    } catch (wsError) {
+      logger.warn(
+        `WebSocket push failed for user ${sanitizeLog(userId)}, notification persisted for later delivery`,
+      );
+    }
+      logger.info(`Notification pushed for user ${sanitizeLog(userId)}: ${sanitizeLog(title)}`);
+    return notification;
+  }
+
+  /// Admin announcement: persist and push to all connected users or targeted roles
+  public async sendAnnouncement(
+    title: string,
+    message: string,
+    targetRoles: string[],
+    options?: {
+      priority?: "low" | "medium" | "high";
+      actionUrl?: string;
+    },
+  ): Promise<{ persisted: number; pushed: number }> {
+    try {
+      const websocketService = getWebsocketService();
+      const safeActionUrl = validateActionUrl(options?.actionUrl);
+
+      // Validate input types to prevent NoSQL operator injection
+      if (typeof title !== 'string' || typeof message !== 'string') {
+        throw new Error('title and message must be strings');
+      }
+
+      // Persist announcement notification for offline users
+      // If roles are targeted, only persist for users in connected rooms matching those roles
+      let persistedCount = 0;
+      if (targetRoles.length > 0) {
+        // For role-targeted announcements, broadcast to matching rooms (persist is best-effort for connected users)
+        // Note: We cannot easily determine which user has which role without user profile lookup,
+        // so we persist only when broadcasting to all users. Role-targeted announcements are primarily
+        // delivered via WebSocket in real-time.
+      } else {
+        // Persist for all connected users so offline users get it on reconnect
+        const connectedUsers = websocketService.getConnectedUsers();
+        for (const userId of connectedUsers) {
+          try {
+            const notification = new Notification({
+              userId,
+              type: "announcement",
+              title,
+              message,
+              category: "system",
+              priority: options?.priority || "high",
+              actionUrl: safeActionUrl,
+              isDelivered: false,
+            });
+            await notification.save();
+            persistedCount++;
+          } catch (err) {
+            logger.warn(`Failed to persist announcement for user ${sanitizeLog(userId)}`);
+          }
+        }
+      }
+
+      let pushedCount = 0;
+      // Push to connected users via WebSocket
+      if (targetRoles.length > 0) {
+        // Broadcast to connected users with matching roles
+        for (const role of targetRoles) {
+          // Validate role to prevent event/room injection
+          if (typeof role !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(role)) continue;
+          const roomName = `role:${role}`;
+          websocketService.emitToRoom(roomName, "notification", {
+            type: "announcement",
+            title,
+            message,
+            priority: options?.priority || "high",
+            actionUrl: validateActionUrl(options?.actionUrl),
+            timestamp: new Date().toISOString(),
+          });
+        }
+        pushedCount = websocketService.getConnectedCount();
+      } else {
+        // Broadcast to all connected users
+        websocketService.broadcast("notification", {
+          type: "announcement",
+          title,
+          message,
+          priority: options?.priority || "high",
+          actionUrl: validateActionUrl(options?.actionUrl),
+          timestamp: new Date().toISOString(),
+        });
+        pushedCount = websocketService.getConnectedCount();
+      }
+
+      return { persisted: persistedCount, pushed: pushedCount };
+    } catch (error) {
+      const err = error instanceof Error ? error.message : String(error);
+      logger.error(`Error sending announcement: ${sanitizeLog(err)}`);
+      throw error;
+    }
+  }
+
+  /// Deliver missed notifications to a user who just reconnected
+  public async deliverMissedNotifications(
+    userId: string,
+  ): Promise<number> {
+    try {
+      // Find all undelivered notifications for this user
+      const missedNotifications = await Notification.find({
+        userId,
+        isDelivered: false,
+      })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .exec();
+
+      if (missedNotifications.length === 0) {
+        return 0;
+      }
+
+      const websocketService = getWebsocketService();
+      let deliveredCount = 0;
+
+      for (const notification of missedNotifications) {
+        try {
+          websocketService.sendNotification(userId, notification);
+          notification.isDelivered = true;
+          notification.deliveredAt = new Date();
+          await notification.save();
+          deliveredCount++;
+        } catch (wsError) {
+          logger.warn(
+            `Failed to deliver missed notification ${notification._id} to user ${sanitizeLog(userId)}`,
+          );
+        }
+      }
+
+      return deliveredCount;
+    } catch (error) {
+      const err = error instanceof Error ? error.message : String(error);
+      logger.error(`Error delivering missed notifications for user ${sanitizeLog(userId)}: ${sanitizeLog(err)}`);
+      throw error;
+    }
   }
 }
 

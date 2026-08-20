@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
+
+export const dynamic = 'force-dynamic';
+
+import { MetaverseCampus } from '../../components/Metaverse';
 import ErrorBoundary from '../../components/ErrorBoundary';
 
 const MetaverseCampus = dynamic(

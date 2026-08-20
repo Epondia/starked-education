@@ -1,0 +1,59 @@
+# =====================================
+# Node.js / JavaScript / TypeScript
+# =====================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+pnpm-lock.yaml
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+target/
+
+# Test / coverage
+coverage/
+.nyc_output/
+test_output*.txt
+jest_out.txt
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.example
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Docker
+.dockerignore
+docker-compose*.yml
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Rust / Soroban (contracts)
+contracts/target/
+contracts/Cargo.lock
+*.wasm

@@ -1,18 +1,21 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Inter } from 'next/font/google';
-import { ThemeProvider } from 'next-themes';
 import './globals.css';
-import { performanceMonitor } from '@/lib/performance-monitor';
+import { ThemeProvider } from '@/context/ThemeContext';
 import { GlobalShell } from '@/components/PWA/GlobalShell';
 import { CommandPalette } from '@/components/ui/command-palette';
+import { OnboardingGate } from '@/components/onboarding/OnboardingWizard';
+import { createMetadata } from '@/lib/seo';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata: Metadata = {
+export const metadata: Metadata = createMetadata({
   title: 'StarkEd Education - Decentralized Learning Platform',
   description: 'Learn blockchain development with courses powered by Stellar',
-};
+  keywords: ['blockchain', 'stellar', 'education', 'web3', 'learning'],
+  absolute: true,
+});
 
 // RTL locales
 const RTL_LOCALES = new Set(['ar', 'he', 'fa', 'ur']);
@@ -28,41 +31,33 @@ export default function RootLayout({
   const dir = RTL_LOCALES.has(locale) ? 'rtl' : 'ltr';
 
   return (
-    /*
-     * suppressHydrationWarning is required because next-themes injects a
-     * `class` attribute on <html> on the client before React hydration
-     * completes, which would otherwise trigger a mismatch warning.
-     */
     <html lang={locale} dir={dir} suppressHydrationWarning>
+      <head>
+        {/* Prevent flash of wrong theme - runs before React hydration */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var stored = localStorage.getItem('starked-theme-preference');
+                  var theme = 'light';
+                  if (stored === 'dark' || stored === 'light') {
+                    theme = stored;
+                  } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    theme = 'dark';
+                  }
+                  document.documentElement.classList.toggle('dark', theme === 'dark');
+                  document.documentElement.style.colorScheme = theme;
+                } catch(e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={inter.className}>
-        {/*
-         * ThemeProvider configuration:
-         *   attribute="class"      → Tailwind darkMode: 'class' strategy
-         *   defaultTheme="system"  → first visit follows OS preference
-         *   enableSystem           → listens for prefers-color-scheme changes
-         *   storageKey             → persists choice under 'starked-theme'
-         *   disableTransitionOnChange={false} → our CSS handles transitions
-         */}
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          storageKey="starked-theme"
-          disableTransitionOnChange={false}
-        >
+        <ThemeProvider>
           <GlobalShell />
-          <Suspense
-            fallback={
-              <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-900">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Loading module...</p>
-                </div>
-              </div>
-            }
-          >
-            {children}
-          </Suspense>
+          <OnboardingGate>{children}</OnboardingGate>
         </ThemeProvider>
       </body>
     </html>

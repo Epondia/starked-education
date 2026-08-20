@@ -1,67 +1,59 @@
-#![no_std]
-use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, String, Vec, U256,
-    Map, BytesN, IntoVal, 
-};
+//! Verifiable Random Function (VRF) system for StarkEd.
+//!
+//! Provides fair, transparent, and tamper-proof randomness for awards and
+//! raffles (winner selection), exam question generation, seat assignments, and
+//! proctoring randomization.
+//!
+//! A trusted VRF oracle holds an ed25519 keypair; its public key is registered
+//! on-chain at initialization. To fulfil a request the oracle signs a canonical
+//! message (`seed || request_id || block_number`) and submits the 64-byte
+//! ed25519 signature as the proof. Fulfillment verifies the proof, derives a
+//! deterministic random value as `sha256(proof || seed)`, and blocks replay
+//! because the proof binds the exact request tuple.
 
-/// Verifiable Random Function (VRF) implementation for Stellar blockchain
-/// Provides fair, transparent, and tamper-proof randomization for:
-/// - Exam question generation
-/// - Seat assignments
-/// - Proctoring randomization
-/// - Lottery-based course enrollments
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, String};
 
+/// A randomness request awaiting (or already filled by) the VRF oracle.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct VRFRequest {
     pub id: u64,
     pub requester: Address,
+    /// Caller-supplied seed; the oracle signs (seed || id || block_number).
     pub seed: BytesN<32>,
+    /// Short label for the request (e.g. "award", "raffle").
     pub purpose: String,
+    /// Free-form context (e.g. "Math Exam 101").
     pub context: String,
+    /// Ledger sequence at request time, bound into the signed message.
     pub block_number: u64,
-    pub is_fulfilled: bool,
-    pub random_value: Option<U256>,
-    pub proof: Option<BytesN<64>>,
+    /// Ledger timestamp at request time.
     pub created_at: u64,
+    pub is_fulfilled: bool,
+    /// Deterministic 32-byte random value derived from the verified proof.
+    /// Zero-filled until the request is fulfilled.
+    pub random_value: BytesN<32>,
+    /// The verified ed25519 proof (64-byte signature).
+    /// Zero-filled until the request is fulfilled.
+    pub proof: BytesN<64>,
 }
 
+/// Aggregated counters surfaced via `get_stats`.
 #[contracttype]
 #[derive(Clone, Debug)]
-pub struct EntropySource {
-    pub id: u64,
-    pub name: String,
-    pub provider: Address,
-    pub weight: u32, // Weight in aggregation (0-10000)
-    pub is_active: bool,
-    pub total_contributions: u64,
+pub struct VRFStats {
+    pub total_requests: u64,
+    pub fulfilled_requests: u64,
 }
 
 #[contracttype]
-#[derive(Clone, Debug)]
-pub struct RandomnessBeacon {
-    pub id: u64,
-    pub entropy_hash: BytesN<32>,
-    pub timestamp: u64,
-    pub block_number: u64,
-    pub contributors: Vec<Address>,
-    pub is_verified: bool,
-}
-
-#[contracttype]
-#[derive(Clone)]
-pub enum StorageKey {
-    VRFRequest(u64),
-    VRFRequestByUser(Address, u64),
-    EntropySource(u64),
-    RandomnessBeacon(u64),
-    LatestBeacon,
-    NextRequestId,
-    NextSourceId,
-    NextBeaconId,
-    TotalRequests,
-    AggregationThreshold,
-    Commitment(Address, u64), // Commit-reveal scheme
+pub enum VRFKey {
+    Admin,
+    Oracle,
+    OraclePublicKey,
+    Request(u64),
+    RequestCount,
+    FulfilledCount,
 }
 
 #[contract]
@@ -69,436 +61,291 @@ pub struct VRFSystem;
 
 #[contractimpl]
 impl VRFSystem {
-    /// Initialize the VRF system
-    pub fn initialize(env: Env) {
-        env.storage().persistent().set(&StorageKey::NextRequestId, &0u64);
-        env.storage().persistent().set(&StorageKey::NextSourceId, &0u64);
-        env.storage().persistent().set(&StorageKey::NextBeaconId, &0u64);
-        env.storage().persistent().set(&StorageKey::TotalRequests, &0u64);
-        env.storage().persistent().set(&StorageKey::AggregationThreshold, &3u32); // Minimum 3 sources
-        
-        // Register default entropy source (blockchain entropy)
-        Self::register_entropy_source(
-            env.clone(),
-            "Blockchain Entropy".into_val(&env),
-            Address::from_contract_id(env.current_contract_address()),
-            10000, // Max weight
-        ).unwrap();
-    }
-
-    /// Register an entropy source (oracle, external RNG, etc.)
-    pub fn register_entropy_source(
+    /// Initialize the VRF system with an admin and a single trusted oracle.
+    ///
+    /// `oracle_public_key` is the oracle's ed25519 public key (32 bytes). Proofs
+    /// submitted on fulfillment are verified against this key.
+    pub fn initialize(
         env: Env,
-        name: String,
-        provider: Address,
-        weight: u32,
-    ) -> Result<u64, String> {
-        provider.require_auth();
-
-        if weight > 10000 {
-            return Err(String::from_str(&env, "Weight must be <= 10000"));
+        admin: Address,
+        oracle: Address,
+        oracle_public_key: BytesN<32>,
+    ) {
+        admin.require_auth();
+        if env.storage().instance().has(&VRFKey::Admin) {
+            panic!("VRF: already initialized");
         }
-
-        let source_id: u64 = env.storage().persistent()
-            .get(&StorageKey::NextSourceId)
-            .unwrap_or(0u64);
-
-        let source = EntropySource {
-            id: source_id,
-            name,
-            provider: provider.clone(),
-            weight,
-            is_active: true,
-            total_contributions: 0,
-        };
-
-        env.storage().persistent().set(&StorageKey::EntropySource(source_id), &source);
-        env.storage().persistent().set(&StorageKey::NextSourceId, &(source_id + 1));
-
-        Ok(source_id)
+        env.storage().instance().set(&VRFKey::Admin, &admin);
+        env.storage().instance().set(&VRFKey::Oracle, &oracle);
+        env.storage()
+            .instance()
+            .set(&VRFKey::OraclePublicKey, &oracle_public_key);
+        env.storage().instance().set(&VRFKey::RequestCount, &0u64);
+        env.storage().instance().set(&VRFKey::FulfilledCount, &0u64);
     }
 
-    /// Request a verifiable random number
+    /// Rotate the trusted oracle and its public key. Admin only.
+    pub fn set_oracle(
+        env: Env,
+        admin: Address,
+        oracle: Address,
+        oracle_public_key: BytesN<32>,
+    ) {
+        admin.require_auth();
+        Self::check_admin(&env, &admin);
+        env.storage().instance().set(&VRFKey::Oracle, &oracle);
+        env.storage()
+            .instance()
+            .set(&VRFKey::OraclePublicKey, &oracle_public_key);
+        env.events().publish(
+            (symbol_short!("vrf"), symbol_short!("oracle")),
+            oracle,
+        );
+    }
+
+    /// Create a new randomness request. Returns the request id.
+    ///
+    /// The requester supplies a seed that the oracle will sign. Using a fresh,
+    /// unpredictable seed per request prevents the requester from being able to
+    /// bias the final selection.
     pub fn request_randomness(
         env: Env,
         requester: Address,
         seed: BytesN<32>,
         purpose: String,
         context: String,
-    ) -> Result<u64, String> {
+    ) -> u64 {
         requester.require_auth();
 
-        let request_id: u64 = env.storage().persistent()
-            .get(&StorageKey::NextRequestId)
-            .unwrap_or(0u64);
+        let id: u64 = env
+            .storage()
+            .instance()
+            .get(&VRFKey::RequestCount)
+            .unwrap_or(0);
 
         let request = VRFRequest {
-            id: request_id,
+            id,
             requester: requester.clone(),
-            seed: seed.clone(),
-            purpose,
+            seed,
+            purpose: purpose.clone(),
             context,
-            block_number: env.ledger().sequence(),
-            is_fulfilled: false,
-            random_value: None,
-            proof: None,
+            block_number: env.ledger().sequence() as u64,
             created_at: env.ledger().timestamp(),
+            is_fulfilled: false,
+            random_value: BytesN::from_array(&env, &[0u8; 32]),
+            proof: BytesN::from_array(&env, &[0u8; 64]),
         };
 
-        env.storage().persistent().set(&StorageKey::VRFRequest(request_id), &request);
-        
-        // Index by user
-        let user_count: u64 = env.storage().persistent()
-            .get(&StorageKey::VRFRequestByUser(requester.clone(), u64::MAX))
-            .unwrap_or(0u64);
-        env.storage().persistent().set(
-            &StorageKey::VRFRequestByUser(requester, user_count),
-            &request_id
-        );
-        env.storage().persistent().set(
-            &StorageKey::VRFRequestByUser(requester, u64::MAX),
-            &(user_count + 1u64)
+        env.storage()
+            .instance()
+            .set(&VRFKey::Request(id), &request);
+        env.storage().instance().set(&VRFKey::RequestCount, &(id + 1));
+
+        env.events().publish(
+            (symbol_short!("vrf"), symbol_short!("requested")),
+            (id, requester, purpose),
         );
 
-        env.storage().persistent().set(&StorageKey::NextRequestId, &(request_id + 1));
-        
-        let total: u64 = env.storage().persistent()
-            .get(&StorageKey::TotalRequests)
-            .unwrap_or(0u64);
-        env.storage().persistent().set(&StorageKey::TotalRequests, &(total + 1));
-
-        // Emit event
-        env.events().publish((
-            "randomness_requested",
-            request_id,
-            requester,
-            purpose,
-        ),);
-
-        Ok(request_id)
+        id
     }
 
-    /// Submit entropy contribution from registered source
-    pub fn submit_entropy(
-        env: Env,
-        source_id: u64,
-        request_id: u64,
-        entropy: BytesN<32>,
-    ) -> Result<(), String> {
-        let source: EntropySource = env.storage().persistent()
-            .get(&StorageKey::EntropySource(source_id))
-            .ok_or_else(|| String::from_str(&env, "Entropy source not found"))?;
-
-        if !source.is_active {
-            return Err(String::from_str(&env, "Entropy source is not active"));
-        }
-
-        // Verify provider
-        if env.current_contract_address() != source.provider {
-            return Err(String::from_str(&env, "Unauthorized entropy provider"));
-        }
-
-        let mut request: VRFRequest = env.storage().persistent()
-            .get(&StorageKey::VRFRequest(request_id))
-            .ok_or_else(|| String::from_str(&env, "VRF request not found"))?;
-
-        if request.is_fulfilled {
-            return Err(String::from_str(&env, "Request already fulfilled"));
-        }
-
-        // Aggregate entropy with existing contributions
-        let current_seed = request.seed.clone();
-        let new_seed = Self::aggregate_entropy(&env, current_seed, entropy);
-        request.seed = new_seed;
-        request.total_contributions.unwrap_or(0) + 1;
-
-        env.storage().persistent().set(&StorageKey::VRFRequest(request_id), &request);
-
-        // Update source stats
-        let mut updated_source = source;
-        updated_source.total_contributions += 1;
-        env.storage().persistent().set(&StorageKey::EntropySource(source_id), &updated_source);
-
-        Ok(())
-    }
-
-    /// Fulfill VRF request with final random value and proof
+    /// Fulfil a randomness request with an ed25519 proof.
+    ///
+    /// Returns the deterministic 32-byte random value. Only the registered
+    /// oracle may fulfil. An invalid proof causes the transaction to abort
+    /// (rejected) and leaves the request untouched.
     pub fn fulfill_randomness(
         env: Env,
+        oracle: Address,
         request_id: u64,
-        random_value: U256,
         proof: BytesN<64>,
-    ) -> Result<(), String> {
-        let mut request: VRFRequest = env.storage().persistent()
-            .get(&StorageKey::VRFRequest(request_id))
-            .ok_or_else(|| String::from_str(&env, "VRF request not found"))?;
+    ) -> BytesN<32> {
+        oracle.require_auth();
 
-        if request.is_fulfilled {
-            return Err(String::from_str(&env, "Request already fulfilled"));
+        let expected_oracle: Address = env
+            .storage()
+            .instance()
+            .get(&VRFKey::Oracle)
+            .unwrap_or_else(|| panic!("VRF: not initialized"));
+        if oracle != expected_oracle {
+            panic!("VRF: unauthorized oracle");
         }
+
+        let mut request: VRFRequest = env
+            .storage()
+            .instance()
+            .get(&VRFKey::Request(request_id))
+            .unwrap_or_else(|| panic!("VRF: request not found"));
+        if request.is_fulfilled {
+            panic!("VRF: request already fulfilled");
+        }
+
+        let public_key: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&VRFKey::OraclePublicKey)
+            .unwrap_or_else(|| panic!("VRF: oracle public key missing"));
+
+        // Reconstruct the exact message the oracle signed and verify the proof.
+        // `ed25519_verify` panics on an invalid signature, which rejects the
+        // transaction before any state is written.
+        let message = Self::build_vrf_message(&env, &request.seed, request.id, request.block_number);
+        env.crypto().ed25519_verify(&public_key, &message, &proof);
+
+        let random_value = Self::derive_random_value(&env, &proof, &request.seed);
 
         request.is_fulfilled = true;
-        request.random_value = Some(random_value);
-        request.proof = Some(proof);
+        request.random_value = random_value.clone();
+        request.proof = proof;
+        env.storage()
+            .instance()
+            .set(&VRFKey::Request(request_id), &request);
 
-        env.storage().persistent().set(&StorageKey::VRFRequest(request_id), &request);
+        let fulfilled: u64 = env
+            .storage()
+            .instance()
+            .get(&VRFKey::FulfilledCount)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&VRFKey::FulfilledCount, &(fulfilled + 1));
 
-        // Emit event
-        env.events().publish((
-            "randomness_fulfilled",
-            request_id,
-            random_value,
-        ),);
+        env.events().publish(
+            (symbol_short!("vrf"), symbol_short!("fulfilled")),
+            (request_id, random_value.clone()),
+        );
 
-        Ok(())
+        random_value
     }
 
-    /// Create randomness beacon from aggregated entropy
-    pub fn create_beacon(
-        env: Env,
-        entropy_hash: BytesN<32>,
-        contributors: Vec<Address>,
-    ) -> Result<u64, String> {
-        let beacon_id: u64 = env.storage().persistent()
-            .get(&StorageKey::NextBeaconId)
-            .unwrap_or(0u64);
-
-        let beacon = RandomnessBeacon {
-            id: beacon_id,
-            entropy_hash,
-            timestamp: env.ledger().timestamp(),
-            block_number: env.ledger().sequence(),
-            contributors,
-            is_verified: true,
-        };
-
-        env.storage().persistent().set(&StorageKey::RandomnessBeacon(beacon_id), &beacon);
-        env.storage().persistent().set(&StorageKey::LatestBeacon, &beacon_id);
-        env.storage().persistent().set(&StorageKey::NextBeaconId, &(beacon_id + 1));
-
-        Ok(beacon_id)
-    }
-
-    /// Commit to a value (commit-reveal scheme for fairness)
-    pub fn commit(
-        env: Env,
-        committer: Address,
-        commitment_hash: BytesN<32>,
-        valid_until: u64,
-    ) -> Result<(), String> {
-        committer.require_auth();
-
-        let key = StorageKey::Commitment(committer.clone(), env.ledger().sequence());
-        
-        env.storage().temporary().set(&key, &CommitmentData {
-            hash: commitment_hash,
-            valid_until,
-            created_at: env.ledger().timestamp(),
-        });
-
-        Ok(())
-    }
-
-    /// Reveal committed value
-    pub fn reveal(
-        env: Env,
-        committer: Address,
-        revealed_value: String,
-    ) -> Result<String, String> {
-        let key = StorageKey::Commitment(committer.clone(), env.ledger().sequence());
-        
-        let commitment: CommitmentData = env.storage().temporary()
-            .get(&key)
-            .ok_or_else(|| String::from_str(&env, "No commitment found"))?;
-
-        if env.ledger().timestamp() > commitment.valid_until {
-            return Err(String::from_str(&env, "Commitment expired"));
-        }
-
-        // Verify the reveal matches the commitment
-        let computed_hash = Self::hash_reveal(&env, &revealed_value);
-        if computed_hash != commitment.hash {
-            return Err(String::from_str(&env, "Reveal does not match commitment"));
-        }
-
-        // Clean up
-        env.storage().temporary().remove(&key);
-
-        Ok(revealed_value)
-    }
-
-    /// Generate random number for specific use case (exam, lottery, etc.)
-    pub fn generate_random_for_purpose(
-        env: Env,
-        requester: Address,
-        purpose: String,
-        seed: BytesN<32>,
-        min: U256,
-        max: U256,
-    ) -> Result<U256, String> {
-        requester.require_auth();
-
-        // Get latest beacon entropy
-        let beacon_id: u64 = env.storage().persistent()
-            .get(&StorageKey::LatestBeacon)
-            .ok_or_else(|| String::from_str(&env, "No randomness beacon available"))?;
-
-        let beacon: RandomnessBeacon = env.storage().persistent()
-            .get(&StorageKey::RandomnessBeacon(beacon_id))
-            .ok_or_else(|| String::from_str(&env, "Beacon not found"))?;
-
-        // Combine seed with beacon entropy
-        let combined = Self::combine_seeds(&env, seed, beacon.entropy_hash);
-        
-        // Generate random value in range
-        let random_value = Self::random_in_range(&combined, min, max);
-
-        // Log usage
-        env.events().publish((
-            "random_generated",
-            purpose,
-            requester,
-            random_value,
-        ),);
-
-        Ok(random_value)
-    }
-
-    /// Get VRF request details
-    pub fn get_request(env: Env, request_id: u64) -> Result<VRFRequest, String> {
-        env.storage().persistent()
-            .get(&StorageKey::VRFRequest(request_id))
-            .ok_or_else(|| String::from_str(&env, "Request not found"))
-    }
-
-    /// Get requests by user
-    pub fn get_requests_by_user(
-        env: Env,
-        user: Address,
-    ) -> Result<Vec<VRFRequest>, String> {
-        let count: u64 = env.storage().persistent()
-            .get(&StorageKey::VRFRequestByUser(user.clone(), u64::MAX))
-            .unwrap_or(0u64);
-
-        let mut requests: Vec<VRFRequest> = Vec::new(&env);
-        for i in 0..count {
-            if let Ok(req_id) = env.storage().persistent()
-                .get::<_, u64>(&StorageKey::VRFRequestByUser(user.clone(), i))
-            {
-                if let Ok(request) = env.storage().persistent()
-                    .get::<_, VRFRequest>(&StorageKey::VRFRequest(req_id))
-                {
-                    requests.push_back(request);
-                }
-            }
-        }
-
-        Ok(requests)
-    }
-
-    /// Get entropy source details
-    pub fn get_entropy_source(env: Env, source_id: u64) -> Result<EntropySource, String> {
-        env.storage().persistent()
-            .get(&StorageKey::EntropySource(source_id))
-            .ok_or_else(|| String::from_str(&env, "Source not found"))
-    }
-
-    /// Get latest beacon
-    pub fn get_latest_beacon(env: Env) -> Result<RandomnessBeacon, String> {
-        let beacon_id: u64 = env.storage().persistent()
-            .get(&StorageKey::LatestBeacon)
-            .ok_or_else(|| String::from_str(&env, "No beacon available"))?;
-
-        env.storage().persistent()
-            .get(&StorageKey::RandomnessBeacon(beacon_id))
-            .ok_or_else(|| String::from_str(&env, "Beacon not found"))
-    }
-
-    /// Verify randomness proof (placeholder for actual VRF verification)
-    pub fn verify_proof(
+    /// Deterministically select a winner index in `[0, participant_count)` from
+    /// a fulfilled request's verified randomness.
+    pub fn select_winner(
         env: Env,
         request_id: u64,
-        proof: BytesN<64>,
-    ) -> Result<bool, String> {
-        let request: VRFRequest = env.storage().persistent()
-            .get(&StorageKey::VRFRequest(request_id))
-            .ok_or_else(|| String::from_str(&env, "Request not found"))?;
+        participant_count: u64,
+    ) -> u64 {
+        if participant_count == 0 {
+            panic!("VRF: participant_count must be > 0");
+        }
+        let request = Self::get_fulfilled_request(&env, request_id);
+        let random = Self::bytesn_to_u64(&request.random_value);
+        random % participant_count
+    }
 
-        if let Some(stored_proof) = request.proof {
-            Ok(stored_proof == proof)
-        } else {
-            Err(String::from_str(&env, "No proof stored for this request"))
+    /// Deterministically derive a number in `[min, max]` (inclusive) from a
+    /// fulfilled request's verified randomness.
+    pub fn random_in_range(
+        env: Env,
+        request_id: u64,
+        min: u64,
+        max: u64,
+    ) -> u64 {
+        if max < min {
+            panic!("VRF: max must be >= min");
+        }
+        let request = Self::get_fulfilled_request(&env, request_id);
+        let random = Self::bytesn_to_u64(&request.random_value);
+        let span = max - min + 1;
+        min + (random % span)
+    }
+
+    /// Read a request by id.
+    pub fn get_request(env: Env, request_id: u64) -> VRFRequest {
+        env.storage()
+            .instance()
+            .get::<_, VRFRequest>(&VRFKey::Request(request_id))
+            .unwrap_or_else(|| panic!("VRF: request not found"))
+    }
+
+    /// Read the currently registered oracle address.
+    pub fn get_oracle(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get::<_, Address>(&VRFKey::Oracle)
+            .unwrap_or_else(|| panic!("VRF: not initialized"))
+    }
+
+    /// Read aggregated request/fulfillment counters.
+    pub fn get_stats(env: Env) -> VRFStats {
+        VRFStats {
+            total_requests: env
+                .storage()
+                .instance()
+                .get(&VRFKey::RequestCount)
+                .unwrap_or(0),
+            fulfilled_requests: env
+                .storage()
+                .instance()
+                .get(&VRFKey::FulfilledCount)
+                .unwrap_or(0),
         }
     }
 
-    /// Get statistics
-    pub fn get_stats(env: Env) -> Map<String, u64> {
-        let mut stats: Map<String, u64> = Map::new(env);
-        
-        let total_requests: u64 = env.storage().persistent()
-            .get(&StorageKey::TotalRequests)
-            .unwrap_or(0u64);
-        
-        stats.set("total_requests".into_val(&env), total_requests);
-        
-        // Count fulfilled requests
-        let mut fulfilled = 0u64;
-        for i in 0..total_requests {
-            if let Ok(req) = env.storage().persistent().get::<_, VRFRequest>(&StorageKey::VRFRequest(i)) {
-                if req.is_fulfilled {
-                    fulfilled += 1;
-                }
-            }
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    fn check_admin(env: &Env, caller: &Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get::<_, Address>(&VRFKey::Admin)
+            .unwrap_or_else(|| panic!("VRF: not initialized"));
+        if caller != &admin {
+            panic!("VRF: only admin can perform this action");
         }
-        stats.set("fulfilled_requests".into_val(&env), fulfilled);
-        
-        stats
     }
 
-    // ========== Internal Helper Functions ==========
-
-    fn aggregate_entropy(env: &Env, entropy1: &[u8], entropy2: &[u8]) -> BytesN<32> {
-        let mut combined = Vec::new(env);
-        for byte in entropy1.iter() {
-            combined.push_back(byte);
+    fn get_fulfilled_request(env: &Env, request_id: u64) -> VRFRequest {
+        let request: VRFRequest = env
+            .storage()
+            .instance()
+            .get::<_, VRFRequest>(&VRFKey::Request(request_id))
+            .unwrap_or_else(|| panic!("VRF: request not found"));
+        if !request.is_fulfilled {
+            panic!("VRF: request not fulfilled");
         }
-        for byte in entropy2.iter() {
-            combined.push_back(byte);
-        }
-        
-        env.crypto().sha256(&combined).into()
+        request
     }
 
-    fn combine_seeds(env: &Env, seed1: &[u8], seed2: &[u8]) -> [u8; 32] {
-        let mut combined = Vec::new(env);
-        for byte in seed1.iter() {
-            combined.push_back(byte);
+    /// Build the canonical 48-byte message the oracle signs:
+    /// `seed (32) || request_id (8, BE) || block_number (8, BE)`.
+    fn build_vrf_message(
+        env: &Env,
+        seed: &BytesN<32>,
+        request_id: u64,
+        block_number: u64,
+    ) -> Bytes {
+        let mut message = Bytes::new(env);
+        for byte in seed.to_array().iter() {
+            message.push_back(*byte);
         }
-        for byte in seed2.iter() {
-            combined.push_back(byte);
+        for byte in request_id.to_be_bytes().iter() {
+            message.push_back(*byte);
         }
-        
-        let hash = env.crypto().sha256(&combined);
-        *hash
+        for byte in block_number.to_be_bytes().iter() {
+            message.push_back(*byte);
+        }
+        message
     }
 
-    fn random_in_range(data: &[u8; 32], min: U256, max: U256) -> U256 {
-        // Simple modulo-based range selection
-        // In production, use proper rejection sampling
-        let range = max - min.clone();
-        let value = U256::from_bytes_be(data);
-        min + (value % (range + U256::from_u32(1)))
+    /// Derive the deterministic 32-byte random value from the verified proof:
+    /// `sha256(proof || seed)`.
+    fn derive_random_value(env: &Env, proof: &BytesN<64>, seed: &BytesN<32>) -> BytesN<32> {
+        let mut data = Bytes::new(env);
+        for byte in proof.to_array().iter() {
+            data.push_back(*byte);
+        }
+        for byte in seed.to_array().iter() {
+            data.push_back(*byte);
+        }
+        env.crypto().sha256(&data)
     }
 
-    fn hash_reveal(env: &Env, value: &String) -> BytesN<32> {
-        env.crypto().sha256(&value.as_str().bytes()).into()
+    /// Interpret the leading 8 bytes of a 32-byte random value as big-endian u64.
+    fn bytesn_to_u64(random: &BytesN<32>) -> u64 {
+        let array = random.to_array();
+        let mut buf = [0u8; 8];
+        buf.copy_from_slice(&array[0..8]);
+        u64::from_be_bytes(buf)
     }
-}
-
-#[contracttype]
-#[derive(Clone)]
-pub struct CommitmentData {
-    pub hash: BytesN<32>,
-    pub valid_until: u64,
-    pub created_at: u64,
 }

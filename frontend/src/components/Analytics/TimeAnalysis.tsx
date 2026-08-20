@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, TooltipProps, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Clock, Calendar, Activity } from 'lucide-react';
 
 interface TimeData {
@@ -16,6 +16,10 @@ interface TimeAnalysisProps {
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+
+// Module-level helpers to avoid recharts v3 Formatter overload ambiguity
+const formatMinutesAsHours = (value: any) => `${Math.round(Number(value) / 60)}h ${Number(value) % 60}m`;
+const formatMinutesLabel = (value: any) => `${value} min`;
 
 export const TimeAnalysis: React.FC<TimeAnalysisProps> = ({ userId, onDataLoaded }) => {
   const [data, setData] = useState<TimeData | null>(null);
@@ -124,7 +128,7 @@ export const TimeAnalysis: React.FC<TimeAnalysisProps> = ({ userId, onDataLoaded
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value: number) => `${Math.round(value / 60)}h ${value % 60}m`} />
+                <Tooltip formatter={formatMinutesAsHours} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -139,7 +143,7 @@ export const TimeAnalysis: React.FC<TimeAnalysisProps> = ({ userId, onDataLoaded
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="day" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(value: number) => `${value} min`} />
+                <Tooltip formatter={formatMinutesLabel} />
                 <Bar dataKey="minutes" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
