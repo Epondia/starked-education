@@ -8,9 +8,9 @@ fn measure_gas<F>(env: &Env, f: F) -> u64
 where
     F: FnOnce(),
 {
-    env.budget().reset();
+    env.budget().reset_default();
     f();
-    env.budget().get_cpu_insns_count()
+    env.budget().cpu_instruction_cost()
 }
 
 fn bench_credential_issuance(c: &mut Criterion) {
