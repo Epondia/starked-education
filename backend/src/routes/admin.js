@@ -8,6 +8,8 @@ const {
 const { validateRequestSchema } = require('../middleware/validateRequestSchema');
 const { PERMISSIONS, UserRole } = require('../utils/roles');
 const { AnalyticsService } = require('../services/analyticsService');
+const ApiKey = require('../models/ApiKey');
+const logger = require('../utils/logger');
 const router = express.Router();
 
 const updateSettingsSchema = {
@@ -347,6 +349,278 @@ router.post(
         error: 'Internal server error',
         message: 'Error creating announcement',
       });
+    }
+  }
+);
+
+// ── API Key Management ──────────────────────────────────────────
+
+const createApiKeySchema = {
+  body: Joi.object({
+    name: Joi.string().trim().min(1).max(100).required(),
+    scopes: Joi.array().items(Joi.string().trim().min(1)).min(1).required(),
+    expiresAt: Joi.date().iso().greater('now').optional(),
+  }),
+};
+
+const rotateApiKeySchema = {
+  params: Joi.object({
+    id: Joi.string().hex().length(24).required(),
+  }),
+  body: Joi.object({
+    scopes: Joi.array().items(Joi.string().trim().min(1)).min(1).optional(),
+    expiresAt: Joi.date().iso().greater('now').optional(),
+  }),
+};
+
+const revokeApiKeySchema = {
+  params: Joi.object({
+    id: Joi.string().hex().length(24).required(),
+  }),
+};
+
+/**
+ * POST /api/admin/api-keys
+ * Create a new API key. Returns the plaintext key exactly once.
+ */
+router.post(
+  '/api-keys',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  validateRequestSchema(createApiKeySchema),
+  async (req, res) => {
+    try {
+      const { name, scopes, expiresAt } = req.body;
+
+      const { rawKey, keyHash, keyPrefix } = await ApiKey.generateKey();
+
+      const apiKeyDoc = new ApiKey({
+        keyHash,
+        keyPrefix,
+        userId: req.user.id,
+        name,
+        scopes,
+        expiresAt: expiresAt || undefined,
+        audit: [
+          {
+            action: 'created',
+            performedBy: req.user.id,
+            timestamp: new Date(),
+            details: { name, scopes },
+          },
+        ],
+      });
+
+      await apiKeyDoc.save();
+
+      logger.info(`API key created: ${keyPrefix}... by user ${req.user.id}`);
+
+      res.status(201).json({
+        success: true,
+        message: 'API key created successfully. Store the key securely — it will not be shown again.',
+        data: {
+          id: apiKeyDoc._id,
+          name: apiKeyDoc.name,
+          key: rawKey, // Returned only on creation
+          keyPrefix: apiKeyDoc.keyPrefix,
+          scopes: apiKeyDoc.scopes,
+          expiresAt: apiKeyDoc.expiresAt,
+          createdAt: apiKeyDoc.createdAt,
+        },
+      });
+    } catch (error) {
+      logger.error('Error creating API key:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+);
+
+/**
+ * GET /api/admin/api-keys
+ * List all API keys (hashes are never exposed).
+ */
+router.get(
+  '/api-keys',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  async (req, res) => {
+    try {
+      const { status, page = 1, limit = 20 } = req.query;
+      const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+      const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+
+      const filter = {};
+      if (status && ['active', 'revoked'].includes(status)) {
+        filter.status = status;
+      }
+
+      const total = await ApiKey.countDocuments(filter);
+      const keys = await ApiKey.find(filter)
+        .select('-keyHash') // Never expose the hash
+        .sort({ createdAt: -1 })
+        .skip((parsedPage - 1) * parsedLimit)
+        .limit(parsedLimit)
+        .lean();
+
+      res.json({
+        success: true,
+        data: {
+          keys,
+          pagination: {
+            total,
+            page: parsedPage,
+            limit: parsedLimit,
+            pages: Math.ceil(total / parsedLimit),
+          },
+        },
+      });
+    } catch (error) {
+      logger.error('Error listing API keys:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+);
+
+/**
+ * GET /api/admin/api-keys/:id
+ * Get a single API key by ID.
+ */
+router.get(
+  '/api-keys/:id',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  async (req, res) => {
+    try {
+      const key = await ApiKey.findById(req.params.id)
+        .select('-keyHash')
+        .lean();
+
+      if (!key) {
+        return res.status(404).json({ success: false, message: 'API key not found' });
+      }
+
+      res.json({ success: true, data: key });
+    } catch (error) {
+      logger.error('Error fetching API key:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/api-keys/:id/rotate
+ * Rotate an API key: revoke the old one and create a new one atomically.
+ */
+router.post(
+  '/api-keys/:id/rotate',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  validateRequestSchema(rotateApiKeySchema),
+  async (req, res) => {
+    try {
+      const oldKey = await ApiKey.findById(req.params.id);
+
+      if (!oldKey) {
+        return res.status(404).json({ success: false, message: 'API key not found' });
+      }
+
+      if (oldKey.status === 'revoked') {
+        return res.status(400).json({ success: false, message: 'API key is already revoked' });
+      }
+
+      const newScopes = req.body.scopes || oldKey.scopes;
+      const newExpiresAt = req.body.expiresAt || oldKey.expiresAt;
+
+      // Generate new key
+      const { rawKey, keyHash, keyPrefix } = await ApiKey.generateKey();
+
+      // Revoke old key
+      oldKey.status = 'revoked';
+      oldKey.audit.push({
+        action: 'rotated',
+        performedBy: req.user.id,
+        timestamp: new Date(),
+        details: { newKeyPrefix: keyPrefix },
+      });
+      await oldKey.save();
+
+      // Create new key
+      const newKeyDoc = new ApiKey({
+        keyHash,
+        keyPrefix,
+        userId: oldKey.userId,
+        name: oldKey.name,
+        scopes: newScopes,
+        expiresAt: newExpiresAt || undefined,
+        audit: [
+          {
+            action: 'created',
+            performedBy: req.user.id,
+            timestamp: new Date(),
+            details: { rotatedFrom: oldKey._id, name: oldKey.name, scopes: newScopes },
+          },
+        ],
+      });
+
+      await newKeyDoc.save();
+
+      logger.info(`API key rotated: ${oldKey.keyPrefix}... -> ${keyPrefix}... by user ${req.user.id}`);
+
+      res.json({
+        success: true,
+        message: 'API key rotated successfully. Store the new key securely — it will not be shown again.',
+        data: {
+          oldKeyId: oldKey._id,
+          id: newKeyDoc._id,
+          name: newKeyDoc.name,
+          key: rawKey, // Returned only on rotation
+          keyPrefix: newKeyDoc.keyPrefix,
+          scopes: newKeyDoc.scopes,
+          expiresAt: newKeyDoc.expiresAt,
+          createdAt: newKeyDoc.createdAt,
+        },
+      });
+    } catch (error) {
+      logger.error('Error rotating API key:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+);
+
+/**
+ * DELETE /api/admin/api-keys/:id
+ * Revoke an API key.
+ */
+router.delete(
+  '/api-keys/:id',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  validateRequestSchema(revokeApiKeySchema),
+  async (req, res) => {
+    try {
+      const key = await ApiKey.findById(req.params.id);
+
+      if (!key) {
+        return res.status(404).json({ success: false, message: 'API key not found' });
+      }
+
+      if (key.status === 'revoked') {
+        return res.status(400).json({ success: false, message: 'API key is already revoked' });
+      }
+
+      key.status = 'revoked';
+      key.audit.push({
+        action: 'revoked',
+        performedBy: req.user.id,
+        timestamp: new Date(),
+      });
+      await key.save();
+
+      logger.info(`API key revoked: ${key.keyPrefix}... by user ${req.user.id}`);
+
+      res.json({
+        success: true,
+        message: 'API key revoked successfully',
+        data: { id: key._id, status: 'revoked' },
+      });
+    } catch (error) {
+      logger.error('Error revoking API key:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
     }
   }
 );

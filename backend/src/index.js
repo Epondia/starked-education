@@ -26,6 +26,7 @@ const {
 } = require('./middleware/security');
 const { globalLimiter } = require('./middleware/rateLimiter');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
+const { authenticateApiKey } = require('./middleware/apiKey');
 
 // Import versioning middleware
 const { versionExtractor, createVersionedRouter, SUPPORTED_VERSIONS, DEFAULT_VERSION } = require('./middleware/versioning');
@@ -117,6 +118,9 @@ app.use((req, res, next) => {
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
 const healthRoutes = require('./routes/health').default || require('./routes/health');
 app.use('/health', healthRoutes);
+
+// API Key authentication — runs before JWT so API-key-only requests are handled
+app.use(authenticateApiKey);
 
 // Apply API version extraction middleware globally
 app.use(versionExtractor);
