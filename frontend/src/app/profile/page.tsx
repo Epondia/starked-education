@@ -3,14 +3,28 @@
 export const dynamic = 'force-dynamic';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useProfile } from '../../hooks/useProfile';
-import { ProfileEditor } from '../../components/ProfileEditor';
-import { AchievementDisplay } from '../../components/AchievementDisplay';
-import { CredentialList } from '../../components/CredentialList';
-import { ProfileStats } from '../../components/ProfileStats';
 import { ProfileHeader } from '../../components/Profile/ProfileHeader';
 import { ProfileSkeleton } from '../../components/Profile/ProfileSkeleton';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
+
+const ProfileEditor = dynamic(
+  () => import('../../components/ProfileEditor').then((m) => m.ProfileEditor),
+  { loading: () => <ProfileSkeleton /> }
+);
+const AchievementDisplay = dynamic(
+  () => import('../../components/AchievementDisplay').then((m) => m.AchievementDisplay),
+  { loading: () => <ProfileSkeleton /> }
+);
+const CredentialList = dynamic(
+  () => import('../../components/CredentialList').then((m) => m.CredentialList),
+  { loading: () => <ProfileSkeleton /> }
+);
+const ProfileStats = dynamic(
+  () => import('../../components/ProfileStats').then((m) => m.ProfileStats),
+  { loading: () => <ProfileSkeleton /> }
+);
 import { 
   User, 
   Trophy, 

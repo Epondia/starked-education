@@ -2,9 +2,24 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import CollaborationRoom from '@/components/Collaboration/CollaborationRoom';
+import dynamic from 'next/dynamic';
 import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 import toast from 'react-hot-toast';
+
+const CollaborationRoom = dynamic(
+  () => import('@/components/Collaboration/CollaborationRoom'),
+  {
+    loading: () => (
+      <div className="flex items-center justify-center h-screen bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-white text-lg">Loading collaboration workspace & editor...</p>
+        </div>
+      </div>
+    ),
+    ssr: false,
+  }
+);
 
 const CollaborationRoomPage = () => {
   const params = useParams();
