@@ -2,7 +2,7 @@
 //! Outputs JSON with average gas costs for each operation.
 
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
-use starked_education_contracts::{StarkEdContract, StarkEdContractClient};
+use starked_education_contracts::StarkEdContract;
 use std::collections::HashMap;
 
 fn measure_gas<F>(env: &Env, f: F) -> u64
@@ -16,28 +16,29 @@ where
 
 fn bench_credential_issuance(
     env: &Env,
-    client: &StarkEdContractClient,
     admin: &Address,
     recipient: &Address,
 ) -> u64 {
     measure_gas(env, || {
-        client.issue_credential(
-            admin,
-            recipient,
-            &String::from_str(env, "Bench Credential"),
-            &String::from_str(env, "bench_course"),
-            &String::from_str(env, "QmBenchHash"),
+        StarkEdContract::issue_credential(
+            env.clone(),
+            admin.clone(),
+            recipient.clone(),
+            String::from_str(env, "Bench Credential"),
+            String::from_str(env, "bench_course"),
+            String::from_str(env, "QmBenchHash"),
         );
     })
 }
 
-fn bench_course_creation(env: &Env, client: &StarkEdContractClient, admin: &Address) -> u64 {
+fn bench_course_creation(env: &Env, admin: &Address) -> u64 {
     measure_gas(env, || {
-        client.create_course(
-            admin,
-            &String::from_str(env, "Gas Benchmark Course"),
-            &String::from_str(env, "A course for gas benchmarking"),
-            &100_000_000,
+        StarkEdContract::create_course(
+            env.clone(),
+            admin.clone(),
+            String::from_str(env, "Gas Benchmark Course"),
+            String::from_str(env, "A course for gas benchmarking"),
+            100_000_000,
         );
     })
 }
@@ -50,9 +51,7 @@ fn main() {
 
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
-    let contract_id = env.register_contract(None, StarkEdContract);
-    let client = StarkEdContractClient::new(&env, &contract_id);
-    client.initialize(&admin);
+    StarkEdContract::initialize(env.clone(), admin.clone());
 
     let mut results = HashMap::new();
 
@@ -60,13 +59,13 @@ fn main() {
     let iterations = 10;
     let mut total = 0;
     for _ in 0..iterations {
-        total += bench_credential_issuance(&env, &client, &admin, &recipient);
+        total += bench_credential_issuance(&env, &admin, &recipient);
     }
     results.insert("issue_credential", total / iterations);
 
     let mut total = 0;
     for _ in 0..iterations {
-        total += bench_course_creation(&env, &client, &admin);
+        total += bench_course_creation(&env, &admin);
     }
     results.insert("create_course", total / iterations);
 
