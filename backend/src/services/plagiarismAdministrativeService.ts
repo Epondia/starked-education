@@ -191,8 +191,11 @@ export class PlagiarismAdministrativeService {
           break;
       }
 
-      // Remove from in-progress
-      this.removeFromQueue(reportId);
+      // Remove from in-progress only
+      const index = this.reviewQueue.inProgress.findIndex(r => r.id === reportId);
+      if (index !== -1) {
+        this.reviewQueue.inProgress.splice(index, 1);
+      }
 
       logger.info(`Review submitted for report ${reportId}: ${action.type}`);
 
