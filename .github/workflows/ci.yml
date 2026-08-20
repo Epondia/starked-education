@@ -7,7 +7,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  NODE_VERSION: '18'
+  NODE_VERSION: '22'
 
 jobs:
   # ─── Smart Contracts ─────────────────────────────────────────────
