@@ -14,7 +14,7 @@ const SecureRealtimeCommunication = require('./services/secureRealtimeCommunicat
 // Import circuit breaker registry
 const { circuitBreakerRegistry } = require('./utils/circuitBreaker');
 
-const transactionQueue = require('./services/transactionQueue');
+const { transactionQueue } = require('./services/transactionQueue');
 const transactionProcessor = require('./workers/transactionProcessor');
 const transactionEvents = require('./events/transactionEvents');
 const emailWorker = require('./workers/emailWorker');
