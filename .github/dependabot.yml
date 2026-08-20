@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # Maintain dependencies for npm workspaces (root, frontend, backend)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      all-npm-dependencies:
+        patterns:
+          - "*"
+
+  # Maintain dependencies for Rust smart contracts
+  - package-ecosystem: "cargo"
+    directory: "/contracts"
+    schedule:
+      interval: "weekly"
+    groups:
+      all-cargo-dependencies:
+        patterns:
+          - "*"

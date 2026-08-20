@@ -1,14 +1,25 @@
 import type { AppProps } from 'next/app';
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
+import Head from 'next/head';
 import { appWithTranslation } from 'next-i18next';
-import { ThemeProvider } from 'next-themes';
+import PlausibleProvider from 'next-plausible';
 import nextI18NextConfig from '../../next-i18next.config';
 import { WalletProvider } from '../context/WalletContext';
-import { ErrorBoundary } from '../components/ErrorBoundary';
-import { GlobalShell } from '../components/PWA/GlobalShell';
+import { ThemeProvider } from '../context/ThemeContext';
 import { Toaster } from 'react-hot-toast';
 import '../styles/globals.css';
+
+export function reportWebVitals(metric: any) {
+  if (typeof window !== 'undefined' && (window as any).plausible) {
+    (window as any).plausible('Web Vitals', {
+      props: {
+        metric: metric.name,
+        value: Math.round(metric.name === 'CLS' ? metric.value * 1000 : metric.value),
+      },
+    });
+  }
+}
 
 function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
@@ -35,31 +46,34 @@ function MyApp({ Component, pageProps }: AppProps) {
   }, [router.asPath]);
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="starked-theme">
-      <ErrorBoundary key={router.asPath}>
+    <>
+      {/* Flash prevention for Pages Router - runs before React hydration */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              try {
+                var stored = localStorage.getItem('starked-theme-preference');
+                var theme = 'light';
+                if (stored === 'dark' || stored === 'light') {
+                  theme = stored;
+                } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                  theme = 'dark';
+                }
+                document.documentElement.classList.toggle('dark', theme === 'dark');
+                document.documentElement.style.colorScheme = theme;
+              } catch(e) {}
+            })();
+          `,
+        }}
+      />
+      <ThemeProvider>
         <WalletProvider>
-          <a className="skip-link" href="#main-content">
-            Skip to main content
-          </a>
-          <div
-            className="sr-only"
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            {`Navigated to ${router.asPath}`}
-          </div>
-          <GlobalShell />
           <Component {...pageProps} />
-          <Toaster
-            position="bottom-right"
-            toastOptions={{
-              ariaProps: { role: 'status', 'aria-live': 'polite' },
-            }}
-          />
+          <Toaster position="bottom-right" />
         </WalletProvider>
-      </ErrorBoundary>
-    </ThemeProvider>
+      </ThemeProvider>
+    </>
   );
 }
 

@@ -117,6 +117,16 @@ impl Governance {
         quorum: i128,
     ) -> u64 {
         proposer.require_auth();
+
+        // Validate inputs before creating the proposal
+        Self::validate_proposal(
+            &env,
+            proposer.clone(),
+            title.clone(),
+            description.clone(),
+            voting_period,
+        );
+
         let count: u64 = env
             .storage()
             .instance()
@@ -144,6 +154,13 @@ impl Governance {
         env.storage()
             .instance()
             .set(&GovernanceDataKey::ProposalCount, &id);
+
+        // Store timestamp for duplicate-proposal cooldown tracking
+        env.storage().instance().set(
+            &GovernanceDataKey::ProposalByProposerTitle(proposer, title),
+            &start_time,
+        );
+
         id
     }
 
@@ -159,7 +176,7 @@ impl Governance {
         per_recipient: i128,
         max_recipients: u32,
         eligibility: EligibilityCriteria,
-        application_window: u64, // seconds after execution during which students can apply
+        _application_window: u64, // seconds after execution during which students can apply
     ) -> u64 {
         if per_recipient <= 0 || total_amount < per_recipient as i128 {
             panic!("Invalid scholarship amounts");
@@ -459,7 +476,7 @@ impl Governance {
             .set(&GovernanceDataKey::TreasuryBalance, &(current + amount));
     }
 
-    pub fn withdraw_from_treasury(env: Env, amount: i128, recipient: Address) {
+    pub fn withdraw_from_treasury(env: Env, amount: i128, _recipient: Address) {
         let current: i128 = env
             .storage()
             .instance()
@@ -520,7 +537,9 @@ impl Governance {
             panic!("InvalidVotingPeriod: voting period out of bounds");
         }
 
-        if let Some(last_created_at) = env.storage().instance()
+        if let Some(last_created_at) = env
+            .storage()
+            .instance()
             .get::<_, u64>(&GovernanceDataKey::ProposalByProposerTitle(proposer, title))
         {
             let now = env.ledger().timestamp();

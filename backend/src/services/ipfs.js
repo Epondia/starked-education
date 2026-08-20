@@ -1,4 +1,3 @@
-const { create } = require('ipfs-http-client');
 const { getClientConfig, ipfsConfig } = require('../config/ipfs');
 const {
   validateFile,
@@ -9,6 +8,14 @@ const {
   parseCid,
   createIpfsError
 } = require('../utils/ipfsUtils');
+const { circuitBreakerRegistry } = require('../utils/circuitBreaker');
+
+// Create circuit breaker for IPFS operations
+const ipfsCircuitBreaker = circuitBreakerRegistry.getOrCreate('ipfs', {
+  failureThreshold: 5,
+  timeoutWindow: 30000,
+  halfOpenMaxRequests: 3,
+});
 
 class IpfsService {
   constructor() {
@@ -22,15 +29,19 @@ class IpfsService {
    */
   async init() {
     try {
+      // Lazily require ipfs-http-client so a missing/incompatible (ESM-only)
+      // package cannot crash the server at module-load time. IPFS is an
+      // optional external dependency, so degrade gracefully on failure.
+      const { create } = require('ipfs-http-client');
       const config = getClientConfig();
       this.client = create(config);
-      
+
       // Test connection
       await this.client.version();
       console.log('✅ IPFS client initialized successfully');
     } catch (error) {
       console.error('❌ Failed to initialize IPFS client:', error.message);
-      throw createIpfsError('Failed to initialize IPFS client', 'init', { error: error.message });
+      this.client = null;
     }
   }
 
@@ -43,10 +54,18 @@ class IpfsService {
    */
   async uploadFile(file, user = null, options = {}) {
     try {
-      // Validate file
-      const validation = validateFile(file);
+      // Check for admin bypass
+      const isAdmin = user && (user.role === 'admin' || user.isAdmin === true);
+      const bypassValidation = options.bypassValidation === true || 
+        (isAdmin && ipfsConfig.adminBypassValidation === true);
+      
+      // Validate file with optional admin bypass
+      const validation = validateFile(file, { bypassValidation });
       if (!validation.isValid) {
-        throw createIpfsError('File validation failed', 'upload', { errors: validation.errors });
+        throw createIpfsError('File validation failed', 'upload', { 
+          errors: validation.errors,
+          details: validation.details 
+        });
       }
 
       // Create metadata
@@ -80,8 +99,8 @@ class IpfsService {
         };
       };
 
-      // Execute with retry mechanism
-      const result = await retryOperation(uploadPromise);
+      // Execute with retry mechanism, wrapped in circuit breaker
+      const result = await ipfsCircuitBreaker.execute(() => retryOperation(uploadPromise));
 
       // Cache the result if caching is enabled
       if (ipfsConfig.enableCache) {
@@ -191,7 +210,7 @@ class IpfsService {
         return Buffer.concat(chunks);
       };
 
-      const content = await retryOperation(retrievePromise);
+      const content = await ipfsCircuitBreaker.execute(() => retryOperation(retrievePromise));
 
       // Cache the content if enabled
       if (ipfsConfig.enableCache) {
@@ -241,9 +260,9 @@ class IpfsService {
         throw createIpfsError('Invalid CID format', 'pinContent', { cid });
       }
 
-      const result = await retryOperation(async () => {
+      const result = await ipfsCircuitBreaker.execute(() => retryOperation(async () => {
         return await this.client.pin.add(parsedCid.hash);
-      });
+      }));
 
       return {
         cid: result.toString(),
@@ -270,9 +289,9 @@ class IpfsService {
         throw createIpfsError('Invalid CID format', 'unpinContent', { cid });
       }
 
-      await retryOperation(async () => {
+      await ipfsCircuitBreaker.execute(() => retryOperation(async () => {
         return await this.client.pin.rm(parsedCid.hash);
-      });
+      }));
 
       // Clear from cache
       if (ipfsConfig.enableCache) {
@@ -301,11 +320,11 @@ class IpfsService {
    */
   async getNodeInfo() {
     try {
-      const [version, id, repo] = await Promise.all([
+      const [version, id, repo] = await ipfsCircuitBreaker.execute(() => Promise.all([
         this.client.version(),
         this.client.id(),
         this.client.repo.stat()
-      ]);
+      ]));
 
       return {
         version,
@@ -360,3 +379,4 @@ class IpfsService {
 const ipfsService = new IpfsService();
 
 module.exports = ipfsService;
+module.exports.ipfsCircuitBreaker = ipfsCircuitBreaker;

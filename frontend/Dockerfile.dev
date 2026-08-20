@@ -1,0 +1,25 @@
+# =============================================================================
+# StarkEd Frontend — Development Dockerfile
+# =============================================================================
+# Uses next dev for hot-reload. Source code is mounted as a volume.
+# =============================================================================
+
+FROM node:18-alpine
+
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# Copy only package files for dependency installation
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Expose port
+EXPOSE 3000
+
+ENV NODE_ENV development
+ENV NEXT_TELEMETRY_DISABLED 1
+ENV WATCHPACK_POLLING true
+
+# Default command - runs with hot-reload
+CMD ["npm", "run", "dev"]

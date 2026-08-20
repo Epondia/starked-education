@@ -1,6 +1,6 @@
 /**
  * Courses Route
- * Handles course content and version management endpoints
+ * Handles course listing and version management endpoints
  */
 
 const express = require('express');
@@ -9,6 +9,161 @@ const { readLimiter, courseWriteLimiter } = require('../middleware/rateLimiter')
 
 const Joi = require('joi');
 const { validateRequestSchema } = require('../middleware/validateRequestSchema');
+
+// ── Listing schema ──────────────────────────────────────────────────────────
+
+const listCoursesSchema = {
+  query: Joi.object({
+    q: Joi.string().trim().max(200).optional().allow(''),
+    categories: Joi.string().trim().optional().allow(''),
+    levels: Joi.string().trim().optional().allow(''),
+    sort: Joi.string()
+      .valid('relevance', 'newest', 'popular', 'rating', 'duration', 'price-low', 'price-high')
+      .default('relevance'),
+    // Offset-based pagination
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(12),
+    // Cursor-based pagination (preferred for infinite scroll — avoids duplicate
+    // items when new content is inserted while the user is browsing)
+    cursor: Joi.string().trim().optional().allow(''),
+  }),
+};
+
+/**
+ * GET /api/courses
+ * List courses with cursor-based (or offset-based) pagination.
+ *
+ * Supports both pagination styles so existing offset consumers keep working:
+ *   - Cursor: GET /api/courses?cursor=<opaque_cursor>&limit=12
+ *   - Offset: GET /api/courses?page=2&limit=12
+ *
+ * Query params:
+ *   q          - Full-text search query
+ *   categories - Comma-separated category slugs
+ *   levels     - Comma-separated level slugs (beginner, intermediate, advanced)
+ *   sort       - relevance | newest | popular | rating | duration | price-low | price-high
+ *   page       - Page number (offset mode, default 1)
+ *   limit      - Items per page (default 12, max 100)
+ *   cursor     - Opaque page cursor (cursor mode — takes precedence over page)
+ *
+ * Response:
+ *   { items, total, page, limit, hasMore, nextCursor }
+ */
+router.get('/',
+  readLimiter,
+  validateRequestSchema(listCoursesSchema),
+  async (req, res) => {
+    try {
+      const {
+        q = '',
+        categories = '',
+        levels = '',
+        sort = 'relevance',
+        limit: rawLimit = 12,
+        page: rawPage = 1,
+        cursor,
+      } = req.query;
+
+      const limit = Math.min(Number(rawLimit), 100);
+
+      // Resolve the offset from either the cursor or the page number.
+      // The cursor is a base64-encoded JSON object: { offset: number }
+      let offset = (Number(rawPage) - 1) * limit;
+      if (cursor) {
+        try {
+          const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8'));
+          if (typeof decoded.offset === 'number') {
+            offset = decoded.offset;
+          }
+        } catch {
+          // Invalid cursor — fall back to offset-based calculation
+        }
+      }
+
+      const categoryList = categories
+        ? categories.split(',').map((c) => c.trim()).filter(Boolean)
+        : [];
+      const levelList = levels
+        ? levels.split(',').map((l) => l.trim()).filter(Boolean)
+        : [];
+
+      // ── In a real implementation this would query the database ──────────
+      // The mock below generates deterministic courses so the infinite-scroll
+      // integration can be exercised end-to-end without a real database.
+
+      const MOCK_TOTAL = 120;
+
+      /** @type {Array<Record<string, unknown>>} */
+      const mockItems = Array.from({ length: Math.min(limit, Math.max(0, MOCK_TOTAL - offset)) }, (_, i) => {
+        const courseIndex = offset + i;
+        return {
+          id: `course_${courseIndex + 1}`,
+          title: `Course ${courseIndex + 1}${q ? ` — "${q}"` : ''}`,
+          shortDescription: `A hands-on course about topic ${courseIndex + 1}.`,
+          description: `Comprehensive coverage of topic ${courseIndex + 1} with practical examples.`,
+          category: categoryList[0] ?? (courseIndex % 4 === 0 ? 'blockchain' : courseIndex % 4 === 1 ? 'web3' : courseIndex % 4 === 2 ? 'defi' : 'smart-contracts'),
+          level: levelList[0] ?? (courseIndex % 3 === 0 ? 'beginner' : courseIndex % 3 === 1 ? 'intermediate' : 'advanced'),
+          language: 'en',
+          durationHours: 2 + (courseIndex % 10),
+          price: courseIndex % 5 === 0 ? 0 : 29 + (courseIndex % 7) * 10,
+          rating: parseFloat((3.5 + (courseIndex % 15) * 0.1).toFixed(1)),
+          reviewCount: 50 + courseIndex * 3,
+          enrollmentCount: 200 + courseIndex * 10,
+          provider: `Provider ${(courseIndex % 5) + 1}`,
+          thumbnail: '',
+          tags: ['blockchain', 'stellar', 'web3'].slice(0, (courseIndex % 3) + 1),
+          skills: ['smart contracts', 'defi'].slice(0, (courseIndex % 2) + 1),
+          preview: '',
+          matchReasons: ['Trending', 'Highly rated'].slice(0, (courseIndex % 2) + 1),
+          quickActions: [],
+          relevanceScore: 1 - courseIndex * 0.001,
+          semanticScore: 0.9,
+          recommendationScore: 0.85,
+          trendScore: 0.8,
+          socialProof: {
+            reviewSnippet: 'Great course!',
+            enrollmentLabel: `${200 + courseIndex * 10} enrolled`,
+            ratingLabel: `${(3.5 + (courseIndex % 15) * 0.1).toFixed(1)} stars`,
+          },
+        };
+      });
+
+      const hasMore = offset + limit < MOCK_TOTAL;
+
+      // Build the next cursor so the client can request the following page
+      // without needing to track page numbers.
+      const nextCursor = hasMore
+        ? Buffer.from(JSON.stringify({ offset: offset + limit })).toString('base64')
+        : null;
+
+      const currentPage = cursor
+        ? Math.floor(offset / limit) + 1
+        : Number(rawPage);
+
+      res.status(200).json({
+        success: true,
+        message: 'Courses retrieved successfully',
+        data: {
+          items: mockItems,
+          total: MOCK_TOTAL,
+          page: currentPage,
+          limit,
+          hasMore,
+          nextCursor,
+        },
+      });
+    } catch (error) {
+      console.error('Error listing courses:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve courses',
+        error: error.message,
+      });
+    }
+  },
+);
+
+// ── Version management schemas (existing) ───────────────────────────────────
 
 const contentIdParamSchema = {
   params: Joi.object({

@@ -1,12 +1,24 @@
 import express, { Router } from "express";
 import { notificationController } from "../controllers/notificationController";
+import { authenticateToken, requireAdmin } from "../middleware/auth";
+import { rateLimitMiddleware } from "../middleware/rateLimit";
 import { validateRequestSchema } from "../middleware/validateRequestSchema";
 import { getNotificationsSchema, markAsReadSchema, markAllAsReadSchema, updatePreferencesSchema, deleteNotificationSchema } from "../middleware/validation";
 
 const router: Router = express.Router();
 
+// Apply authentication and rate limiting to all notification routes
+router.use(authenticateToken);
+router.use(rateLimitMiddleware({ max: 100, windowMs: 15 * 60 * 1000 })); // 100 requests per 15 minutes
+
 // Get notification history
-router.get("/:userId", validateRequestSchema(getNotificationsSchema), notificationController.getNotifications);
+router.get("/", validateRequestSchema(getNotificationsSchema), notificationController.getNotifications);
+
+// Get unread count
+router.get("/unread-count", notificationController.getUnreadCount);
+
+// Deliver missed notifications on reconnect
+router.post("/deliver-missed", notificationController.deliverMissedNotifications);
 
 // Mark as read
 router.patch("/:notificationId/read", validateRequestSchema(markAsReadSchema), notificationController.markAsRead);
@@ -14,9 +26,15 @@ router.patch("/:notificationId/read", validateRequestSchema(markAsReadSchema), n
 // Mark all as read
 router.patch("/read-all", validateRequestSchema(markAllAsReadSchema), notificationController.markAllAsRead);
 
+// Push real-time notification via WebSocket (admin only)
+router.post("/push", requireAdmin, notificationController.pushNotification);
+
+// Admin announcement: broadcast to all or targeted roles (admin only)
+router.post("/announce", requireAdmin, notificationController.sendAnnouncement);
+
 // Preferences
-router.get("/:userId/preferences", validateRequestSchema(getNotificationsSchema), notificationController.getPreferences);
-router.put("/:userId/preferences", validateRequestSchema(updatePreferencesSchema), notificationController.updatePreferences);
+router.get("/preferences", notificationController.getPreferences);
+router.put("/preferences", validateRequestSchema(updatePreferencesSchema), notificationController.updatePreferences);
 
 // Delete
 router.delete("/:notificationId", validateRequestSchema(deleteNotificationSchema), notificationController.deleteNotification);

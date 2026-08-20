@@ -484,6 +484,248 @@ fn test_get_completion_count() {
 }
 
 #[test]
+fn test_batch_enroll_happy_path() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let instructor = Address::generate(&env);
+    let student1 = Address::generate(&env);
+    let student2 = Address::generate(&env);
+    let student3 = Address::generate(&env);
+
+    CourseMetadataContract::initialize(env.clone(), admin);
+
+    let course_id = CourseMetadataContract::create_course(
+        env.clone(),
+        instructor.clone(),
+        String::from_str(&env, "Batch Course"),
+        String::from_str(&env, "Batch enrollment test"),
+        String::from_str(&env, "Programming"),
+        String::from_str(&env, "beginner"),
+        40,
+        1000000,
+        vec![&env],
+        vec![&env],
+        String::from_str(&env, "QmHash123"),
+        String::from_str(&env, "https://example.com/thumbnail.jpg"),
+        vec![&env],
+        String::from_str(&env, "English"),
+        true,
+        10,
+    );
+
+    let enrolled = CourseMetadataContract::batch_enroll(
+        env.clone(),
+        course_id.clone(),
+        instructor.clone(),
+        vec![&env, student1.clone(), student2.clone(), student3.clone()],
+    );
+
+    assert_eq!(enrolled, 3);
+    let course = CourseMetadataContract::get_course(env.clone(), course_id.clone());
+    assert_eq!(course.current_enrollments, 3);
+}
+
+#[test]
+fn test_batch_enroll_skips_already_enrolled_students() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let instructor = Address::generate(&env);
+    let student1 = Address::generate(&env);
+    let student2 = Address::generate(&env);
+
+    CourseMetadataContract::initialize(env.clone(), admin);
+
+    let course_id = CourseMetadataContract::create_course(
+        env.clone(),
+        instructor.clone(),
+        String::from_str(&env, "Batch Course"),
+        String::from_str(&env, "Batch enrollment test"),
+        String::from_str(&env, "Programming"),
+        String::from_str(&env, "beginner"),
+        40,
+        1000000,
+        vec![&env],
+        vec![&env],
+        String::from_str(&env, "QmHash123"),
+        String::from_str(&env, "https://example.com/thumbnail.jpg"),
+        vec![&env],
+        String::from_str(&env, "English"),
+        true,
+        10,
+    );
+
+    let first_enroll = CourseMetadataContract::batch_enroll(
+        env.clone(),
+        course_id.clone(),
+        instructor.clone(),
+        vec![&env, student1.clone()],
+    );
+    assert_eq!(first_enroll, 1);
+
+    let second_enroll = CourseMetadataContract::batch_enroll(
+        env.clone(),
+        course_id.clone(),
+        instructor.clone(),
+        vec![&env, student1.clone(), student2.clone()],
+    );
+
+    assert_eq!(second_enroll, 1);
+    let course = CourseMetadataContract::get_course(env, course_id);
+    assert_eq!(course.current_enrollments, 2);
+}
+
+#[test]
+fn test_batch_enroll_capacity_exceeded() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let instructor = Address::generate(&env);
+    let student1 = Address::generate(&env);
+    let student2 = Address::generate(&env);
+    let student3 = Address::generate(&env);
+
+    CourseMetadataContract::initialize(env.clone(), admin);
+
+    let course_id = CourseMetadataContract::create_course(
+        env.clone(),
+        instructor.clone(),
+        String::from_str(&env, "Batch Course"),
+        String::from_str(&env, "Batch enrollment test"),
+        String::from_str(&env, "Programming"),
+        String::from_str(&env, "beginner"),
+        40,
+        1000000,
+        vec![&env],
+        vec![&env],
+        String::from_str(&env, "QmHash123"),
+        String::from_str(&env, "https://example.com/thumbnail.jpg"),
+        vec![&env],
+        String::from_str(&env, "English"),
+        true,
+        2,
+    );
+
+    let result = std::panic::catch_unwind(|| {
+        CourseMetadataContract::batch_enroll(
+            env.clone(),
+            course_id,
+            instructor,
+            vec![&env, student1, student2, student3],
+        );
+    });
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_batch_enroll_unauthorized_caller() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let instructor = Address::generate(&env);
+    let outsider = Address::generate(&env);
+    let student = Address::generate(&env);
+
+    CourseMetadataContract::initialize(env.clone(), admin);
+
+    let course_id = CourseMetadataContract::create_course(
+        env.clone(),
+        instructor,
+        String::from_str(&env, "Batch Course"),
+        String::from_str(&env, "Batch enrollment test"),
+        String::from_str(&env, "Programming"),
+        String::from_str(&env, "beginner"),
+        40,
+        1000000,
+        vec![&env],
+        vec![&env],
+        String::from_str(&env, "QmHash123"),
+        String::from_str(&env, "https://example.com/thumbnail.jpg"),
+        vec![&env],
+        String::from_str(&env, "English"),
+        true,
+        10,
+    );
+
+    let result = std::panic::catch_unwind(|| {
+        CourseMetadataContract::batch_enroll(env.clone(), course_id, outsider, vec![&env, student]);
+    });
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_batch_enroll_empty_batch() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let instructor = Address::generate(&env);
+
+    CourseMetadataContract::initialize(env.clone(), admin);
+
+    let course_id = CourseMetadataContract::create_course(
+        env.clone(),
+        instructor.clone(),
+        String::from_str(&env, "Batch Course"),
+        String::from_str(&env, "Batch enrollment test"),
+        String::from_str(&env, "Programming"),
+        String::from_str(&env, "beginner"),
+        40,
+        1000000,
+        vec![&env],
+        vec![&env],
+        String::from_str(&env, "QmHash123"),
+        String::from_str(&env, "https://example.com/thumbnail.jpg"),
+        vec![&env],
+        String::from_str(&env, "English"),
+        true,
+        10,
+    );
+
+    let result = std::panic::catch_unwind(|| {
+        CourseMetadataContract::batch_enroll(env, course_id, instructor, Vec::new(&env));
+    });
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_batch_enroll_too_large_batch() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let instructor = Address::generate(&env);
+
+    CourseMetadataContract::initialize(env.clone(), admin);
+
+    let course_id = CourseMetadataContract::create_course(
+        env.clone(),
+        instructor.clone(),
+        String::from_str(&env, "Batch Course"),
+        String::from_str(&env, "Batch enrollment test"),
+        String::from_str(&env, "Programming"),
+        String::from_str(&env, "beginner"),
+        40,
+        1000000,
+        vec![&env],
+        vec![&env],
+        String::from_str(&env, "QmHash123"),
+        String::from_str(&env, "https://example.com/thumbnail.jpg"),
+        vec![&env],
+        String::from_str(&env, "English"),
+        true,
+        1000,
+    );
+
+    let mut students = Vec::new(&env);
+    for _ in 0..101 {
+        students.push_back(Address::generate(&env));
+    }
+
+    let result = std::panic::catch_unwind(|| {
+        CourseMetadataContract::batch_enroll(env, course_id, instructor, students);
+    });
+
+    assert!(result.is_err());
+}
+
+#[test]
 #[should_panic(expected = "Rating must be between 0 and 100")]
 fn test_invalid_rating() {
     let env = Env::default();

@@ -8,8 +8,9 @@ const {
 const { validateRequestSchema } = require('../middleware/validateRequestSchema');
 const { PERMISSIONS, UserRole } = require('../utils/roles');
 const { AnalyticsService } = require('../services/analyticsService');
-const ApiKey = require('../models/ApiKey');
-const logger = require('../utils/logger');
+const { adminTierLimiter } = require('../middleware/rateLimiter');
+const { getPoolHealthReport } = require('../utils/database');
+const abTestingFramework = require('../services/abTestingFramework');
 const router = express.Router();
 
 const updateSettingsSchema = {
@@ -36,9 +37,54 @@ const announcementSchema = {
   })
 };
 
+const featureFlagSchema = {
+  body: Joi.object({
+    name: Joi.string().trim().min(1).max(100).required(),
+    description: Joi.string().trim().max(500).optional(),
+    enabled: Joi.boolean().optional(),
+    rolloutPercentage: Joi.number().min(0).max(100).optional(),
+    userOverrides: Joi.object().pattern(Joi.string().min(1), Joi.boolean()).optional(),
+  })
+};
+
+const updateFeatureFlagSchema = {
+  params: Joi.object({
+    name: Joi.string().trim().min(1).max(100).required(),
+  }),
+  body: Joi.object({
+    description: Joi.string().trim().max(500).optional(),
+    enabled: Joi.boolean().optional(),
+    rolloutPercentage: Joi.number().min(0).max(100).optional(),
+    userOverrides: Joi.object().pattern(Joi.string().min(1), Joi.boolean()).optional(),
+  }).min(1)
+};
+
+const createExperimentSchema = {
+  body: Joi.object({
+    name: Joi.string().trim().min(1).max(100).required(),
+    description: Joi.string().trim().max(500).optional(),
+    variants: Joi.array().items(
+      Joi.object({
+        id: Joi.string().trim().min(1).optional(),
+        name: Joi.string().trim().min(1).required(),
+        description: Joi.string().trim().max(500).optional(),
+        config: Joi.object().optional(),
+      })
+    ).min(2).required(),
+    trafficAllocation: Joi.array().items(Joi.number().min(0).max(100)).optional(),
+    startDate: Joi.date().iso().optional(),
+    endDate: Joi.date().iso().optional(),
+    targetCriteria: Joi.object().optional(),
+    successMetrics: Joi.array().items(Joi.string().trim().min(1)).optional(),
+  })
+};
+
 // Apply authentication and admin middleware to all routes
 router.use(authenticateToken);
 router.use(requireAdmin);
+// Issue #17: 100 requests per minute for authenticated admins,
+// 20 requests per minute for anonymous callers (defense in depth).
+router.use(adminTierLimiter);
 
 /**
  * GET /api/admin/dashboard
@@ -310,6 +356,32 @@ router.get(
 );
 
 /**
+ * GET /api/admin/pool-stats
+ * Returns live PostgreSQL pool metrics (issue #187) — useful for capacity
+ * planning and confirming that env-driven pool sizing is actually applied.
+ */
+router.get(
+  '/pool-stats',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  (_req, res) => {
+    try {
+      const report = getPoolHealthReport();
+      res.json({
+        message: 'Database pool metrics retrieved successfully',
+        pool: report,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Pool stats error:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Error retrieving database pool metrics',
+      });
+    }
+  }
+);
+
+/**
  * POST /api/admin/announcements
  * Create a system announcement
  */
@@ -353,274 +425,267 @@ router.post(
   }
 );
 
-// ── API Key Management ──────────────────────────────────────────
-
-const createApiKeySchema = {
-  body: Joi.object({
-    name: Joi.string().trim().min(1).max(100).required(),
-    scopes: Joi.array().items(Joi.string().trim().min(1)).min(1).required(),
-    expiresAt: Joi.date().iso().greater('now').optional(),
-  }),
-};
-
-const rotateApiKeySchema = {
-  params: Joi.object({
-    id: Joi.string().hex().length(24).required(),
-  }),
-  body: Joi.object({
-    scopes: Joi.array().items(Joi.string().trim().min(1)).min(1).optional(),
-    expiresAt: Joi.date().iso().greater('now').optional(),
-  }),
-};
-
-const revokeApiKeySchema = {
-  params: Joi.object({
-    id: Joi.string().hex().length(24).required(),
-  }),
-};
+// ─── Feature Flags & A/B Experiments ──────────────────────────────
 
 /**
- * POST /api/admin/api-keys
- * Create a new API key. Returns the plaintext key exactly once.
+ * POST /api/v1/admin/flags
+ * Create a feature flag
  */
 router.post(
-  '/api-keys',
+  '/flags',
   requirePermission(PERMISSIONS.SYSTEM_MANAGE),
-  validateRequestSchema(createApiKeySchema),
+  validateRequestSchema(featureFlagSchema),
   async (req, res) => {
     try {
-      const { name, scopes, expiresAt } = req.body;
-
-      const { rawKey, keyHash, keyPrefix } = await ApiKey.generateKey();
-
-      const apiKeyDoc = new ApiKey({
-        keyHash,
-        keyPrefix,
-        userId: req.user.id,
-        name,
-        scopes,
-        expiresAt: expiresAt || undefined,
-        audit: [
-          {
-            action: 'created',
-            performedBy: req.user.id,
-            timestamp: new Date(),
-            details: { name, scopes },
-          },
-        ],
-      });
-
-      await apiKeyDoc.save();
-
-      logger.info(`API key created: ${keyPrefix}... by user ${req.user.id}`);
-
+      const flag = await abTestingFramework.createFlag(req.body);
       res.status(201).json({
-        success: true,
-        message: 'API key created successfully. Store the key securely — it will not be shown again.',
-        data: {
-          id: apiKeyDoc._id,
-          name: apiKeyDoc.name,
-          key: rawKey, // Returned only on creation
-          keyPrefix: apiKeyDoc.keyPrefix,
-          scopes: apiKeyDoc.scopes,
-          expiresAt: apiKeyDoc.expiresAt,
-          createdAt: apiKeyDoc.createdAt,
-        },
+        message: 'Feature flag created successfully',
+        flag,
       });
     } catch (error) {
-      logger.error('Error creating API key:', error);
-      res.status(500).json({ success: false, message: 'Internal server error' });
+      console.error('Feature flag creation error:', error);
+      res.status(400).json({
+        error: 'Bad request',
+        message: error.message,
+      });
     }
   }
 );
 
 /**
- * GET /api/admin/api-keys
- * List all API keys (hashes are never exposed).
+ * GET /api/v1/admin/flags
+ * List all feature flags
  */
 router.get(
-  '/api-keys',
+  '/flags',
   requirePermission(PERMISSIONS.SYSTEM_MANAGE),
   async (req, res) => {
     try {
-      const { status, page = 1, limit = 20 } = req.query;
-      const parsedPage = Math.max(1, parseInt(page, 10) || 1);
-      const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
-
-      const filter = {};
-      if (status && ['active', 'revoked'].includes(status)) {
-        filter.status = status;
-      }
-
-      const total = await ApiKey.countDocuments(filter);
-      const keys = await ApiKey.find(filter)
-        .select('-keyHash') // Never expose the hash
-        .sort({ createdAt: -1 })
-        .skip((parsedPage - 1) * parsedLimit)
-        .limit(parsedLimit)
-        .lean();
-
+      const flags = await abTestingFramework.listFlags();
       res.json({
-        success: true,
-        data: {
-          keys,
-          pagination: {
-            total,
-            page: parsedPage,
-            limit: parsedLimit,
-            pages: Math.ceil(total / parsedLimit),
-          },
-        },
+        message: 'Feature flags retrieved successfully',
+        flags,
+        total: flags.length,
       });
     } catch (error) {
-      logger.error('Error listing API keys:', error);
-      res.status(500).json({ success: false, message: 'Internal server error' });
+      console.error('Feature flags retrieval error:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Error retrieving feature flags',
+      });
     }
   }
 );
 
 /**
- * GET /api/admin/api-keys/:id
- * Get a single API key by ID.
+ * GET /api/v1/admin/flags/:name
+ * Get a single feature flag
  */
 router.get(
-  '/api-keys/:id',
+  '/flags/:name',
   requirePermission(PERMISSIONS.SYSTEM_MANAGE),
   async (req, res) => {
     try {
-      const key = await ApiKey.findById(req.params.id)
-        .select('-keyHash')
-        .lean();
-
-      if (!key) {
-        return res.status(404).json({ success: false, message: 'API key not found' });
+      const flag = await abTestingFramework.getFlag(req.params.name);
+      if (!flag) {
+        return res.status(404).json({
+          error: 'Not found',
+          message: `Feature flag not found: ${req.params.name}`,
+        });
       }
-
-      res.json({ success: true, data: key });
-    } catch (error) {
-      logger.error('Error fetching API key:', error);
-      res.status(500).json({ success: false, message: 'Internal server error' });
-    }
-  }
-);
-
-/**
- * POST /api/admin/api-keys/:id/rotate
- * Rotate an API key: revoke the old one and create a new one atomically.
- */
-router.post(
-  '/api-keys/:id/rotate',
-  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
-  validateRequestSchema(rotateApiKeySchema),
-  async (req, res) => {
-    try {
-      const oldKey = await ApiKey.findById(req.params.id);
-
-      if (!oldKey) {
-        return res.status(404).json({ success: false, message: 'API key not found' });
-      }
-
-      if (oldKey.status === 'revoked') {
-        return res.status(400).json({ success: false, message: 'API key is already revoked' });
-      }
-
-      const newScopes = req.body.scopes || oldKey.scopes;
-      const newExpiresAt = req.body.expiresAt || oldKey.expiresAt;
-
-      // Generate new key
-      const { rawKey, keyHash, keyPrefix } = await ApiKey.generateKey();
-
-      // Revoke old key
-      oldKey.status = 'revoked';
-      oldKey.audit.push({
-        action: 'rotated',
-        performedBy: req.user.id,
-        timestamp: new Date(),
-        details: { newKeyPrefix: keyPrefix },
-      });
-      await oldKey.save();
-
-      // Create new key
-      const newKeyDoc = new ApiKey({
-        keyHash,
-        keyPrefix,
-        userId: oldKey.userId,
-        name: oldKey.name,
-        scopes: newScopes,
-        expiresAt: newExpiresAt || undefined,
-        audit: [
-          {
-            action: 'created',
-            performedBy: req.user.id,
-            timestamp: new Date(),
-            details: { rotatedFrom: oldKey._id, name: oldKey.name, scopes: newScopes },
-          },
-        ],
-      });
-
-      await newKeyDoc.save();
-
-      logger.info(`API key rotated: ${oldKey.keyPrefix}... -> ${keyPrefix}... by user ${req.user.id}`);
-
       res.json({
-        success: true,
-        message: 'API key rotated successfully. Store the new key securely — it will not be shown again.',
-        data: {
-          oldKeyId: oldKey._id,
-          id: newKeyDoc._id,
-          name: newKeyDoc.name,
-          key: rawKey, // Returned only on rotation
-          keyPrefix: newKeyDoc.keyPrefix,
-          scopes: newKeyDoc.scopes,
-          expiresAt: newKeyDoc.expiresAt,
-          createdAt: newKeyDoc.createdAt,
-        },
+        message: 'Feature flag retrieved successfully',
+        flag,
       });
     } catch (error) {
-      logger.error('Error rotating API key:', error);
-      res.status(500).json({ success: false, message: 'Internal server error' });
+      console.error('Feature flag retrieval error:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Error retrieving feature flag',
+      });
     }
   }
 );
 
 /**
- * DELETE /api/admin/api-keys/:id
- * Revoke an API key.
+ * PUT /api/v1/admin/flags/:name
+ * Update a flag (toggle, rollout %, or per-user overrides) without redeploy
+ */
+router.put(
+  '/flags/:name',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  validateRequestSchema(updateFeatureFlagSchema),
+  async (req, res) => {
+    try {
+      const flag = await abTestingFramework.updateFlag(req.params.name, req.body);
+      res.json({
+        message: 'Feature flag updated successfully',
+        flag,
+      });
+    } catch (error) {
+      if (error.message && error.message.startsWith('Feature flag not found')) {
+        return res.status(404).json({
+          error: 'Not found',
+          message: error.message,
+        });
+      }
+      console.error('Feature flag update error:', error);
+      res.status(400).json({
+        error: 'Bad request',
+        message: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * DELETE /api/v1/admin/flags/:name
+ * Delete a feature flag
  */
 router.delete(
-  '/api-keys/:id',
+  '/flags/:name',
   requirePermission(PERMISSIONS.SYSTEM_MANAGE),
-  validateRequestSchema(revokeApiKeySchema),
   async (req, res) => {
     try {
-      const key = await ApiKey.findById(req.params.id);
-
-      if (!key) {
-        return res.status(404).json({ success: false, message: 'API key not found' });
-      }
-
-      if (key.status === 'revoked') {
-        return res.status(400).json({ success: false, message: 'API key is already revoked' });
-      }
-
-      key.status = 'revoked';
-      key.audit.push({
-        action: 'revoked',
-        performedBy: req.user.id,
-        timestamp: new Date(),
+      await abTestingFramework.deleteFlag(req.params.name);
+      res.json({ message: 'Feature flag deleted successfully' });
+    } catch (error) {
+      console.error('Feature flag deletion error:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Error deleting feature flag',
       });
-      await key.save();
+    }
+  }
+);
 
-      logger.info(`API key revoked: ${key.keyPrefix}... by user ${req.user.id}`);
-
-      res.json({
-        success: true,
-        message: 'API key revoked successfully',
-        data: { id: key._id, status: 'revoked' },
+/**
+ * POST /api/v1/admin/experiments
+ * Create an A/B experiment
+ */
+router.post(
+  '/experiments',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  validateRequestSchema(createExperimentSchema),
+  async (req, res) => {
+    try {
+      const experiment = await abTestingFramework.createExperiment(req.body);
+      res.status(201).json({
+        message: 'Experiment created successfully',
+        experiment,
       });
     } catch (error) {
-      logger.error('Error revoking API key:', error);
-      res.status(500).json({ success: false, message: 'Internal server error' });
+      console.error('Experiment creation error:', error);
+      res.status(400).json({
+        error: 'Bad request',
+        message: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/admin/experiments
+ * List all A/B experiments
+ */
+router.get(
+  '/experiments',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  async (req, res) => {
+    try {
+      const experiments = await abTestingFramework.listExperiments();
+      res.json({
+        message: 'Experiments retrieved successfully',
+        experiments,
+        total: experiments.length,
+      });
+    } catch (error) {
+      console.error('Experiments retrieval error:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Error retrieving experiments',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/v1/admin/experiments/:name/start
+ * Activate an A/B experiment
+ */
+router.post(
+  '/experiments/:name/start',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  async (req, res) => {
+    try {
+      const experiment = await abTestingFramework.startExperiment(req.params.name);
+      res.json({
+        message: 'Experiment started successfully',
+        experiment,
+      });
+    } catch (error) {
+      if (error.message && error.message.startsWith('Experiment not found')) {
+        return res.status(404).json({
+          error: 'Not found',
+          message: error.message,
+        });
+      }
+      console.error('Experiment start error:', error);
+      res.status(400).json({
+        error: 'Bad request',
+        message: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/v1/admin/experiments/:name/stop
+ * Complete an A/B experiment
+ */
+router.post(
+  '/experiments/:name/stop',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  async (req, res) => {
+    try {
+      const experiment = await abTestingFramework.stopExperiment(req.params.name);
+      res.json({
+        message: 'Experiment stopped successfully',
+        experiment,
+      });
+    } catch (error) {
+      if (error.message && error.message.startsWith('Experiment not found')) {
+        return res.status(404).json({
+          error: 'Not found',
+          message: error.message,
+        });
+      }
+      console.error('Experiment stop error:', error);
+      res.status(400).json({
+        error: 'Bad request',
+        message: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * DELETE /api/v1/admin/experiments/:name
+ * Delete an A/B experiment
+ */
+router.delete(
+  '/experiments/:name',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  async (req, res) => {
+    try {
+      await abTestingFramework.deleteExperiment(req.params.name);
+      res.json({ message: 'Experiment deleted successfully' });
+    } catch (error) {
+      console.error('Experiment deletion error:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Error deleting experiment',
+      });
     }
   }
 );

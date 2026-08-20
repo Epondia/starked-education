@@ -42,7 +42,7 @@ interface DetectionEvent {
 interface AccessibilityMetrics {
   readingSpeed: number;
   clickAccuracy: number;
-  scrollBehavior: 'smooth' | 'jerky' | 'normal';
+  scrollBehavior: 'smooth' | 'jerky' | 'normal' | 'scattered';
   mouseMovement: 'precise' | 'tremor' | 'slow';
   keyboardUsage: number;
   voiceCommands: number;
