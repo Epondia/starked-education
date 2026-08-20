@@ -4,8 +4,9 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
-use crate::dynamic_nft::{BadgeUpgradeRecord, CertificateTier, DynamicNFT, RarityTier};
-
+pub mod credential_registry;
+#[cfg(test)]
+pub mod credential_registry_test;
 #[cfg(test)]
 pub mod gas_benchmark;
 pub mod dynamic_nft;
@@ -20,6 +21,7 @@ pub mod dynamic_fees_test;
 pub mod marketplace;
 #[cfg(test)]
 pub mod marketplace_test;
+pub mod pause;
 pub mod tokenomics;
 #[cfg(test)]
 pub mod tokenomics_test;
