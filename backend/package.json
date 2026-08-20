@@ -75,6 +75,7 @@
     "nodemailer": "^8.0.4",
     "paillier-js": "^0.9.3",
     "pg": "^8.11.3",
+    "prom-client": "^15.1.3",
     "redis": "^4.6.8",
     "sentiment": "^5.0.2",
     "sharp": "^0.32.6",

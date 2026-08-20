@@ -150,8 +150,13 @@ const requestLogger = require('./middleware/requestLogger');
 app.use(requestLogger);
 
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
-const healthRoutes = require('./routes/health').default || require('./routes/health');
+const healthModule = require('./routes/health');
+const healthRoutes = healthModule.default || healthModule;
 app.use('/health', healthRoutes);
+
+// Prometheus metrics endpoint - internal-only (loopback or shared token), exposed
+// at the conventional /metrics path. Handler lives in routes/health.ts.
+app.use('/metrics', healthModule.metricsRouter);
 
 // Issue #17: Apply the global rate limit baseline AFTER /health so probes
 // bypass the limiter entirely (no Redis traffic from liveness/readiness checks).
