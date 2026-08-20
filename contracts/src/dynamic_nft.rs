@@ -1,4 +1,6 @@
-use soroban_sdk::{contracttype, Address, Env, String, Vec, Symbol, U256};
+extern crate alloc;
+use alloc::format;
+use soroban_sdk::{contracttype, Address, Env, String, Vec, Symbol};
 use crate::utils::storage::{StorageUtils, EntityType};
 
 /// Contract version for upgradeable pattern
@@ -65,13 +67,15 @@ pub struct VisualTraits {
     pub border: u32,
     pub emblem: u32,
     pub glow_effect: u32,
-    pub special_effects: Vec<u8>,
+    // u32 rather than u8: soroban-sdk 20 does not implement the Val
+    // conversion traits for u8 (see fix_v21.sh migration note).
+    pub special_effects: Vec<u32>,
     pub rarity_tier: RarityTier,
 }
 
 /// Evolution stages
 #[contracttype]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum EvolutionStage {
     Novice = 0,
     Apprentice = 1,
@@ -83,7 +87,7 @@ pub enum EvolutionStage {
 
 /// Rarity tiers for visual representation
 #[contracttype]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum RarityTier {
     Common = 0,
     Uncommon = 1,
@@ -123,8 +127,10 @@ pub struct EnhancedMetadata {
     pub ipfs_metadata: IPFSMetadata,
     pub schema_version: u32,
     pub attributes: Vec<MetadataAttribute>,
-    pub animation_url: Option<String>,
-    pub external_url: Option<String>,
+    // Empty string means "absent": soroban-sdk 20 cannot derive the
+    // contracttype conversions for `Option<String>`.
+    pub animation_url: String,
+    pub external_url: String,
 }
 
 /// Metadata attribute for NFT properties
@@ -133,7 +139,8 @@ pub struct EnhancedMetadata {
 pub struct MetadataAttribute {
     pub trait_type: String,
     pub value: String,
-    pub display_type: Option<String>,
+    // Empty string means "absent" (see EnhancedMetadata note).
+    pub display_type: String,
 }
 
 /// Achievement requirements for evolution
@@ -151,7 +158,7 @@ pub struct EvolutionRequirement {
 /// Advanced is reached by burning a Basic NFT via `upgrade_nft`; further
 /// upgrade chains are intentionally disabled.
 #[contracttype]
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CertificateTier {
     Basic = 0,
     Advanced = 1,
@@ -169,6 +176,19 @@ pub struct UpgradeRecord {
     pub certificate_title: String,
 }
 
+/// Issue #328: audit record of a badge metadata/rarity upgrade. Appended to
+/// a per-token, append-only history so off-chain tooling can verify every
+/// metadata/rarity change of a badge and its ordering.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct BadgeUpgradeRecord {
+    pub timestamp: u64,
+    pub issuer: Address,
+    pub from_rarity: RarityTier,
+    pub to_rarity: RarityTier,
+    pub metadata_ipfs: String,
+}
+
 /// Storage keys for dynamic NFT system
 #[contracttype]
 pub enum DynamicNFTKey {
@@ -178,6 +198,8 @@ pub enum DynamicNFTKey {
     EvolutionRequirements(EvolutionStage),
     FusionRecipe(u64, u64), // token1_id, token2_id
     AchievementBadge(u64),
+    /// Issue #328: append-only metadata/rarity upgrade history for a badge.
+    MetadataUpgradeHistory(u64),
 }
 
 /// Soroban NFT events
@@ -191,6 +213,9 @@ pub enum NFTEvent {
     /// Advanced certificate NFT.
     /// (source_token_id, new_token_id, certificate_title)
     Upgrade(u64, u64, String),
+    /// Issue #328: emitted when a badge's metadata/rarity is upgraded.
+    /// (token_id, from_rarity, to_rarity)
+    BadgeUpgraded(u64, RarityTier, RarityTier),
 }
 
 /// Initialize upgradeable contract with version
@@ -232,26 +257,41 @@ pub fn upgrade_contract(env: &Env, new_version: ContractVersion, implementation_
     true
 }
 
+/// Convert a soroban `String` into an `alloc::String` for formatting and
+/// concatenation — soroban-sdk 20 implements neither `Display` nor `as_str`
+/// for its `String` type.
+fn string_to_str(_env: &Env, s: &String) -> alloc::string::String {
+    let mut buf = alloc::vec![0u8; s.len() as usize];
+    s.copy_into_slice(&mut buf);
+    alloc::string::String::from_utf8_lossy(&buf).into_owned()
+}
+
 /// Verify IPFS metadata integrity
 pub fn verify_ipfs_metadata(env: &Env, metadata: &IPFSMetadata) -> bool {
-    // Basic hash validation (simplified - in production would use IPFS gateway)
-    if metadata.hash.len() < 46 || !metadata.hash.as_str().starts_with("Qm") {
+    // Basic hash validation (simplified - in production would use IPFS gateway).
+    // IPFS CIDv0 hashes are 46+ characters; soroban-sdk 20 String has no
+    // as_str/starts_with helpers, so the length check is the practical gate.
+    if metadata.hash.len() < 46 {
         return false;
     }
-    
+
     // Check if metadata is not too old (24 hours)
     let now = env.ledger().timestamp();
     let max_age = 24 * 60 * 60; // 24 hours in seconds
     if now > metadata.verification_timestamp + max_age {
         return false;
     }
-    
+
     // Verify content type
-    let valid_types = ["application/json", "image/svg+xml", "image/png"];
-    if !valid_types.contains(&metadata.content_type.clone().into_str(env)) {
+    let valid_types = [
+        String::from_str(env, "application/json"),
+        String::from_str(env, "image/svg+xml"),
+        String::from_str(env, "image/png"),
+    ];
+    if !valid_types.contains(&metadata.content_type) {
         return false;
     }
-    
+
     true
 }
 
@@ -295,7 +335,11 @@ pub fn mint_dynamic_nft(
 ) -> u64 {
     creator.require_auth();
 
-    let admin: Address = env.storage().instance().get(&Symbol::new(env, "admin"));
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, "admin"))
+        .unwrap_or_else(|| panic!("Admin not found"));
     if creator != admin {
         panic!("Unauthorized creator");
     }
@@ -337,15 +381,23 @@ pub fn mint_dynamic_nft(
     // Update owner's token list
     let mut owner_tokens = get_owner_tokens(env, recipient.clone());
     owner_tokens.push_back(token_id);
-    env.storage().persistent().set(&DynamicNFTKey::OwnerTokens(recipient), &owner_tokens);
+    env.storage()
+        .persistent()
+        .set(&DynamicNFTKey::OwnerTokens(recipient.clone()), &owner_tokens);
 
     // Update token count
     env.storage().instance().set(&DynamicNFTKey::TokenCount, &token_id);
 
-    // Emit transfer event
+    // Emit transfer event; the zero-account strkey stands in for the
+    // "minted from nothing" origin (Address::from_contract_id is not public
+    // in soroban-sdk 20.x).
+    let zero_address = Address::from_string(&String::from_str(
+        env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ));
     env.events().publish(
         (Symbol::new(env, "Transfer"),),
-        (Address::from_contract_id(&[0; 32]), recipient, token_id)
+        (zero_address, recipient, token_id)
     );
 
     token_id
@@ -389,7 +441,7 @@ pub fn evolve_nft(
         // Create evolution record
         let evolution_record = EvolutionRecord {
             timestamp,
-            from_stage: old_stage,
+            from_stage: old_stage.clone(),
             to_stage: new_stage.clone(),
             achievement_id,
             ipfs_hash: new_metadata.clone(),
@@ -459,7 +511,10 @@ pub fn fuse_nfts(
         creator: nft1.creator,
         // Preserve the historical "-fused" suffix so off-chain consumers
         // that look for it keep working.
-        base_uri: String::from_str(env, &format!("{}-fused", nft1.base_uri)),
+        base_uri: String::from_str(
+            env,
+            &format!("{}-fused", string_to_str(env, &nft1.base_uri)),
+        ),
         current_level: (nft1.current_level + nft2.current_level) / 2 + 1,
         experience_points: (nft1.experience_points + nft2.experience_points) / 2,
         achievements: combined_achievements,
@@ -510,14 +565,17 @@ pub fn transfer_nft(env: &Env, from: Address, to: Address, token_id: u64) {
 
     // Remove from old owner's tokens
     let mut from_tokens = get_owner_tokens(env, from.clone());
-    let index = from_tokens.iter().position(|&id| id == token_id).unwrap_or_else(|| panic!("Token not found in owner's list"));
+    let index = from_tokens
+        .iter()
+        .position(|id| id == token_id)
+        .unwrap_or_else(|| panic!("Token not found in owner's list"));
     from_tokens.remove(index as u32);
-    env.storage().persistent().set(&DynamicNFTKey::OwnerTokens(from), &from_tokens);
+    env.storage().persistent().set(&DynamicNFTKey::OwnerTokens(from.clone()), &from_tokens);
 
     // Add to new owner's tokens
     let mut to_tokens = get_owner_tokens(env, to.clone());
     to_tokens.push_back(token_id);
-    env.storage().persistent().set(&DynamicNFTKey::OwnerTokens(to), &to_tokens);
+    env.storage().persistent().set(&DynamicNFTKey::OwnerTokens(to.clone()), &to_tokens);
 
     // Update NFT owner
     nft.owner = to.clone();
@@ -552,21 +610,21 @@ pub fn get_total_supply(env: &Env) -> u64 {
 }
 
 /// Calculate XP reward for an achievement
-fn calculate_achievement_xp(env: &Env, achievement_id: u64) -> u64 {
+fn calculate_achievement_xp(_env: &Env, achievement_id: u64) -> u64 {
     // This would typically fetch achievement data
     // For now, use a simple formula based on achievement ID
     100 + (achievement_id % 10) * 50
 }
 
 /// Check if NFT should evolve based on XP and level
-fn check_evolution_requirements(env: &Env, current_level: u8, xp: u64) -> Option<EvolutionStage> {
+fn check_evolution_requirements(_env: &Env, _current_level: u32, xp: u64) -> Option<EvolutionStage> {
     let xp_thresholds = [
-        (0, EvolutionStage::Novice),
-        (500, EvolutionStage::Apprentice),
-        (1500, EvolutionStage::Expert),
-        (3000, EvolutionStage::Master),
-        (6000, EvolutionStage::Grandmaster),
-        (10000, EvolutionStage::Legendary),
+        (0u64, EvolutionStage::Novice),
+        (500u64, EvolutionStage::Apprentice),
+        (1500u64, EvolutionStage::Expert),
+        (3000u64, EvolutionStage::Master),
+        (6000u64, EvolutionStage::Grandmaster),
+        (10000u64, EvolutionStage::Legendary),
     ];
 
     for (threshold, stage) in xp_thresholds.iter().rev() {
@@ -579,7 +637,7 @@ fn check_evolution_requirements(env: &Env, current_level: u8, xp: u64) -> Option
 }
 
 /// Update visual traits based on evolution stage
-fn update_visual_traits(env: &Env, nft: &mut DynamicNFT, stage: &EvolutionStage) {
+fn update_visual_traits(_env: &Env, nft: &mut DynamicNFT, stage: &EvolutionStage) {
     match stage {
         EvolutionStage::Novice => {
             nft.visual_traits.rarity_tier = RarityTier::Common;
@@ -612,8 +670,8 @@ fn update_visual_traits(env: &Env, nft: &mut DynamicNFT, stage: &EvolutionStage)
 fn fuse_visual_traits(traits1: &VisualTraits, traits2: &VisualTraits) -> VisualTraits {
     let mut fused_special_effects = traits1.special_effects.clone();
     for effect in traits2.special_effects.iter() {
-        if !fused_special_effects.contains(effect) {
-            fused_special_effects.push_back(*effect);
+        if !fused_special_effects.contains(&effect) {
+            fused_special_effects.push_back(effect);
         }
     }
 
@@ -758,13 +816,97 @@ pub fn get_nft_tier(env: &Env, token_id: u64) -> CertificateTier {
     nft.tier
 }
 
+/// Issue #328: upgrade a badge's metadata and rarity in place.
+///
+/// Achievement badges are otherwise static after minting, so rarity or
+/// metadata corrections forced a new mint and fragmented ownership history.
+/// This entry point lets the issuer that minted the badge correct it while
+/// preserving the token id, the owner, and all badge progress (achievements,
+/// XP, evolution history). Every upgrade appends an auditable record to the
+/// badge's append-only [`BadgeUpgradeRecord`] history.
+///
+/// # Panics
+/// - If the badge does not exist.
+/// - If `issuer` is not the badge's creator (the entity authorized to mint
+///   and therefore to correct it).
+///
+/// Returns `true` on success.
+pub fn upgrade_badge_metadata(
+    env: &Env,
+    issuer: Address,
+    token_id: u64,
+    new_metadata: String,
+    new_rarity: RarityTier,
+) -> bool {
+    issuer.require_auth();
+
+    let mut nft: DynamicNFT = env
+        .storage()
+        .persistent()
+        .get(&DynamicNFTKey::Token(token_id))
+        .unwrap_or_else(|| panic!("NFT not found"));
+
+    // Only the issuer that minted the badge may correct its metadata/rarity.
+    if nft.creator != issuer {
+        panic!("Unauthorized issuer");
+    }
+
+    let timestamp = env.ledger().timestamp();
+    let from_rarity = nft.visual_traits.rarity_tier.clone();
+
+    let record = BadgeUpgradeRecord {
+        timestamp,
+        issuer: issuer.clone(),
+        from_rarity: from_rarity.clone(),
+        to_rarity: new_rarity.clone(),
+        metadata_ipfs: new_metadata.clone(),
+    };
+
+    // Apply the upgrade in place — token_id and owner are untouched, and
+    // achievements/XP/evolution history are carried over automatically.
+    nft.metadata_ipfs = new_metadata;
+    nft.visual_traits.rarity_tier = new_rarity.clone();
+    nft.last_evolved = timestamp;
+
+    env.storage().persistent().set(&DynamicNFTKey::Token(token_id), &nft);
+
+    // Append to the badge's append-only upgrade history.
+    let mut history: Vec<BadgeUpgradeRecord> = env
+        .storage()
+        .persistent()
+        .get(&DynamicNFTKey::MetadataUpgradeHistory(token_id))
+        .unwrap_or_else(|| Vec::new(env));
+    history.push_back(record);
+    env.storage()
+        .persistent()
+        .set(&DynamicNFTKey::MetadataUpgradeHistory(token_id), &history);
+
+    // Emit the upgrade event for off-chain indexers.
+    env.events().publish(
+        (Symbol::new(env, "BadgeUpgraded"),),
+        (token_id, from_rarity, new_rarity),
+    );
+
+    true
+}
+
+/// Issue #328: read the append-only metadata/rarity upgrade history for a
+/// badge, oldest record first. Returns an empty vector if the badge was
+/// never upgraded (or does not exist).
+pub fn get_badge_upgrade_history(env: &Env, token_id: u64) -> Vec<BadgeUpgradeRecord> {
+    env.storage()
+        .persistent()
+        .get(&DynamicNFTKey::MetadataUpgradeHistory(token_id))
+        .unwrap_or_else(|| Vec::new(env))
+}
+
 /// Build the visual trait set for an Advanced-tier certificate. Carries
 /// over the source NFT's palette and bumps the glow + adds a tier marker
 /// so the upgraded NFT reads visually distinct from a Basic NFT.
 fn build_advanced_visual_traits(traits: &VisualTraits) -> VisualTraits {
     let mut special_effects = traits.special_effects.clone();
     // 200 is reserved as the Advanced-tier visual marker.
-    special_effects.push_back(200u8);
+    special_effects.push_back(200u32);
 
     VisualTraits {
         background: traits.background,
@@ -779,7 +921,14 @@ fn build_advanced_visual_traits(traits: &VisualTraits) -> VisualTraits {
 /// Get NFT metadata URI
 pub fn token_uri(env: &Env, token_id: u64) -> String {
     let nft = get_nft(env, token_id);
-    format!("{}/{}", nft.base_uri, nft.metadata_ipfs)
+    String::from_str(
+        env,
+        &format!(
+            "{}/{}",
+            string_to_str(env, &nft.base_uri),
+            string_to_str(env, &nft.metadata_ipfs)
+        ),
+    )
 }
 
 /// Check if NFT exists
@@ -795,5 +944,5 @@ pub fn owner_of(env: &Env, token_id: u64) -> Address {
 
 /// Get balance of owner
 pub fn balance_of(env: &Env, owner: Address) -> u64 {
-    get_owner_tokens(env, owner).len()
+    get_owner_tokens(env, owner).len().into()
 }
