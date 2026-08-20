@@ -22,6 +22,11 @@ function recordAccessFailure(req, action, reason, statusCode) {
  * Verifies JWT token and attaches user to request object
  */
 const authenticateToken = (req, res, next) => {
+  // If an API key already authenticated this request, skip JWT verification
+  if (req.user) {
+    return next();
+  }
+
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
