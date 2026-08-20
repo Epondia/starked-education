@@ -2,8 +2,21 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { Course, WalletInfo, EnrollmentData, EnrollmentConfirmation } from '@/types/enrollment';
-import EnrollmentForm from '@/components/EnrollmentForm';
+
+const EnrollmentForm = dynamic(
+  () => import('@/components/EnrollmentForm'),
+  {
+    loading: () => (
+      <div className="p-8 bg-white rounded-xl shadow-md animate-pulse text-center">
+        <div className="h-8 bg-gray-200 rounded w-1/3 mx-auto mb-4"></div>
+        <div className="h-24 bg-gray-100 rounded mb-4"></div>
+        <p className="text-sm text-gray-500">Loading enrollment form...</p>
+      </div>
+    ),
+  }
+);
 import { 
   BookOpen, 
   Clock, 

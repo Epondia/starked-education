@@ -2,9 +2,32 @@
 
 import React from 'react';
 import { usePerformanceMonitoring } from '@/hooks/usePerformanceMonitoring';
-import { PerformanceMetricsOverview } from '@/components/performance/PerformanceMetricsOverview';
-import PerformanceAlerts from '@/components/performance/PerformanceAlerts';
+import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+const PerformanceMetricsOverview = dynamic(
+  () => import('@/components/performance/PerformanceMetricsOverview').then((m) => m.PerformanceMetricsOverview),
+  {
+    loading: () => (
+      <div className="p-6 border rounded-lg bg-card animate-pulse space-y-4">
+        <div className="h-6 bg-muted rounded w-1/3"></div>
+        <div className="h-24 bg-muted rounded"></div>
+      </div>
+    ),
+  }
+);
+
+const PerformanceAlerts = dynamic(
+  () => import('@/components/performance/PerformanceAlerts'),
+  {
+    loading: () => (
+      <div className="p-6 border rounded-lg bg-card animate-pulse space-y-4">
+        <div className="h-6 bg-muted rounded w-1/4"></div>
+        <div className="h-16 bg-muted rounded"></div>
+      </div>
+    ),
+  }
+);
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
