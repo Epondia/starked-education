@@ -24,3 +24,4 @@ testutils = ["soroban-sdk/testutils"]
 
 [[example]]
 name = "bench_gas"
+required-features = ["testutils"]
