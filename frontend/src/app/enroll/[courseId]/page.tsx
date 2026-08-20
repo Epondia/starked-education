@@ -29,6 +29,8 @@ import {
   Calendar
 } from 'lucide-react';
 
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
+
 const EnrollmentPage: React.FC = () => {
   const params = useParams();
   const router = useRouter();
@@ -299,6 +301,19 @@ const EnrollmentPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <CourseJsonLd
+        data={{
+          name: course.title,
+          description: course.description,
+          providerName: 'StarkEd Education',
+          url: `${SITE_URL}/enroll/${encodeURIComponent(courseId)}`,
+          image: course.thumbnail ? new URL(course.thumbnail, SITE_URL).toString() : undefined,
+          educationalLevel: course.level,
+          timeRequired: course.duration.match(/^\d+\s*weeks?$/i)
+            ? `P${course.duration.match(/^\d+/)?.[0]}W`
+            : course.duration,
+        }}
+      />
       {/* Course Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">

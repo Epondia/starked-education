@@ -9,12 +9,18 @@ pub mod gas_benchmark;
 pub mod governance;
 #[cfg(test)]
 pub mod governance_test;
+pub mod dynamic_fees;
+#[cfg(test)]
+pub mod dynamic_fees_test;
 pub mod marketplace;
 #[cfg(test)]
 pub mod marketplace_test;
 pub mod tokenomics;
 #[cfg(test)]
 pub mod tokenomics_test;
+pub mod credential_registry;
+#[cfg(test)]
+pub mod credential_registry_test;
 pub mod user_profile;
 #[cfg(test)]
 pub mod user_profile_test;

@@ -11,6 +11,7 @@ const { AnalyticsService } = require('../services/analyticsService');
 const { adminTierLimiter } = require('../middleware/rateLimiter');
 const { getPoolHealthReport } = require('../utils/database');
 const abTestingFramework = require('../services/abTestingFramework');
+const { auditLogService } = require('../services/auditLogService');
 const router = express.Router();
 
 const updateSettingsSchema = {
@@ -420,6 +421,70 @@ router.post(
       res.status(500).json({
         error: 'Internal server error',
         message: 'Error creating announcement',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/admin/audit-logs
+ * Search the append-only audit trail. The payload column is deliberately
+ * excluded from this response; details are already redacted at write time.
+ */
+router.get(
+  '/audit-logs',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  async (req, res) => {
+    try {
+      const result = await auditLogService.list({
+        action: typeof req.query.action === 'string' ? req.query.action : undefined,
+        actorId: typeof req.query.actorId === 'string' ? req.query.actorId : undefined,
+        outcome: typeof req.query.outcome === 'string' ? req.query.outcome : undefined,
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+        startDate: typeof req.query.startDate === 'string' ? req.query.startDate : undefined,
+        endDate: typeof req.query.endDate === 'string' ? req.query.endDate : undefined,
+        page: req.query.page,
+        limit: req.query.limit,
+      });
+
+      res.json({
+        auditLogs: result.data,
+        pagination: result.pagination,
+        filters: {
+          action: req.query.action || null,
+          actorId: req.query.actorId || null,
+          outcome: req.query.outcome || null,
+          search: req.query.search || null,
+          startDate: req.query.startDate || null,
+          endDate: req.query.endDate || null,
+        },
+      });
+    } catch (error) {
+      console.error('Audit log retrieval error:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Error retrieving audit logs',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/admin/audit-logs/verify
+ * Verify the hash chain from the genesis entry through the newest entries.
+ */
+router.get(
+  '/audit-logs/verify',
+  requirePermission(PERMISSIONS.SYSTEM_MANAGE),
+  async (_req, res) => {
+    try {
+      const verification = await auditLogService.verifyChain();
+      res.status(verification.valid ? 200 : 409).json(verification);
+    } catch (error) {
+      console.error('Audit chain verification error:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Error verifying audit log chain',
       });
     }
   }

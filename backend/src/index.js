@@ -14,7 +14,7 @@ const SecureRealtimeCommunication = require('./services/secureRealtimeCommunicat
 // Import circuit breaker registry
 const { circuitBreakerRegistry } = require('./utils/circuitBreaker');
 
-const transactionQueue = require('./services/transactionQueue');
+const { transactionQueue } = require('./services/transactionQueue');
 const transactionProcessor = require('./workers/transactionProcessor');
 const transactionEvents = require('./events/transactionEvents');
 const emailWorker = require('./workers/emailWorker');
@@ -147,7 +147,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Structured request/response logging middleware
 const requestLogger = require('./middleware/requestLogger');
+const auditLogger = require('./middleware/auditLogger');
 app.use(requestLogger);
+app.use(auditLogger);
 
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
 const healthRoutes = require('./routes/health').default || require('./routes/health');

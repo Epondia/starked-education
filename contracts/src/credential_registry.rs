@@ -1,5 +1,6 @@
 use crate::utils::storage::{EntityType, StorageUtils};
-use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec};
+use soroban_sdk::xdr::ToXdr;
 
 /// Credential status enumeration
 #[contracttype]
@@ -36,9 +37,10 @@ impl CredentialStatus {
 //  Revocation Types
 // ═══════════════════════════════════════════════════════════════════
 
-/// Reason codes for credential revocation — stored as u8 for gas efficiency.
+/// Reason codes for credential revocation — stored as u32 for gas efficiency
+/// (soroban-sdk 20.5.0 has no `u8` storage type).
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RevocationReason {
     AdministrativeError = 0,
     AcademicDishonesty  = 1,
@@ -76,12 +78,29 @@ impl RevocationReason {
 pub struct RegistryRevocationRecord {
     /// Unix timestamp packed as u64
     pub timestamp:   u64,
-    /// Reason packed as u8
-    pub reason_code: u8,
-    /// Optional human-readable note — callers must cap at 256 bytes
-    pub reason_str:  Option<String>,
+    /// Reason packed as u32 (smallest unsigned int soroban supports in storage)
+    pub reason_code: u32,
+    /// Human-readable note — empty string means "no reason supplied".
+    /// Callers must cap the note at 256 bytes.
+    pub reason_str:  String,
     /// Address that performed the revocation
     pub revoker:     Address,
+}
+
+/// Revocation metadata surfaced by `verify_credential`.
+///
+/// Wrapped in a struct (rather than inline named fields on the enum variant)
+/// because `#[contracttype]` enums in soroban-sdk 20.5.0 only support a single
+/// unnamed field per variant.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RevocationDetails {
+    /// Reason packed as u32 (see `RevocationReason`)
+    pub reason_code: u32,
+    /// Unix timestamp of the revocation
+    pub timestamp:   u64,
+    /// Human-readable note — empty string means "no reason supplied"
+    pub reason_str:  String,
 }
 
 /// Return type for `verify_credential` in the registry
@@ -90,7 +109,7 @@ pub struct RegistryRevocationRecord {
 pub enum RegistryVerificationResult {
     Valid,
     Expired,
-    Revoked { reason_code: u8, timestamp: u64 },
+    Revoked(RevocationDetails),
     Pending,
 }
 
@@ -181,6 +200,8 @@ fn contains_address(vec: &Vec<Address>, target: &Address) -> bool {
     }
     false
 }
+
+const DEFAULT_MAX_BATCH_SIZE: u32 = 100;
 
 /// Events for credential operations
 #[contracttype]
@@ -329,7 +350,7 @@ pub fn generate_verification_proof(
     // Emit cross-chain relay event for off-chain relayers
     env.events().publish(
         (Symbol::new(env, "relay"), Symbol::new(env, "proof_generated")),
-        (&proof, relayer),
+        (proof.clone(), relayer),
     );
 
     proof
@@ -400,7 +421,11 @@ pub fn verify_cross_chain_proof(env: &Env, proof: CrossChainProof) -> bool {
     if proof.status != credential.status {
         env.events().publish(
             (Symbol::new(env, "relay"), Symbol::new(env, "status_mismatch")),
-            (proof.credential_id, proof.status.to_u8(), credential.status.to_u8()),
+            (
+                proof.credential_id,
+                proof.status.to_u8() as u64,
+                credential.status.to_u8() as u64,
+            ),
         );
         return false;
     }
@@ -453,8 +478,7 @@ fn compute_proof_hash(
     // Append status as single byte (reuse existing to_u8)
     input.push_back(status.to_u8());
     // Append issuer address as raw bytes for deterministic hashing
-    let issuer_bytes = issuer.to_string().as_bytes();
-    input.append(&issuer_bytes);
+    input.append(&issuer.to_xdr(env));
     env.crypto().sha256(&input)
 }
 
@@ -736,10 +760,11 @@ pub fn verify_credential(env: &Env, credential_id: u64) -> RegistryVerificationR
                 .persistent()
                 .get(&CredentialRegistryKey::RevocationHistory(credential_id))
                 .unwrap_or_else(|| panic!("Revocation record missing for revoked credential"));
-            RegistryVerificationResult::Revoked {
+            RegistryVerificationResult::Revoked(RevocationDetails {
                 reason_code: record.reason_code,
                 timestamp:   record.timestamp,
-            }
+                reason_str:  record.reason_str,
+            })
         }
         CredentialStatus::Expired  => RegistryVerificationResult::Expired,
         CredentialStatus::Pending  => RegistryVerificationResult::Pending,
@@ -753,7 +778,7 @@ pub fn verify_credential(env: &Env, credential_id: u64) -> RegistryVerificationR
 /// Revocation is **irreversible** — calling on an already-revoked credential panics.
 ///
 /// # Emits
-/// `CredentialRevoked` event: `(credential_id, revoker, reason_code u8, timestamp u64)`.
+/// `CredentialRevoked` event: `(credential_id, revoker, reason_code u32, timestamp u64)`.
 pub fn revoke_credential(
     env:           &Env,
     credential_id: u64,
@@ -786,7 +811,7 @@ pub fn revoke_credential(
     }
 
     let revocation_time = env.ledger().timestamp();
-    let reason_code     = reason.to_u8();
+    let reason_code     = reason.to_u8() as u32;
 
     credential.status = CredentialStatus::Revoked;
     env.storage().persistent().set(
@@ -794,11 +819,12 @@ pub fn revoke_credential(
         &credential,
     );
 
-    // Write the full revocation record
+    // Write the full revocation record. An empty `String` denotes "no reason
+    // supplied" because `#[contracttype]` cannot store `Option<String>`.
     let record = RegistryRevocationRecord {
         timestamp:   revocation_time,
         reason_code,
-        reason_str:  reason_str.clone(),
+        reason_str:  reason_str.unwrap_or_else(|| String::from_str(env, "")),
         revoker:     revoker.clone(),
     };
     env.storage().persistent().set(
@@ -809,7 +835,7 @@ pub fn revoke_credential(
     // Emit CredentialRevoked event
     env.events().publish(
         (Symbol::new(env, "credential"), Symbol::new(env, "revoked")),
-        (credential_id, revoker, reason_code, revocation_time),
+        (credential_id, revoker, reason_code as u64, revocation_time),
     );
 
     true
@@ -1504,7 +1530,7 @@ pub fn revoke_multi_sig_credential(
     credential_id: u64,
     revoker:       Address,
     reason:        RevocationReason,
-    reason_str:    Option<String>,
+    _reason_str:    Option<String>,
 ) -> bool {
     revoker.require_auth();
 
@@ -1529,7 +1555,7 @@ pub fn revoke_multi_sig_credential(
     }
 
     let revocation_time = env.ledger().timestamp();
-    let reason_code     = reason.to_u8();
+    let reason_code     = reason.to_u8() as u32;
 
     credential.status = CredentialStatus::Revoked;
     env.storage().persistent().set(
@@ -1542,7 +1568,7 @@ pub fn revoke_multi_sig_credential(
             Symbol::new(env, "multi_sig_registry"),
             Symbol::new(env, "revoked"),
         ),
-        (credential_id, revoker, reason_code, revocation_time),
+        (credential_id, revoker, reason_code as u64, revocation_time),
     );
 
     true
