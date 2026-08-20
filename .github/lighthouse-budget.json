@@ -14,7 +14,7 @@
     },
     "collect": {
       "numberOfRuns": 3,
-      "urls": [
+      "url": [
         "http://localhost:3000/campus",
         "http://localhost:3000/demo"
       ]
