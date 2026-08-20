@@ -2,16 +2,18 @@
 //! Outputs JSON with average gas costs for each operation.
 
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
-use stark_ed_contract::{StarkEdContract, StarkEdContractClient};
+use starked_education_contracts::{StarkEdContract, StarkEdContractClient};
 use std::collections::HashMap;
 
 fn measure_gas<F>(env: &Env, f: F) -> u64
 where
     F: FnOnce(),
 {
-    env.budget().reset();
+    env.budget().reset_default();
     f();
-    env.budget().get_cpu_insns_count()
+    // In soroban-sdk 20.x, `cpu_instruction_cost` returns the CPU instructions
+    // consumed since the last budget reset (see testutils::budget::Budget).
+    env.budget().cpu_instruction_cost()
 }
 
 fn bench_credential_issuance(
