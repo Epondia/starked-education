@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol,
+    contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
 pub mod credential_registry;
@@ -9,9 +9,15 @@ pub mod credential_registry;
 pub mod credential_registry_test;
 #[cfg(test)]
 pub mod gas_benchmark;
+pub mod dynamic_nft;
 pub mod governance;
 #[cfg(test)]
+pub mod dynamic_nft_test;
+#[cfg(test)]
 pub mod governance_test;
+pub mod dynamic_fees;
+#[cfg(test)]
+pub mod dynamic_fees_test;
 pub mod marketplace;
 #[cfg(test)]
 pub mod marketplace_test;
@@ -19,6 +25,9 @@ pub mod pause;
 pub mod tokenomics;
 #[cfg(test)]
 pub mod tokenomics_test;
+pub mod credential_registry;
+#[cfg(test)]
+pub mod credential_registry_test;
 pub mod user_profile;
 #[cfg(test)]
 pub mod user_profile_test;
@@ -517,5 +526,122 @@ impl StarkEdContract {
             ),
             credential_id,
         );
+    }
+
+    // ─── Dynamic NFT achievement badges (Issue #328) ──────────────────
+
+    /// Mint a dynamic NFT achievement badge. `creator` must be the contract
+    /// admin (the badge issuer).
+    pub fn mint_dynamic_nft(
+        env: Env,
+        creator: Address,
+        recipient: Address,
+        base_uri: String,
+        initial_metadata: String,
+    ) -> u64 {
+        // Mirror the contract admin into the dynamic-NFT module's own storage
+        // key so its issuer gate (`creator == admin`) works for on-chain
+        // callers. The module predates this entry point and reads a plain
+        // "admin" symbol from instance storage.
+        if !env.storage().instance().has(&Symbol::new(&env, "admin")) {
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .unwrap_or_else(|| panic!("Not initialized"));
+            env.storage()
+                .instance()
+                .set(&Symbol::new(&env, "admin"), &admin);
+        }
+        crate::dynamic_nft::mint_dynamic_nft(&env, creator, recipient, base_uri, initial_metadata)
+    }
+
+    /// Read a badge's full state.
+    pub fn get_nft(env: Env, token_id: u64) -> DynamicNFT {
+        crate::dynamic_nft::get_nft(&env, token_id)
+    }
+
+    /// Unlock an achievement on a badge, earning XP and possibly triggering
+    /// evolution. Returns `false` if the achievement is already unlocked.
+    pub fn evolve_nft(env: Env, token_id: u64, achievement_id: u64, new_metadata: String) -> bool {
+        crate::dynamic_nft::evolve_nft(&env, token_id, achievement_id, new_metadata)
+    }
+
+    /// Fuse two badges owned by the same address into a single evolved badge.
+    pub fn fuse_nfts(env: Env, token1_id: u64, token2_id: u64, recipient: Address) -> u64 {
+        crate::dynamic_nft::fuse_nfts(&env, token1_id, token2_id, recipient)
+    }
+
+    /// Transfer a badge to a new owner (owner-authenticated).
+    pub fn transfer_nft(env: Env, from: Address, to: Address, token_id: u64) {
+        crate::dynamic_nft::transfer_nft(&env, from, to, token_id)
+    }
+
+    /// List the badge ids owned by an address.
+    pub fn get_owner_tokens(env: Env, owner: Address) -> Vec<u64> {
+        crate::dynamic_nft::get_owner_tokens(&env, owner)
+    }
+
+    /// Total number of badge ids ever minted (monotonic counter).
+    pub fn get_total_supply(env: Env) -> u64 {
+        crate::dynamic_nft::get_total_supply(&env)
+    }
+
+    /// Full metadata URI for a badge (`base_uri`/`metadata_ipfs`).
+    pub fn token_uri(env: Env, token_id: u64) -> String {
+        crate::dynamic_nft::token_uri(&env, token_id)
+    }
+
+    /// Whether a badge with the given id exists.
+    pub fn nft_exists(env: Env, token_id: u64) -> bool {
+        crate::dynamic_nft::nft_exists(&env, token_id)
+    }
+
+    /// Owner address of a badge.
+    pub fn owner_of(env: Env, token_id: u64) -> Address {
+        crate::dynamic_nft::owner_of(&env, token_id)
+    }
+
+    /// Number of badges owned by an address.
+    pub fn balance_of(env: Env, owner: Address) -> u64 {
+        crate::dynamic_nft::balance_of(&env, owner)
+    }
+
+    /// Issue #7: burn a Basic badge and mint an Advanced certificate badge in
+    /// its place, preserving achievements/XP/evolution history.
+    pub fn upgrade_nft(
+        env: Env,
+        owner: Address,
+        token_id: u64,
+        new_metadata: String,
+        certificate_title: String,
+    ) -> u64 {
+        crate::dynamic_nft::upgrade_nft(&env, owner, token_id, new_metadata, certificate_title)
+    }
+
+    /// Read the certificate tier of a badge (Basic/Advanced).
+    pub fn get_nft_tier(env: Env, token_id: u64) -> CertificateTier {
+        crate::dynamic_nft::get_nft_tier(&env, token_id)
+    }
+
+    /// Upgrade a badge's metadata and rarity in place, preserving its token
+    /// id, owner and progress (achievements/XP/evolution history). Only the
+    /// issuer that minted the badge may upgrade it; every upgrade appends to
+    /// the badge's auditable, append-only history.
+    pub fn upgrade_badge_metadata(
+        env: Env,
+        issuer: Address,
+        token_id: u64,
+        new_metadata: String,
+        new_rarity: RarityTier,
+    ) -> bool {
+        crate::dynamic_nft::upgrade_badge_metadata(
+            &env, issuer, token_id, new_metadata, new_rarity,
+        )
+    }
+
+    /// Read a badge's append-only metadata/rarity upgrade history.
+    pub fn get_badge_upgrade_history(env: Env, token_id: u64) -> Vec<BadgeUpgradeRecord> {
+        crate::dynamic_nft::get_badge_upgrade_history(&env, token_id)
     }
 }

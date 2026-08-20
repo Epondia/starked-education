@@ -7,7 +7,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  NODE_VERSION: '18'
+  NODE_VERSION: '22'
 
 jobs:
   # ─── Smart Contracts ─────────────────────────────────────────────
@@ -113,6 +113,14 @@ jobs:
 
       - name: Build
         run: cd backend && npm run build
+
+      - name: Exercise migration rollback (dry-run + up → down)
+        run: |
+          cd backend
+          npm run migrate:dry-run
+          npm run migrate:up
+          npm run migrate:down
+          npm run migrate:status
 
   # ─── Frontend ────────────────────────────────────────────────────
   frontend:
@@ -307,3 +315,39 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results.sarif'
+
+  # ─── Accessibility & Lighthouse ──────────────────────────────────
+  a11y-lighthouse:
+    name: Accessibility & Lighthouse
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 2
+          retry_on: error
+          command: cd frontend && npm ci
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+        
+      - name: Start server in background
+        run: cd frontend && npm run start &
+        
+      - name: Wait for server to start
+        run: cd frontend && npx wait-on http://localhost:3000
+
+      - name: Run Lighthouse Audit
+        run: cd frontend && npx @lhci/cli collect --config=../.github/lighthouse-budget.json && npx @lhci/cli assert --config=../.github/lighthouse-budget.json
+        
+      - name: Run Accessibility Audit
+        run: cd frontend && npx @axe-core/cli http://localhost:3000

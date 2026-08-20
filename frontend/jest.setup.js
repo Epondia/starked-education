@@ -73,14 +73,24 @@ jest.mock('next/image', () => ({
   default: (props) => <img {...props} />,
 }))
 
-// Mock localStorage
-const localStorageMock = {
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
-  clear: jest.fn(),
-}
-global.localStorage = localStorageMock
+// Mock localStorage with proper in-memory storage
+const createLocalStorageMock = () => {
+  let store = {};
+  return {
+    getItem: jest.fn(function(key) { return store[key] ?? null }),
+    setItem: jest.fn(function(key, value) {
+      store[key] = String(value);
+    }),
+    removeItem: jest.fn(function(key) {
+      delete store[key];
+    }),
+    clear: jest.fn(function() {
+      store = {};
+    }),
+  };
+};
+global.localStorage = createLocalStorageMock();
+global.sessionStorage = createLocalStorageMock();
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {

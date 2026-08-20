@@ -13,6 +13,7 @@ const {
 const securityService = require('../services/securityService');
 const Joi = require('joi');
 const { validateRequestSchema } = require('../middleware/validateRequestSchema');
+const { hashActorIdentifier } = require('../services/auditLogService');
 const router = express.Router();
 
 const registerSchema = {
@@ -77,6 +78,8 @@ function generateToken(user) {
 router.post('/register', registerLimiter, validateRequestSchema(registerSchema), async (req, res) => {
   try {
     const { username, email, password, role = UserRole.STUDENT } = req.body;
+    req.auditActorId = `identity:${hashActorIdentifier(email || username)}`;
+    req.auditActorRole = role;
 
     // Check if user already exists
     const existingUser = Array.from(users.values()).find(
@@ -84,6 +87,7 @@ router.post('/register', registerLimiter, validateRequestSchema(registerSchema),
     );
 
     if (existingUser) {
+      req.auditDetails = { event: 'registration_conflict' };
       await securityService.logSecurityEvent(req.ip, 'auth_conflict', { username, email });
       return res.status(409).json({
         success: false,
@@ -109,6 +113,8 @@ router.post('/register', registerLimiter, validateRequestSchema(registerSchema),
     users.set(newUser.id, newUser);
 
     // Generate token
+    req.auditActorId = newUser.id;
+    req.auditActorRole = newUser.role;
     const token = generateToken(newUser);
 
     res.status(201).json({
@@ -138,6 +144,7 @@ router.post('/register', registerLimiter, validateRequestSchema(registerSchema),
 router.post('/login', loginLimiter, validateRequestSchema(loginSchema), async (req, res) => {
   try {
     const { username, password } = req.body;
+    req.auditActorId = `identity:${hashActorIdentifier(username)}`;
 
     // Find user by username or email
     const user = Array.from(users.values()).find(
@@ -145,6 +152,7 @@ router.post('/login', loginLimiter, validateRequestSchema(loginSchema), async (r
     );
 
     if (!user) {
+      req.auditDetails = { event: 'authentication_failure', reason: 'user_not_found' };
       await securityService.logSecurityEvent(req.ip, 'auth_failure', { username, reason: 'user_not_found' });
       return res.status(401).json({
         error: 'Invalid credentials',
@@ -155,6 +163,7 @@ router.post('/login', loginLimiter, validateRequestSchema(loginSchema), async (r
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+      req.auditDetails = { event: 'authentication_failure', reason: 'invalid_password' };
       await securityService.logSecurityEvent(req.ip, 'auth_failure', { username, reason: 'invalid_password' });
       return res.status(401).json({
         error: 'Invalid credentials',
@@ -163,6 +172,9 @@ router.post('/login', loginLimiter, validateRequestSchema(loginSchema), async (r
     }
 
     // Generate token
+    req.auditActorId = user.id;
+    req.auditActorRole = user.role;
+    req.auditDetails = { event: 'authentication_success' };
     const token = generateToken(user);
 
     res.json({
@@ -218,6 +230,7 @@ router.put('/profile', moderateLimiter, authenticateToken, validateRequestSchema
   try {
     const { username, email, currentPassword, newPassword } = req.body;
     const user = users.get(req.user.id);
+    req.auditDetails = { event: newPassword ? 'profile_and_password_update' : 'profile_update' };
 
     if (!user) {
       return res.status(404).json({

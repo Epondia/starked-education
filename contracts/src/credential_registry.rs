@@ -87,6 +87,22 @@ pub struct RegistryRevocationRecord {
     pub revoker: Address,
 }
 
+/// Revocation metadata surfaced by `verify_credential`.
+///
+/// Wrapped in a struct (rather than inline named fields on the enum variant)
+/// because `#[contracttype]` enums in soroban-sdk 20.5.0 only support a single
+/// unnamed field per variant.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RevocationDetails {
+    /// Reason packed as u32 (see `RevocationReason`)
+    pub reason_code: u32,
+    /// Unix timestamp of the revocation
+    pub timestamp:   u64,
+    /// Human-readable note — empty string means "no reason supplied"
+    pub reason_str:  String,
+}
+
 /// Return type for `verify_credential` in the registry
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -184,6 +200,8 @@ fn contains_address(vec: &Vec<Address>, target: &Address) -> bool {
     }
     false
 }
+
+const DEFAULT_MAX_BATCH_SIZE: u32 = 100;
 
 /// Events for credential operations
 #[contracttype]
@@ -783,7 +801,7 @@ pub fn verify_credential(env: &Env, credential_id: u64) -> RegistryVerificationR
 /// Revocation is **irreversible** — calling on an already-revoked credential panics.
 ///
 /// # Emits
-/// `CredentialRevoked` event: `(credential_id, revoker, reason_code u8, timestamp u64)`.
+/// `CredentialRevoked` event: `(credential_id, revoker, reason_code u32, timestamp u64)`.
 pub fn revoke_credential(
     env: &Env,
     credential_id: u64,

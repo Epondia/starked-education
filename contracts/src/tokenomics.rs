@@ -388,7 +388,7 @@ impl TokenomicsContract {
             .unwrap_or(0)
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testutils"))]
     pub fn mint_gov_for_test(env: Env, user: Address, amount: u64) {
         let balance = Self::balance_of(env.clone(), user.clone(), 1);
         env.storage().persistent().set(
