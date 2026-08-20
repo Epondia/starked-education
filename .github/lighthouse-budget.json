@@ -13,7 +13,11 @@
       }
     },
     "collect": {
-      "numberOfRuns": 3
+      "numberOfRuns": 3,
+      "urls": [
+        "http://localhost:3000/campus",
+        "http://localhost:3000/demo"
+      ]
     },
     "upload": {
       "target": "temporary-public-storage"
