@@ -167,7 +167,7 @@ jobs:
         run: |
           mkdir -p ../benchmark-results
           # Run the benchmark example and capture its JSON output
-          cargo run --release --example bench_gas | tee ../benchmark-results/contract-gas-raw.json
+          cargo run --release --features testutils --example bench_gas | tee ../benchmark-results/contract-gas-raw.json
 
       - name: Parse benchmark results
         run: |
