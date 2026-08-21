@@ -25,13 +25,13 @@ pub mod pause;
 pub mod tokenomics;
 #[cfg(test)]
 pub mod tokenomics_test;
-pub mod credential_registry;
-#[cfg(test)]
-pub mod credential_registry_test;
 pub mod user_profile;
 #[cfg(test)]
 pub mod user_profile_test;
 pub mod utils;
+pub mod events;
+
+use crate::dynamic_nft::{BadgeUpgradeRecord, CertificateTier, DynamicNFT, RarityTier};
 
 /// ─── Admin authorization helper ──────────────────────────────
 /// Verifies the caller is the stored admin. Panics if not.
@@ -553,7 +553,9 @@ impl StarkEdContract {
                 .instance()
                 .set(&Symbol::new(&env, "admin"), &admin);
         }
-        crate::dynamic_nft::mint_dynamic_nft(&env, creator, recipient, base_uri, initial_metadata)
+        crate::dynamic_nft::mint_dynamic_nft(
+            &env, creator, recipient, base_uri, initial_metadata,
+        )
     }
 
     /// Read a badge's full state.
@@ -563,7 +565,12 @@ impl StarkEdContract {
 
     /// Unlock an achievement on a badge, earning XP and possibly triggering
     /// evolution. Returns `false` if the achievement is already unlocked.
-    pub fn evolve_nft(env: Env, token_id: u64, achievement_id: u64, new_metadata: String) -> bool {
+    pub fn evolve_nft(
+        env: Env,
+        token_id: u64,
+        achievement_id: u64,
+        new_metadata: String,
+    ) -> bool {
         crate::dynamic_nft::evolve_nft(&env, token_id, achievement_id, new_metadata)
     }
 
@@ -607,8 +614,8 @@ impl StarkEdContract {
         crate::dynamic_nft::balance_of(&env, owner)
     }
 
-    /// Issue #7: burn a Basic badge and mint an Advanced certificate badge in
-    /// its place, preserving achievements/XP/evolution history.
+    /// Burn a Basic badge and mint an Advanced certificate badge in its
+    /// place, preserving achievements/XP/evolution history.
     pub fn upgrade_nft(
         env: Env,
         owner: Address,
