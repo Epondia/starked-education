@@ -1,12 +1,11 @@
 import type { Metadata } from 'next';
-import { createMetadata } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
 
-import { MetaverseCampus } from '../../components/Metaverse';
+import dynamicImport from 'next/dynamic';
 import ErrorBoundary from '../../components/ErrorBoundary';
 
-const MetaverseCampus = dynamic(
+const MetaverseCampus = dynamicImport(
   () => import('../../components/Metaverse').then((mod) => mod.MetaverseCampus),
   {
     loading: () => (
@@ -25,7 +24,7 @@ export const metadata: Metadata = {
   title: 'Metaverse Campus — StarkEd',
   description: 'Immersive virtual learning campus with classrooms, social spaces, and avatar interaction.',
   keywords: ['virtual campus', 'collaborative learning', 'online classroom'],
-});
+};
 
 export default function CampusPage() {
   return (

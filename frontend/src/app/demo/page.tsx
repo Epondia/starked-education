@@ -3,23 +3,23 @@
 export const dynamic = 'force-dynamic';
 
 import { useState } from 'react';
-import dynamic from 'next/dynamic';
+import dynamicImport from 'next/dynamic';
 import { useProfile } from '../../hooks/useProfile';
 import { testProfile, testAchievements, testCredentials, testStats } from '../../test-profile';
 
-const ProfileEditor = dynamic(
+const ProfileEditor = dynamicImport(
   () => import('../../components/ProfileEditor').then((m) => m.ProfileEditor),
   { loading: () => <div className="p-4 text-center text-sm text-gray-500">Loading editor...</div> }
 );
-const AchievementDisplay = dynamic(
+const AchievementDisplay = dynamicImport(
   () => import('../../components/AchievementDisplay').then((m) => m.AchievementDisplay),
   { loading: () => <div className="p-4 text-center text-sm text-gray-500">Loading achievements...</div> }
 );
-const CredentialList = dynamic(
+const CredentialList = dynamicImport(
   () => import('../../components/CredentialList').then((m) => m.CredentialList),
   { loading: () => <div className="p-4 text-center text-sm text-gray-500">Loading credentials...</div> }
 );
-const ProfileStats = dynamic(
+const ProfileStats = dynamicImport(
   () => import('../../components/ProfileStats').then((m) => m.ProfileStats),
   { loading: () => <div className="p-4 text-center text-sm text-gray-500">Loading stats...</div> }
 );
