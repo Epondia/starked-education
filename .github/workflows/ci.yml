@@ -350,4 +350,12 @@ jobs:
         run: cd frontend && npx @lhci/cli collect --config=../.github/lighthouse-budget.json && npx @lhci/cli assert --config=../.github/lighthouse-budget.json
         
       - name: Run Accessibility Audit
-        run: cd frontend && npx @axe-core/cli http://localhost:3000
+        run: |
+          cd frontend
+          # @axe-core/cli depends on `chromedriver: latest`, which can be newer
+          # than the runner's Chrome and fails with a "This version of
+          # ChromeDriver only supports Chrome version N" error. Install a
+          # ChromeDriver matching the installed Chrome and point axe at it.
+          CHROME_MAJOR=$(google-chrome --version | sed -E 's/.* ([0-9]+)\..*/\1/')
+          npm i --no-save "chromedriver@$CHROME_MAJOR"
+          npx @axe-core/cli --chromedriver-path="$(find node_modules/chromedriver -name chromedriver -type f | head -1)" http://localhost:3000
