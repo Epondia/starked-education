@@ -10,6 +10,11 @@ const { readLimiter, courseWriteLimiter } = require('../middleware/rateLimiter')
 const Joi = require('joi');
 const { validateRequestSchema } = require('../middleware/validateRequestSchema');
 
+// Redis-backed cache for hot course reads (see issue #295)
+const courseCacheModule = require('../services/courseCacheService');
+const courseCacheService = courseCacheModule.default || courseCacheModule;
+const { CACHE_TTL } = require('../config/redis');
+
 // ── Listing schema ──────────────────────────────────────────────────────────
 
 const listCoursesSchema = {
@@ -87,70 +92,90 @@ router.get('/',
         ? levels.split(',').map((l) => l.trim()).filter(Boolean)
         : [];
 
-      // ── In a real implementation this would query the database ──────────
-      // The mock below generates deterministic courses so the infinite-scroll
-      // integration can be exercised end-to-end without a real database.
+      // Serve hot listing reads from Redis, falling back to the factory on
+      // cache miss or when Redis is unavailable (graceful degradation).
+      const cacheKey = [
+        'cache:course:list:',
+        q,
+        categories,
+        levels,
+        sort,
+        offset,
+        limit,
+      ].join('|');
 
-      const MOCK_TOTAL = 120;
+      const data = await courseCacheService.getOrSet(
+        cacheKey,
+        async () => {
+          // ── In a real implementation this would query the database ──────
+          // The mock below generates deterministic courses so the infinite-scroll
+          // integration can be exercised end-to-end without a real database.
 
-      /** @type {Array<Record<string, unknown>>} */
-      const mockItems = Array.from({ length: Math.min(limit, Math.max(0, MOCK_TOTAL - offset)) }, (_, i) => {
-        const courseIndex = offset + i;
-        return {
-          id: `course_${courseIndex + 1}`,
-          title: `Course ${courseIndex + 1}${q ? ` — "${q}"` : ''}`,
-          shortDescription: `A hands-on course about topic ${courseIndex + 1}.`,
-          description: `Comprehensive coverage of topic ${courseIndex + 1} with practical examples.`,
-          category: categoryList[0] ?? (courseIndex % 4 === 0 ? 'blockchain' : courseIndex % 4 === 1 ? 'web3' : courseIndex % 4 === 2 ? 'defi' : 'smart-contracts'),
-          level: levelList[0] ?? (courseIndex % 3 === 0 ? 'beginner' : courseIndex % 3 === 1 ? 'intermediate' : 'advanced'),
-          language: 'en',
-          durationHours: 2 + (courseIndex % 10),
-          price: courseIndex % 5 === 0 ? 0 : 29 + (courseIndex % 7) * 10,
-          rating: parseFloat((3.5 + (courseIndex % 15) * 0.1).toFixed(1)),
-          reviewCount: 50 + courseIndex * 3,
-          enrollmentCount: 200 + courseIndex * 10,
-          provider: `Provider ${(courseIndex % 5) + 1}`,
-          thumbnail: '',
-          tags: ['blockchain', 'stellar', 'web3'].slice(0, (courseIndex % 3) + 1),
-          skills: ['smart contracts', 'defi'].slice(0, (courseIndex % 2) + 1),
-          preview: '',
-          matchReasons: ['Trending', 'Highly rated'].slice(0, (courseIndex % 2) + 1),
-          quickActions: [],
-          relevanceScore: 1 - courseIndex * 0.001,
-          semanticScore: 0.9,
-          recommendationScore: 0.85,
-          trendScore: 0.8,
-          socialProof: {
-            reviewSnippet: 'Great course!',
-            enrollmentLabel: `${200 + courseIndex * 10} enrolled`,
-            ratingLabel: `${(3.5 + (courseIndex % 15) * 0.1).toFixed(1)} stars`,
-          },
-        };
-      });
+          const MOCK_TOTAL = 120;
 
-      const hasMore = offset + limit < MOCK_TOTAL;
+          /** @type {Array<Record<string, unknown>>} */
+          const mockItems = Array.from({ length: Math.min(limit, Math.max(0, MOCK_TOTAL - offset)) }, (_, i) => {
+            const courseIndex = offset + i;
+            return {
+              id: `course_${courseIndex + 1}`,
+              title: `Course ${courseIndex + 1}${q ? ` — "${q}"` : ''}`,
+              shortDescription: `A hands-on course about topic ${courseIndex + 1}.`,
+              description: `Comprehensive coverage of topic ${courseIndex + 1} with practical examples.`,
+              category: categoryList[0] ?? (courseIndex % 4 === 0 ? 'blockchain' : courseIndex % 4 === 1 ? 'web3' : courseIndex % 4 === 2 ? 'defi' : 'smart-contracts'),
+              level: levelList[0] ?? (courseIndex % 3 === 0 ? 'beginner' : courseIndex % 3 === 1 ? 'intermediate' : 'advanced'),
+              language: 'en',
+              durationHours: 2 + (courseIndex % 10),
+              price: courseIndex % 5 === 0 ? 0 : 29 + (courseIndex % 7) * 10,
+              rating: parseFloat((3.5 + (courseIndex % 15) * 0.1).toFixed(1)),
+              reviewCount: 50 + courseIndex * 3,
+              enrollmentCount: 200 + courseIndex * 10,
+              provider: `Provider ${(courseIndex % 5) + 1}`,
+              thumbnail: '',
+              tags: ['blockchain', 'stellar', 'web3'].slice(0, (courseIndex % 3) + 1),
+              skills: ['smart contracts', 'defi'].slice(0, (courseIndex % 2) + 1),
+              preview: '',
+              matchReasons: ['Trending', 'Highly rated'].slice(0, (courseIndex % 2) + 1),
+              quickActions: [],
+              relevanceScore: 1 - courseIndex * 0.001,
+              semanticScore: 0.9,
+              recommendationScore: 0.85,
+              trendScore: 0.8,
+              socialProof: {
+                reviewSnippet: 'Great course!',
+                enrollmentLabel: `${200 + courseIndex * 10} enrolled`,
+                ratingLabel: `${(3.5 + (courseIndex % 15) * 0.1).toFixed(1)} stars`,
+              },
+            };
+          });
 
-      // Build the next cursor so the client can request the following page
-      // without needing to track page numbers.
-      const nextCursor = hasMore
-        ? Buffer.from(JSON.stringify({ offset: offset + limit })).toString('base64')
-        : null;
+          const hasMore = offset + limit < MOCK_TOTAL;
 
-      const currentPage = cursor
-        ? Math.floor(offset / limit) + 1
-        : Number(rawPage);
+          // Build the next cursor so the client can request the following page
+          // without needing to track page numbers.
+          const nextCursor = hasMore
+            ? Buffer.from(JSON.stringify({ offset: offset + limit })).toString('base64')
+            : null;
+
+          const currentPage = cursor
+            ? Math.floor(offset / limit) + 1
+            : Number(rawPage);
+
+          return {
+            items: mockItems,
+            total: MOCK_TOTAL,
+            page: currentPage,
+            limit,
+            hasMore,
+            nextCursor,
+          };
+        },
+        { ttl: CACHE_TTL.COURSE_LIST },
+      );
 
       res.status(200).json({
         success: true,
         message: 'Courses retrieved successfully',
-        data: {
-          items: mockItems,
-          total: MOCK_TOTAL,
-          page: currentPage,
-          limit,
-          hasMore,
-          nextCursor,
-        },
+        data,
       });
     } catch (error) {
       console.error('Error listing courses:', error);
@@ -162,6 +187,62 @@ router.get('/',
     }
   },
 );
+
+// ── Cache observability & administration ────────────────────────────────────
+
+/**
+ * GET /api/courses/cache/metrics
+ * Expose Redis cache hit/miss metrics for hot course & credential reads.
+ * In production this endpoint should sit behind an admin guard.
+ *
+ * @returns {CacheMetrics} Hit/miss counters, hit rate, connection status
+ */
+router.get('/cache/metrics', async (req, res) => {
+  try {
+    const health = await courseCacheService.healthCheck();
+    const metrics = courseCacheService.getMetricsSummary();
+
+    res.status(200).json({
+      success: true,
+      message: 'Cache metrics retrieved successfully',
+      data: { ...metrics, health },
+    });
+  } catch (error) {
+    console.error('Error retrieving cache metrics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve cache metrics',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/courses/cache/invalidate
+ * Manually invalidate all course & credential caches (e.g. after bulk imports).
+ *
+ * @returns {object} Success response
+ */
+router.post('/cache/invalidate', async (req, res) => {
+  try {
+    await Promise.all([
+      courseCacheService.invalidateAllCourseCaches(),
+      courseCacheService.invalidateAllCredentialCaches(),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: 'All course and credential caches invalidated successfully',
+    });
+  } catch (error) {
+    console.error('Error invalidating caches:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to invalidate caches',
+      error: error.message,
+    });
+  }
+});
 
 // ── Version management schemas (existing) ───────────────────────────────────
 
@@ -264,6 +345,9 @@ router.post('/:contentId/versions',
         isCurrent: true
       };
       
+      // Invalidate cached course data so clients see the new version immediately
+      courseCacheService.invalidateAllCourseCaches();
+
       res.status(201).json({
         success: true,
         message: 'Version created successfully',
@@ -572,6 +656,9 @@ router.post('/:contentId/versions/restore',
         updatedAt: new Date()
       };
       
+      // Content changed — drop stale cached listings/details
+      courseCacheService.invalidateAllCourseCaches();
+
       res.status(200).json({
         success: true,
         message: 'Content restored successfully',
@@ -623,6 +710,9 @@ router.put('/:contentId/versions/settings',
         updatedAt: new Date()
       };
       
+      // Versioning behavior changed — invalidate cached course data
+      courseCacheService.invalidateAllCourseCaches();
+
       res.status(200).json({
         success: true,
         message: 'Version control settings updated successfully',
