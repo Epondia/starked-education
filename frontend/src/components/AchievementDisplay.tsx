@@ -23,6 +23,7 @@ interface AchievementDisplayProps {
   compact?: boolean;
   filterable?: boolean;
   searchable?: boolean;
+  loading?: boolean;
 }
 
 const RARITY_CONFIG = {
@@ -70,46 +71,41 @@ export function AchievementDisplay({
   showProgress = true, 
   compact = false,
   filterable = true,
-  searchable = true 
+  searchable = true,
+  loading = false
 }: AchievementDisplayProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedRarity, setSelectedRarity] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showLocked, setShowLocked] = useState(true);
 
-  // Get unique categories and rarities
+  const achs = achievements || [];
+
   const categories = useMemo(() => {
-    const achs = achievements || [];
     const cats = Array.from(new Set(achs.map(a => a.category)));
     return ['all', ...cats];
   }, [achievements]);
 
   const rarities = useMemo(() => {
-    const achs = achievements || [];
     const rars = Array.from(new Set(achs.map(a => a.rarity)));
     return ['all', ...rars];
   }, [achievements]);
 
-  // Filter achievements
   const filteredAchievements = useMemo(() => {
-    return (achievements || []).filter(achievement => {
-      // Search filter
+    return achs.filter(achievement => {
       if (searchQuery && !achievement.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
           !achievement.description.toLowerCase().includes(searchQuery.toLowerCase())) {
         return false;
       }
 
-      // Category filter
       if (selectedCategory !== 'all' && achievement.category !== selectedCategory) {
         return false;
       }
 
-      // Rarity filter
       if (selectedRarity !== 'all' && achievement.rarity !== selectedRarity) {
         return false;
       }
 
-      // Locked filter
       if (!showLocked && !achievement.earnedDate) {
         return false;
       }
@@ -118,10 +114,9 @@ export function AchievementDisplay({
     });
   }, [achievements, searchQuery, selectedCategory, selectedRarity, showLocked]);
 
-  // Statistics
   const stats = useMemo(() => {
-    const earned = achievements.filter(a => a.earnedDate);
-    const total = achievements.length;
+    const earned = achs.filter(a => a.earnedDate);
+    const total = achs.length;
     const byRarity = earned.reduce((acc, achievement) => {
       acc[achievement.rarity] = (acc[achievement.rarity] || 0) + 1;
       return acc;
@@ -135,6 +130,33 @@ export function AchievementDisplay({
       byRarity
     };
   }, [achievements]);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-48" />
+          <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-32" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-16 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
+          ))}
+        </div>
+        <div className="bg-white dark:bg-slate-900 rounded-lg p-4 border border-gray-200 dark:border-slate-700 mb-6">
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex-1 h-10 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+            <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded animate-pulse lg:w-48" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-56 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (compact) {
     return (

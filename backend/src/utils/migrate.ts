@@ -3,8 +3,8 @@ import path from 'path';
 import logger from './logger';
 
 // Relative path configuration matching requirement spec matching schema
-const MIGRATIONS_DIR = path.join(__dirname, '../../migrations');
-const META_FILE = path.join(MIGRATIONS_DIR, 'meta/_migrations.json');
+const DEFAULT_MIGRATIONS_DIR = path.join(__dirname, '../../migrations');
+const DEFAULT_META_FILE = path.join(DEFAULT_MIGRATIONS_DIR, 'meta/_migrations.json');
 
 interface MigrationRecord {
   filename: string;
@@ -17,21 +17,68 @@ interface MigrationState {
   lastBatch: number;
 }
 
-function loadState(): MigrationState {
+/**
+ * Runtime options for the migration runner. Kept separate from the CLI so the
+ * runner can be unit-tested against isolated migrations/metadata directories.
+ */
+export interface MigrationOptions {
+  /** Directory containing migration files. Defaults to `backend/migrations`. */
+  migrationsDir?: string;
+  /** Path to the JSON metadata file tracking applied migrations. */
+  metaFile?: string;
+  /** Allow destructive migrations (DROP/TRUNCATE/DELETE) without failing. */
+  allowDestructive?: boolean;
+}
+
+export interface DestructiveMatch {
+  /** Human-readable name of the destructive operation, e.g. "DROP TABLE". */
+  operation: string;
+  /** 1-based line number of the first match in the migration source. */
+  line: number;
+  /** Trimmed source line containing the match (truncated for readability). */
+  statement: string;
+}
+
+/**
+ * Destructive operations that require explicit confirmation before running.
+ * Covers both raw SQL and the Knex schema-builder API used by JS migrations.
+ */
+const DESTRUCTIVE_PATTERNS: Array<{ operation: string; pattern: RegExp }> = [
+  { operation: 'DROP TABLE', pattern: /\bDROP\s+TABLE\b/gi },
+  { operation: 'DROP INDEX', pattern: /\bDROP\s+INDEX\b/gi },
+  { operation: 'DROP COLUMN', pattern: /\bDROP\s+COLUMN\b/gi },
+  { operation: 'DROP CONSTRAINT', pattern: /\bDROP\s+CONSTRAINT\b/gi },
+  { operation: 'DROP VIEW', pattern: /\bDROP\s+(?:MATERIALIZED\s+)?VIEW\b/gi },
+  { operation: 'DROP SCHEMA', pattern: /\bDROP\s+SCHEMA\b/gi },
+  { operation: 'DROP DATABASE', pattern: /\bDROP\s+DATABASE\b/gi },
+  { operation: 'DROP FUNCTION', pattern: /\bDROP\s+FUNCTION\b/gi },
+  { operation: 'DROP TRIGGER', pattern: /\bDROP\s+TRIGGER\b/gi },
+  { operation: 'TRUNCATE', pattern: /\bTRUNCATE\b/gi },
+  { operation: 'DELETE FROM', pattern: /\bDELETE\s+FROM\b/gi },
+  // Knex schema builder equivalents used by JavaScript migrations
+  { operation: 'DROP TABLE (knex)', pattern: /\bdropTable(?:IfExists)?\s*\(/gi },
+  { operation: 'DROP COLUMN (knex)', pattern: /\bdropColumn\s*\(/gi },
+  { operation: 'DROP INDEX (knex)', pattern: /\bdropIndex\s*\(/gi },
+  { operation: 'DROP CONSTRAINT (knex)', pattern: /\bdropConstraint\s*\(/gi },
+  { operation: 'TRUNCATE (knex)', pattern: /\btruncate\s*\(/gi },
+  { operation: 'DELETE (knex)', pattern: /\.(?:del|delete)\s*\(\s*\)/gi },
+];
+
+function loadState(metaFile: string = DEFAULT_META_FILE): MigrationState {
   // Default state for new installations
   const defaultState: MigrationState = { applied: [], lastBatch: 0 };
 
-  if (!fs.existsSync(META_FILE)) {
-    const parentDir = path.dirname(META_FILE);
+  if (!fs.existsSync(metaFile)) {
+    const parentDir = path.dirname(metaFile);
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
     }
-    fs.writeFileSync(META_FILE, JSON.stringify(defaultState, null, 2));
+    fs.writeFileSync(metaFile, JSON.stringify(defaultState, null, 2));
     return defaultState;
   }
 
   try {
-    const raw = JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
 
     // Migrate from legacy format (string[]) to new format (MigrationRecord[])
     if (Array.isArray(raw.applied) && raw.applied.length > 0 && typeof raw.applied[0] === 'string') {
@@ -43,7 +90,7 @@ function loadState(): MigrationState {
         })),
         lastBatch: raw.applied.length,
       };
-      saveState(migrated);
+      saveState(migrated, metaFile);
       return migrated;
     }
 
@@ -54,17 +101,17 @@ function loadState(): MigrationState {
   }
 }
 
-function saveState(state: MigrationState): void {
-  fs.writeFileSync(META_FILE, JSON.stringify(state, null, 2));
+function saveState(state: MigrationState, metaFile: string = DEFAULT_META_FILE): void {
+  fs.writeFileSync(metaFile, JSON.stringify(state, null, 2));
 }
 
 /** Get all migration files (.sql and .js), sorted numerically */
-function getMigrationFiles(): string[] {
-  if (!fs.existsSync(MIGRATIONS_DIR)) {
-    fs.mkdirSync(MIGRATIONS_DIR, { recursive: true });
+function getMigrationFiles(migrationsDir: string = DEFAULT_MIGRATIONS_DIR): string[] {
+  if (!fs.existsSync(migrationsDir)) {
+    fs.mkdirSync(migrationsDir, { recursive: true });
     return [];
   }
-  return fs.readdirSync(MIGRATIONS_DIR)
+  return fs.readdirSync(migrationsDir)
     .filter(file => file.endsWith('.sql') || file.endsWith('.js'))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 }
@@ -92,6 +139,113 @@ function extractDownSql(filePath: string): string {
     );
   }
   return parts[1].trim();
+}
+
+/**
+ * Detect destructive operations (DROP/TRUNCATE/DELETE) in a migration source.
+ * Returns matches sorted by line number.
+ */
+export function detectDestructiveOperations(content: string): DestructiveMatch[] {
+  const matches: DestructiveMatch[] = [];
+  const seen = new Set<string>();
+
+  for (const { operation, pattern } of DESTRUCTIVE_PATTERNS) {
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(content)) !== null) {
+      const line = content.slice(0, match.index).split('\n').length;
+      const statement = (content.split('\n')[line - 1] || '').trim().slice(0, 120);
+      const key = `${operation}:${line}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        matches.push({ operation, line, statement });
+      }
+    }
+  }
+
+  return matches.sort((a, b) => a.line - b.line);
+}
+
+/**
+ * Return the portion of a migration file that runs in a given direction.
+ * For SQL files this is the up/down split at `-- @undo`/`-- DOWN`. For JS
+ * files the up section is everything before the `down` function definition and
+ * the down section is everything from that definition onward.
+ */
+function extractDirectionalContent(filePath: string, direction: 'up' | 'down'): string {
+  if (filePath.endsWith('.sql')) {
+    return direction === 'up' ? extractUpSql(filePath) : extractDownSql(filePath);
+  }
+
+  const content = fs.readFileSync(filePath, 'utf8');
+  const downBoundary = content.match(/(?:exports\.down\b|(?:async\s+)?function\s+down\s*\()/);
+  if (direction === 'up') {
+    return downBoundary ? content.slice(0, downBoundary.index) : content;
+  }
+  return downBoundary ? content.slice(downBoundary.index) : content;
+}
+
+/**
+ * Verify a migration file declares a rollback (down) path before it can be
+ * applied. Rejecting a migration at validation time prevents a migration from
+ * being applied that could never be rolled back.
+ */
+export function validateMigrationRollbackPath(filePath: string): void {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const basename = path.basename(filePath);
+
+  if (filePath.endsWith('.sql')) {
+    try {
+      extractDownSql(filePath);
+    } catch (err) {
+      throw new Error(
+        `Migration [${basename}] is missing a rollback (down) section. ` +
+        `Add a '-- @undo' or '-- DOWN' section after the forward (up) statements.`
+      );
+    }
+    return;
+  }
+
+  if (filePath.endsWith('.js')) {
+    const hasUp = /(?:exports\.up\b|function\s+up\s*\(|async\s+function\s+up\s*\(|\bup\s*[,}])/.test(content);
+    const hasDown = /(?:exports\.down\b|function\s+down\s*\(|async\s+function\s+down\s*\(|\bdown\s*[,}])/.test(content);
+    if (!hasUp || !hasDown) {
+      throw new Error(
+        `Migration [${basename}] must export both an 'up' and a 'down' function so it can be safely rolled back.`
+      );
+    }
+  }
+}
+
+/**
+ * Guard against running destructive operations without explicit opt-in.
+ * Throws when destructive SQL is detected and `allowDestructive` is false;
+ * logs a warning (but proceeds) when the operator has opted in.
+ */
+function guardDestructiveOperations(
+  matches: DestructiveMatch[],
+  file: string,
+  direction: 'up' | 'down',
+  allowDestructive: boolean,
+): void {
+  if (matches.length === 0) return;
+
+  const summary = matches
+    .map(m => `    - line ${m.line}: ${m.operation}${m.statement ? ` — ${m.statement}` : ''}`)
+    .join('\n');
+
+  if (allowDestructive) {
+    logger.warn(
+      `Proceeding with destructive ${direction} migration [${file}] (--allow-destructive):\n${summary}`
+    );
+    return;
+  }
+
+  throw new Error(
+    `Destructive ${direction} migration [${file}] blocked by safety check.\n` +
+    `Detected:\n${summary}\n` +
+    `Review the changes with '--dry-run', then re-run with '--allow-destructive' to confirm.`
+  );
 }
 
 /** Execute a SQL migration against the database (placeholder for real DB driver) */
@@ -122,9 +276,15 @@ async function executeJsMigration(
   logger.debug(`Executed JS migration: ${path.basename(_filePath)} (${_direction})`);
 }
 
-export async function migrateUp(dryRun: boolean = false): Promise<void> {
-  const state = loadState();
-  const allFiles = getMigrationFiles();
+export async function migrateUp(
+  dryRun: boolean = false,
+  options: MigrationOptions = {},
+): Promise<void> {
+  const migrationsDir = options.migrationsDir || DEFAULT_MIGRATIONS_DIR;
+  const metaFile = options.metaFile || DEFAULT_META_FILE;
+
+  const state = loadState(metaFile);
+  const allFiles = getMigrationFiles(migrationsDir);
 
   if (allFiles.length === 0) {
     logger.info('No migration files found.');
@@ -139,6 +299,12 @@ export async function migrateUp(dryRun: boolean = false): Promise<void> {
     return;
   }
 
+  // Validate every pending migration BEFORE applying any of them, so a single
+  // migration without a rollback path cannot leave a half-applied state.
+  for (const file of pending) {
+    validateMigrationRollbackPath(path.join(migrationsDir, file));
+  }
+
   const batch = state.lastBatch + 1;
   logger.info(`Found ${pending.length} pending migrations. Starting migration process...`);
   if (dryRun) {
@@ -147,9 +313,21 @@ export async function migrateUp(dryRun: boolean = false): Promise<void> {
 
   for (const file of pending) {
     logger.info(`Applying migration: ${file}`);
-    try {
-      const filePath = path.join(MIGRATIONS_DIR, file);
+    const filePath = path.join(migrationsDir, file);
 
+    const destructive = detectDestructiveOperations(
+      extractDirectionalContent(filePath, 'up'),
+    );
+    if (dryRun) {
+      if (destructive.length > 0) {
+        logger.warn(`[DRY-RUN] Destructive operations detected in up migration [${file}]:`);
+        destructive.forEach(m => logger.warn(`    - line ${m.line}: ${m.operation}`));
+      }
+    } else {
+      guardDestructiveOperations(destructive, file, 'up', !!options.allowDestructive);
+    }
+
+    try {
       if (file.endsWith('.sql')) {
         const upSql = extractUpSql(filePath);
         await executeSql(upSql, dryRun);
@@ -164,7 +342,7 @@ export async function migrateUp(dryRun: boolean = false): Promise<void> {
           batch,
         });
         state.lastBatch = batch;
-        saveState(state);
+        saveState(state, metaFile);
       }
 
       logger.info(`Successfully migrated up: ${file}`);
@@ -182,8 +360,12 @@ export async function migrateUp(dryRun: boolean = false): Promise<void> {
 export async function migrateDown(
   steps: number = 1,
   dryRun: boolean = false,
+  options: MigrationOptions = {},
 ): Promise<void> {
-  const state = loadState();
+  const migrationsDir = options.migrationsDir || DEFAULT_MIGRATIONS_DIR;
+  const metaFile = options.metaFile || DEFAULT_META_FILE;
+
+  const state = loadState(metaFile);
   if (state.applied.length === 0) {
     logger.warn('No applied migrations found to roll back.');
     return;
@@ -196,10 +378,34 @@ export async function migrateDown(
   const toRollback = Math.min(steps, state.applied.length);
   logger.info(`Rolling back ${toRollback} migration(s)...`);
 
-  for (let i = 0; i < toRollback; i++) {
-    const record = state.applied[state.applied.length - 1];
+  // Migrations to roll back, most recently applied first.
+  const targets = state.applied.slice(-toRollback).reverse();
+
+  // Pre-validate every rollback target (rollback path + destructive guard)
+  // BEFORE executing any of them, so a multi-step rollback cannot silently
+  // apply only part of the requested change.
+  for (const record of targets) {
     const file = record.filename;
-    const filePath = path.join(MIGRATIONS_DIR, file);
+    const filePath = path.join(migrationsDir, file);
+
+    validateMigrationRollbackPath(filePath);
+
+    const destructive = detectDestructiveOperations(
+      extractDirectionalContent(filePath, 'down'),
+    );
+    if (dryRun) {
+      if (destructive.length > 0) {
+        logger.warn(`[DRY-RUN] Destructive operations detected in down migration [${file}]:`);
+        destructive.forEach(m => logger.warn(`    - line ${m.line}: ${m.operation}`));
+      }
+    } else {
+      guardDestructiveOperations(destructive, file, 'down', !!options.allowDestructive);
+    }
+  }
+
+  for (const record of targets) {
+    const file = record.filename;
+    const filePath = path.join(migrationsDir, file);
 
     logger.info(`Initiating migration rollback sequence for: ${file}`);
 
@@ -212,12 +418,15 @@ export async function migrateDown(
       }
 
       if (!dryRun) {
-        state.applied.pop();
+        const idx = state.applied.findIndex(r => r.filename === file);
+        if (idx >= 0) {
+          state.applied.splice(idx, 1);
+        }
         // Decrement lastBatch if the last migration was rolled back
         if (state.applied.length === 0) {
           state.lastBatch = 0;
         }
-        saveState(state);
+        saveState(state, metaFile);
       }
 
       logger.info(`Successfully rolled back migration: ${file}`);
@@ -237,7 +446,7 @@ export function migrationStatus(): void {
   const allFiles = getMigrationFiles();
 
   console.log('\n========= MIGRATION SYSTEM STATUS =========');
-  console.log(`Tracking Storage File: ${META_FILE}`);
+  console.log(`Tracking Storage File: ${DEFAULT_META_FILE}`);
   console.log(`Total Migrations: ${allFiles.length}`);
   console.log(`Applied: ${state.applied.length}`);
   console.log(`Pending: ${allFiles.length - state.applied.length}\n`);
@@ -271,24 +480,28 @@ export function migrationStatus(): void {
 // Execute command line directives directly if run as a target execution binary
 if (require.main === module) {
   const command = process.argv[2];
+  const hasFlag = (flag: string) => process.argv.includes(flag);
 
   if (command === 'up') {
-    const dryRun = process.argv.includes('--dry-run');
-    migrateUp(dryRun).catch(() => process.exit(1));
+    const dryRun = hasFlag('--dry-run');
+    const allowDestructive = hasFlag('--allow-destructive');
+    migrateUp(dryRun, { allowDestructive }).catch(() => process.exit(1));
   } else if (command === 'down') {
-    const dryRun = process.argv.includes('--dry-run');
+    const dryRun = hasFlag('--dry-run');
+    const allowDestructive = hasFlag('--allow-destructive');
     const stepsArg = process.argv.find(arg => arg.startsWith('--steps='));
     const steps = stepsArg ? parseInt(stepsArg.split('=')[1], 10) : 1;
-    migrateDown(steps, dryRun).catch(() => process.exit(1));
+    migrateDown(steps, dryRun, { allowDestructive }).catch(() => process.exit(1));
   } else if (command === 'status') {
     migrationStatus();
   } else {
-    console.log('Usage: ts-node migrate.ts [up | down | status] [--dry-run] [--steps=N]');
-    console.log('  up         - Apply all pending migrations');
-    console.log('  down       - Rollback the most recent migration');
-    console.log('  status     - Show migration status');
-    console.log('  --dry-run  - Preview changes without executing them');
-    console.log('  --steps=N  - Number of migrations to rollback (default: 1)');
+    console.log('Usage: ts-node migrate.ts [up | down | status] [--dry-run] [--steps=N] [--allow-destructive]');
+    console.log('  up                  - Apply all pending migrations');
+    console.log('  down                - Rollback the most recent migration');
+    console.log('  status              - Show migration status');
+    console.log('  --dry-run           - Preview changes without executing them');
+    console.log('  --steps=N           - Number of migrations to rollback (default: 1)');
+    console.log('  --allow-destructive - Confirm destructive operations (DROP/TRUNCATE/DELETE)');
     process.exit(1);
   }
 }

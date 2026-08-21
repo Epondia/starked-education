@@ -1,5 +1,6 @@
 use crate::utils::storage::{EntityType, StorageUtils};
-use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
+use soroban_sdk::xdr::ToXdr;
+use soroban_sdk::{contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
 /// Credential status enumeration
 #[contracttype]
@@ -36,25 +37,26 @@ impl CredentialStatus {
 //  Revocation Types
 // ═══════════════════════════════════════════════════════════════════
 
-/// Reason codes for credential revocation — stored as u8 for gas efficiency.
+/// Reason codes for credential revocation — stored as u32 for gas efficiency.
+/// (soroban-sdk 20.5.0 has no `u8` storage type.)
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RevocationReason {
     AdministrativeError = 0,
-    AcademicDishonesty  = 1,
-    DataCorrection      = 2,
-    VoluntarySurrender  = 3,
-    Other               = 4,
+    AcademicDishonesty = 1,
+    DataCorrection = 2,
+    VoluntarySurrender = 3,
+    Other = 4,
 }
 
 impl RevocationReason {
     pub fn to_u8(&self) -> u8 {
         match self {
             RevocationReason::AdministrativeError => 0,
-            RevocationReason::AcademicDishonesty  => 1,
-            RevocationReason::DataCorrection      => 2,
-            RevocationReason::VoluntarySurrender  => 3,
-            RevocationReason::Other               => 4,
+            RevocationReason::AcademicDishonesty => 1,
+            RevocationReason::DataCorrection => 2,
+            RevocationReason::VoluntarySurrender => 3,
+            RevocationReason::Other => 4,
         }
     }
 
@@ -70,18 +72,35 @@ impl RevocationReason {
 }
 
 /// Immutable revocation record, written once.
-/// Uses u8 for reason code and u64 for timestamp to minimise storage cost.
+/// Uses u32 for reason code and u64 for timestamp to minimise storage cost.
 #[contracttype]
 #[derive(Clone)]
 pub struct RegistryRevocationRecord {
     /// Unix timestamp packed as u64
-    pub timestamp:   u64,
-    /// Reason packed as u8
-    pub reason_code: u8,
-    /// Optional human-readable note — callers must cap at 256 bytes
-    pub reason_str:  Option<String>,
+    pub timestamp: u64,
+    /// Reason packed as u32 (smallest unsigned int soroban supports in storage)
+    pub reason_code: u32,
+    /// Human-readable note — empty string means "no reason supplied".
+    /// Callers must cap the note at 256 bytes.
+    pub reason_str: String,
     /// Address that performed the revocation
-    pub revoker:     Address,
+    pub revoker: Address,
+}
+
+/// Revocation metadata surfaced by `verify_credential`.
+///
+/// Wrapped in a struct (rather than inline named fields on the enum variant)
+/// because `#[contracttype]` enums in soroban-sdk 20.5.0 only support a single
+/// unnamed field per variant.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RevocationDetails {
+    /// Reason packed as u32 (see `RevocationReason`)
+    pub reason_code: u32,
+    /// Unix timestamp of the revocation
+    pub timestamp:   u64,
+    /// Human-readable note — empty string means "no reason supplied"
+    pub reason_str:  String,
 }
 
 /// Return type for `verify_credential` in the registry
@@ -90,7 +109,7 @@ pub struct RegistryRevocationRecord {
 pub enum RegistryVerificationResult {
     Valid,
     Expired,
-    Revoked { reason_code: u8, timestamp: u64 },
+    Revoked(u32, u64),
     Pending,
 }
 
@@ -157,7 +176,7 @@ pub enum CredentialRegistryKey {
     UserCredentials(Address),
     CredentialCount,
     ExpiredCredentials,
-    RenewalHistory(u64),   // credential_id -> Vec<RenewalRecord>
+    RenewalHistory(u64),    // credential_id -> Vec<RenewalRecord>
     RevocationHistory(u64), // credential_id -> RegistryRevocationRecord
 }
 
@@ -182,15 +201,17 @@ fn contains_address(vec: &Vec<Address>, target: &Address) -> bool {
     false
 }
 
+const DEFAULT_MAX_BATCH_SIZE: u32 = 100;
+
 /// Events for credential operations
 #[contracttype]
 #[derive(Clone)]
 pub enum CredentialEvent {
-    Issued(u64),        // credential_id
-    Expired(u64),       // credential_id
-    Renewed(u64),       // credential_id
-    Revoked(u64),       // credential_id
-    StatusChanged(u64), // credential_id
+    Issued(u64),         // credential_id
+    Expired(u64),        // credential_id
+    Renewed(u64),        // credential_id
+    Revoked(u64),        // credential_id
+    StatusChanged(u64),  // credential_id
     ProofGenerated(u64), // credential_id — cross-chain proof generated
     ProofVerified(u64),  // credential_id — cross-chain proof verified
     ProofExpired(u64),   // credential_id — cross-chain proof expired
@@ -219,17 +240,14 @@ pub struct CrossChainProof {
 /// Storage keys for cross-chain relay
 #[contracttype]
 pub enum CrossChainRelayKey {
-    Proof(u64),          // credential_id -> CrossChainProof
-    ValidityWindow,      // u64: seconds a proof remains valid
-    ProofCount,          // u64: total proofs generated
+    Proof(u64),     // credential_id -> CrossChainProof
+    ValidityWindow, // u64: seconds a proof remains valid
+    ProofCount,     // u64: total proofs generated
 }
 
 /// Set the validity window for cross-chain proofs (admin only).
-pub fn set_proof_validity_window(
-    env: &Env,
-    admin: Address,
-    window_seconds: u64,
-) {
+pub fn set_proof_validity_window(env: &Env, admin: Address, window_seconds: u64) {
+    crate::pause::require_not_paused(env).unwrap();
     admin.require_auth();
     let stored_admin: Address = env
         .storage()
@@ -249,7 +267,10 @@ pub fn set_proof_validity_window(
         .set(&CrossChainRelayKey::ValidityWindow, &window_seconds);
 
     env.events().publish(
-        (Symbol::new(env, "relay"), Symbol::new(env, "validity_window_updated")),
+        (
+            Symbol::new(env, "relay"),
+            Symbol::new(env, "validity_window_updated"),
+        ),
         window_seconds,
     );
 }
@@ -328,8 +349,11 @@ pub fn generate_verification_proof(
 
     // Emit cross-chain relay event for off-chain relayers
     env.events().publish(
-        (Symbol::new(env, "relay"), Symbol::new(env, "proof_generated")),
-        (&proof, relayer),
+        (
+            Symbol::new(env, "relay"),
+            Symbol::new(env, "proof_generated"),
+        ),
+        (proof.clone(), relayer),
     );
 
     proof
@@ -364,7 +388,10 @@ pub fn verify_cross_chain_proof(env: &Env, proof: CrossChainProof) -> bool {
         Some(c) => c,
         None => {
             env.events().publish(
-                (Symbol::new(env, "relay"), Symbol::new(env, "credential_not_found")),
+                (
+                    Symbol::new(env, "relay"),
+                    Symbol::new(env, "credential_not_found"),
+                ),
                 proof.credential_id,
             );
             return false;
@@ -374,7 +401,10 @@ pub fn verify_cross_chain_proof(env: &Env, proof: CrossChainProof) -> bool {
     // Check 3: Credential is not revoked
     if credential.status == CredentialStatus::Revoked {
         env.events().publish(
-            (Symbol::new(env, "relay"), Symbol::new(env, "credential_revoked")),
+            (
+                Symbol::new(env, "relay"),
+                Symbol::new(env, "credential_revoked"),
+            ),
             proof.credential_id,
         );
         return false;
@@ -390,7 +420,10 @@ pub fn verify_cross_chain_proof(env: &Env, proof: CrossChainProof) -> bool {
     );
     if computed_hash != proof.proof_hash {
         env.events().publish(
-            (Symbol::new(env, "relay"), Symbol::new(env, "proof_hash_mismatch")),
+            (
+                Symbol::new(env, "relay"),
+                Symbol::new(env, "proof_hash_mismatch"),
+            ),
             proof.credential_id,
         );
         return false;
@@ -399,15 +432,25 @@ pub fn verify_cross_chain_proof(env: &Env, proof: CrossChainProof) -> bool {
     // Check 5: Proof status matches credential's actual current status
     if proof.status != credential.status {
         env.events().publish(
-            (Symbol::new(env, "relay"), Symbol::new(env, "status_mismatch")),
-            (proof.credential_id, proof.status.to_u8(), credential.status.to_u8()),
+            (
+                Symbol::new(env, "relay"),
+                Symbol::new(env, "status_mismatch"),
+            ),
+            (
+                proof.credential_id,
+                proof.status.to_u8() as u64,
+                credential.status.to_u8() as u64,
+            ),
         );
         return false;
     }
 
     // All checks passed — proof is valid
     env.events().publish(
-        (Symbol::new(env, "relay"), Symbol::new(env, "proof_verified")),
+        (
+            Symbol::new(env, "relay"),
+            Symbol::new(env, "proof_verified"),
+        ),
         (proof.credential_id, current_time),
     );
 
@@ -453,13 +496,13 @@ fn compute_proof_hash(
     // Append status as single byte (reuse existing to_u8)
     input.push_back(status.to_u8());
     // Append issuer address as raw bytes for deterministic hashing
-    let issuer_bytes = issuer.to_string().as_bytes();
-    input.append(&issuer_bytes);
+    input.append(&issuer.to_xdr(env));
     env.crypto().sha256(&input)
 }
 
 /// Invalidate a cross-chain proof (e.g., when credential is revoked).
 pub fn invalidate_cross_chain_proof(env: &Env, credential_id: u64) {
+    crate::pause::require_not_paused(env).unwrap();
     if env
         .storage()
         .instance()
@@ -470,7 +513,10 @@ pub fn invalidate_cross_chain_proof(env: &Env, credential_id: u64) {
             .remove(&CrossChainRelayKey::Proof(credential_id));
 
         env.events().publish(
-            (Symbol::new(env, "relay"), Symbol::new(env, "proof_invalidated")),
+            (
+                Symbol::new(env, "relay"),
+                Symbol::new(env, "proof_invalidated"),
+            ),
             credential_id,
         );
     }
@@ -487,6 +533,7 @@ pub fn issue_credential_with_expiration(
     ipfs_hash: String,
     validity_duration: u64, // Duration in seconds from issuance
 ) -> u64 {
+    crate::pause::require_not_paused(env).unwrap();
     issuer.require_auth();
 
     let admin: Address = env
@@ -556,6 +603,7 @@ pub fn renew_credential(
     renewer: Address,
     extension_duration: u64,
 ) -> bool {
+    crate::pause::require_not_paused(env).unwrap();
     renewer.require_auth();
 
     let mut credential: CredentialRegistry = env
@@ -645,7 +693,9 @@ pub fn check_credential_expiration(env: &Env, credential_id: u64) -> CredentialS
     }
 
     // Check if credential has expired
-    if current_time >= credential.expires_at && matches!(credential.status, CredentialStatus::Active) {
+    if current_time >= credential.expires_at
+        && matches!(credential.status, CredentialStatus::Active)
+    {
         credential.status = CredentialStatus::Expired;
 
         // Update stored credential
@@ -677,6 +727,7 @@ pub fn check_credential_expiration(env: &Env, credential_id: u64) -> CredentialS
 
 /// Batch update expiration status for multiple credentials
 pub fn batch_update_expiration_status(env: &Env, credential_ids: Vec<u64>) -> Vec<u64> {
+    crate::pause::require_not_paused(env).unwrap();
     let mut expired_credentials = Vec::new(env);
 
     for credential_id in credential_ids.iter() {
@@ -736,14 +787,11 @@ pub fn verify_credential(env: &Env, credential_id: u64) -> RegistryVerificationR
                 .persistent()
                 .get(&CredentialRegistryKey::RevocationHistory(credential_id))
                 .unwrap_or_else(|| panic!("Revocation record missing for revoked credential"));
-            RegistryVerificationResult::Revoked {
-                reason_code: record.reason_code,
-                timestamp:   record.timestamp,
-            }
+            RegistryVerificationResult::Revoked(record.reason_code, record.timestamp)
         }
-        CredentialStatus::Expired  => RegistryVerificationResult::Expired,
-        CredentialStatus::Pending  => RegistryVerificationResult::Pending,
-        CredentialStatus::Active   => RegistryVerificationResult::Valid,
+        CredentialStatus::Expired => RegistryVerificationResult::Expired,
+        CredentialStatus::Pending => RegistryVerificationResult::Pending,
+        CredentialStatus::Active => RegistryVerificationResult::Valid,
     }
 }
 
@@ -753,14 +801,15 @@ pub fn verify_credential(env: &Env, credential_id: u64) -> RegistryVerificationR
 /// Revocation is **irreversible** — calling on an already-revoked credential panics.
 ///
 /// # Emits
-/// `CredentialRevoked` event: `(credential_id, revoker, reason_code u8, timestamp u64)`.
+/// `CredentialRevoked` event: `(credential_id, revoker, reason_code u32, timestamp u64)`.
 pub fn revoke_credential(
-    env:           &Env,
+    env: &Env,
     credential_id: u64,
-    revoker:       Address,
-    reason:        RevocationReason,
-    reason_str:    Option<String>,
+    revoker: Address,
+    reason: RevocationReason,
+    reason_str: Option<String>,
 ) -> bool {
+    crate::pause::require_not_paused(env).unwrap();
     revoker.require_auth();
 
     let admin: Address = env
@@ -786,7 +835,7 @@ pub fn revoke_credential(
     }
 
     let revocation_time = env.ledger().timestamp();
-    let reason_code     = reason.to_u8();
+    let reason_code = reason.to_u8() as u32;
 
     credential.status = CredentialStatus::Revoked;
     env.storage().persistent().set(
@@ -794,12 +843,13 @@ pub fn revoke_credential(
         &credential,
     );
 
-    // Write the full revocation record
+    // Write the full revocation record. An empty `String` denotes "no reason
+    // supplied" because `#[contracttype]` cannot store `Option<String>`.
     let record = RegistryRevocationRecord {
-        timestamp:   revocation_time,
+        timestamp: revocation_time,
         reason_code,
-        reason_str:  reason_str.clone(),
-        revoker:     revoker.clone(),
+        reason_str: reason_str.unwrap_or_else(|| String::from_str(env, "")),
+        revoker: revoker.clone(),
     };
     env.storage().persistent().set(
         &CredentialRegistryKey::RevocationHistory(credential_id),
@@ -809,17 +859,14 @@ pub fn revoke_credential(
     // Emit CredentialRevoked event
     env.events().publish(
         (Symbol::new(env, "credential"), Symbol::new(env, "revoked")),
-        (credential_id, revoker, reason_code, revocation_time),
+        (credential_id, revoker, reason_code as u64, revocation_time),
     );
 
     true
 }
 
 /// Return the `RegistryRevocationRecord` for a credential, or `None` if not revoked.
-pub fn get_revocation_history(
-    env:           &Env,
-    credential_id: u64,
-) -> Option<RegistryRevocationRecord> {
+pub fn get_revocation_history(env: &Env, credential_id: u64) -> Option<RegistryRevocationRecord> {
     // Confirm credential exists first
     let _: CredentialRegistry = env
         .storage()
@@ -861,7 +908,9 @@ pub fn get_credentials_expiring_soon(env: &Env, within_seconds: u64) -> Vec<u64>
             .persistent()
             .get::<_, CredentialRegistry>(&CredentialRegistryKey::Credential(i))
         {
-            if credential.expires_at <= threshold && matches!(credential.status, CredentialStatus::Active) {
+            if credential.expires_at <= threshold
+                && matches!(credential.status, CredentialStatus::Active)
+            {
                 expiring_soon.push_back(i);
             }
         }
@@ -874,6 +923,8 @@ pub fn get_credentials_expiring_soon(env: &Env, within_seconds: u64) -> Vec<u64>
 //  Batch Credential Operations
 // ═══════════════════════════════════════════════════════════════════
 
+const DEFAULT_MAX_BATCH_SIZE: u32 = 100;
+
 /// Get the current maximum batch size
 pub fn get_max_batch_size(env: &Env) -> u32 {
     env.storage()
@@ -884,6 +935,7 @@ pub fn get_max_batch_size(env: &Env) -> u32 {
 
 /// Set the maximum batch size (admin only)
 pub fn set_max_batch_size(env: &Env, admin: Address, new_size: u32) {
+    crate::pause::require_not_paused(env).unwrap();
     admin.require_auth();
 
     let stored_admin: Address = env
@@ -917,6 +969,7 @@ pub fn batch_issue_credentials(
     issuer: Address,
     inputs: Vec<BatchIssueInput>,
 ) -> Vec<BatchResult> {
+    crate::pause::require_not_paused(env).unwrap();
     issuer.require_auth();
 
     // Authorize once at the top
@@ -981,7 +1034,9 @@ pub fn batch_issue_credentials(
         let mut user_creds = env
             .storage()
             .persistent()
-            .get(&CredentialRegistryKey::UserCredentials(input.recipient.clone()))
+            .get(&CredentialRegistryKey::UserCredentials(
+                input.recipient.clone(),
+            ))
             .unwrap_or_else(|| Vec::new(env));
         user_creds.push_back(credential_id);
         env.storage().persistent().set(
@@ -996,12 +1051,11 @@ pub fn batch_issue_credentials(
 
         // Emit individual event for this credential
         env.events().publish(
-            (Symbol::new(env, "credential"), Symbol::new(env, "batch_issued")),
             (
-                credential_id,
-                issuer.clone(),
-                input.recipient.clone(),
+                Symbol::new(env, "credential"),
+                Symbol::new(env, "batch_issued"),
             ),
+            (credential_id, issuer.clone(), input.recipient.clone()),
         );
 
         results.push_back(BatchResult {
@@ -1024,6 +1078,7 @@ pub fn batch_revoke_credentials(
     revoker: Address,
     credential_ids: Vec<u64>,
 ) -> Vec<BatchResult> {
+    crate::pause::require_not_paused(env).unwrap();
     revoker.require_auth();
 
     let admin: Address = env
@@ -1083,7 +1138,10 @@ pub fn batch_revoke_credentials(
 
         // Emit individual revocation event
         env.events().publish(
-            (Symbol::new(env, "credential"), Symbol::new(env, "batch_revoked")),
+            (
+                Symbol::new(env, "credential"),
+                Symbol::new(env, "batch_revoked"),
+            ),
             (credential_id, revoker.clone()),
         );
 
@@ -1107,6 +1165,7 @@ pub fn batch_renew_credentials(
     renewer: Address,
     renewals: Vec<BatchRenewInput>,
 ) -> Vec<BatchResult> {
+    crate::pause::require_not_paused(env).unwrap();
     renewer.require_auth();
 
     let admin: Address = env
@@ -1211,7 +1270,10 @@ pub fn batch_renew_credentials(
 
         // Emit individual renewal event
         env.events().publish(
-            (Symbol::new(env, "credential"), Symbol::new(env, "batch_renewed")),
+            (
+                Symbol::new(env, "credential"),
+                Symbol::new(env, "batch_renewed"),
+            ),
             (credential_id, renewer.clone(), renewal.extension_duration),
         );
 
@@ -1273,6 +1335,7 @@ pub fn create_multi_sig_credential(
     ipfs_hash: String,
     validity_duration: u64,
 ) -> u64 {
+    crate::pause::require_not_paused(env).unwrap();
     issuer.require_auth();
 
     let admin: Address = env
@@ -1336,7 +1399,9 @@ pub fn create_multi_sig_credential(
     let mut user_creds = env
         .storage()
         .persistent()
-        .get(&MultiSigRegistryKey::MultiSigUserCredentials(recipient.clone()))
+        .get(&MultiSigRegistryKey::MultiSigUserCredentials(
+            recipient.clone(),
+        ))
         .unwrap_or_else(|| Vec::new(env));
     user_creds.push_back(credential_id);
     env.storage().persistent().set(
@@ -1345,9 +1410,10 @@ pub fn create_multi_sig_credential(
     );
 
     // Update credential count
-    env.storage()
-        .instance()
-        .set(&MultiSigRegistryKey::MultiSigCredentialCount, &credential_id);
+    env.storage().instance().set(
+        &MultiSigRegistryKey::MultiSigCredentialCount,
+        &credential_id,
+    );
 
     // Emit event
     env.events().publish(
@@ -1362,11 +1428,8 @@ pub fn create_multi_sig_credential(
 }
 
 /// Add a signature to a multi-signature credential in the registry
-pub fn add_multi_sig_signature(
-    env: &Env,
-    credential_id: u64,
-    signer: Address,
-) -> CredentialStatus {
+pub fn add_multi_sig_signature(env: &Env, credential_id: u64, signer: Address) -> CredentialStatus {
+    crate::pause::require_not_paused(env).unwrap();
     signer.require_auth();
 
     let mut credential: MultiSigCredentialRegistry = env
@@ -1453,10 +1516,7 @@ pub fn add_multi_sig_signature(
 }
 
 /// Get a multi-sig credential from the registry
-pub fn get_multi_sig_credential(
-    env: &Env,
-    credential_id: u64,
-) -> MultiSigCredentialRegistry {
+pub fn get_multi_sig_credential(env: &Env, credential_id: u64) -> MultiSigCredentialRegistry {
     env.storage()
         .persistent()
         .get(&MultiSigRegistryKey::MultiSigCredential(credential_id))
@@ -1500,12 +1560,13 @@ pub fn get_multi_sig_credential_count(env: &Env) -> u64 {
 
 /// Revoke a multi-sig credential with a structured reason.
 pub fn revoke_multi_sig_credential(
-    env:           &Env,
+    env: &Env,
     credential_id: u64,
-    revoker:       Address,
-    reason:        RevocationReason,
-    reason_str:    Option<String>,
+    revoker: Address,
+    reason: RevocationReason,
+    _reason_str: Option<String>,
 ) -> bool {
+    crate::pause::require_not_paused(env).unwrap();
     revoker.require_auth();
 
     let admin: Address = env
@@ -1529,7 +1590,7 @@ pub fn revoke_multi_sig_credential(
     }
 
     let revocation_time = env.ledger().timestamp();
-    let reason_code     = reason.to_u8();
+    let reason_code = reason.to_u8() as u32;
 
     credential.status = CredentialStatus::Revoked;
     env.storage().persistent().set(
@@ -1542,7 +1603,7 @@ pub fn revoke_multi_sig_credential(
             Symbol::new(env, "multi_sig_registry"),
             Symbol::new(env, "revoked"),
         ),
-        (credential_id, revoker, reason_code, revocation_time),
+        (credential_id, revoker, reason_code as u64, revocation_time),
     );
 
     true

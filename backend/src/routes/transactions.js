@@ -1,7 +1,7 @@
 const express = require('express');
 const Joi = require('joi');
 const Transaction = require('../models/Transaction');
-const transactionQueue = require('../services/transactionQueue');
+const { transactionQueue } = require('../services/transactionQueue');
 const transactionProcessor = require('../workers/transactionProcessor');
 const transactionEvents = require('../events/transactionEvents');
 const stellarUtils = require('../utils/stellarUtils');

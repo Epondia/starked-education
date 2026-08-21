@@ -8,9 +8,8 @@ license = "MIT"
 repository = "https://github.com/jobbykings/starked-education"
 
 [lib]
-# cdylib is what soroban-cli consumes for the WASM artifact; rlib lets the
-# examples/benches import the crate (e.g. bench_gas in CI).
 crate-type = ["cdylib", "rlib"]
+doctest = false
 
 [dependencies]
 soroban-sdk = "20.5.0"
@@ -25,3 +24,4 @@ testutils = ["soroban-sdk/testutils"]
 
 [[example]]
 name = "bench_gas"
+required-features = ["testutils"]

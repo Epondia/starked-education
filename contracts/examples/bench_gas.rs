@@ -11,8 +11,6 @@ where
 {
     env.budget().reset_default();
     f();
-    // In soroban-sdk 20.x, `cpu_instruction_cost` returns the CPU instructions
-    // consumed since the last budget reset (see testutils::budget::Budget).
     env.budget().cpu_instruction_cost()
 }
 

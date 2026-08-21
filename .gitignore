@@ -76,6 +76,9 @@ temp/
 *.log
 *.log.*
 
+# Runtime-generated migration state (created by the migration runner)
+backend/migrations/meta/
+
 # Editor / IDE
 .vscode/
 .idea/

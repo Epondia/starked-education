@@ -388,10 +388,6 @@ impl TokenomicsContract {
             .unwrap_or(0)
     }
 
-    // any(test, feature = "testutils") rather than just test: the contractimpl
-    // macro copies this cfg onto the generated __mint_gov_for_test wrapper module,
-    // while the fn-set registry ctor is gated on any(test, feature = "testutils").
-    // A plain #[cfg(test)] breaks builds with --features testutils (e.g. bench_gas).
     #[cfg(any(test, feature = "testutils"))]
     pub fn mint_gov_for_test(env: Env, user: Address, amount: u64) {
         let balance = Self::balance_of(env.clone(), user.clone(), 1);
