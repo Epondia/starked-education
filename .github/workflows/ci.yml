@@ -358,4 +358,7 @@ jobs:
           # ChromeDriver matching the installed Chrome and point axe at it.
           CHROME_MAJOR=$(google-chrome --version | sed -E 's/.* ([0-9]+)\..*/\1/')
           npm i --no-save "chromedriver@$CHROME_MAJOR"
-          npx @axe-core/cli --chromedriver-path="$(find node_modules/chromedriver -name chromedriver -type f | head -1)" http://localhost:3000
+          # npm workspaces hoist the new dependency to the root node_modules,
+          # so search from the repo root for the driver binary.
+          DRIVER=$(find .. -path '*/chromedriver/lib/chromedriver/chromedriver' -type f | head -1)
+          npx @axe-core/cli --chromedriver-path="$DRIVER" http://localhost:3000
