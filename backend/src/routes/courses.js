@@ -345,8 +345,10 @@ router.post('/:contentId/versions',
         isCurrent: true
       };
       
-      // Invalidate cached course data so clients see the new version immediately
-      courseCacheService.invalidateAllCourseCaches();
+      // Invalidate cached course data so clients see the new version immediately.
+      // Awaiting ensures no stale listing can be served between the write
+      // response and the cache invalidation completing.
+      await courseCacheService.invalidateAllCourseCaches();
 
       res.status(201).json({
         success: true,
@@ -656,8 +658,9 @@ router.post('/:contentId/versions/restore',
         updatedAt: new Date()
       };
       
-      // Content changed — drop stale cached listings/details
-      courseCacheService.invalidateAllCourseCaches();
+      // Content changed — drop stale cached listings/details before responding
+      // so the invalidation race described in #295 is closed.
+      await courseCacheService.invalidateAllCourseCaches();
 
       res.status(200).json({
         success: true,
@@ -710,8 +713,9 @@ router.put('/:contentId/versions/settings',
         updatedAt: new Date()
       };
       
-      // Versioning behavior changed — invalidate cached course data
-      courseCacheService.invalidateAllCourseCaches();
+      // Versioning behavior changed — invalidate cached course data before
+      // responding (see #295: stale reads after a write).
+      await courseCacheService.invalidateAllCourseCaches();
 
       res.status(200).json({
         success: true,
