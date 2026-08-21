@@ -1,6 +1,7 @@
 import { TimeLockedCredential, ITimeLockedCredential } from '../models/TimeLockedCredential';
 import { v4 as uuidv4 } from 'uuid';
 import { Redis } from 'ioredis';
+import courseCacheService, { KEY_PREFIX, DEFAULT_TTL } from './courseCacheService';
 
 interface IssueCredentialParams {
   issuer: string;
@@ -190,6 +191,9 @@ export class TimeLockCredentialService {
 
       credential.scheduleId = scheduleId;
       await credential.save();
+
+      // Drop stale cached copy of the updated credential (invalidation on write)
+      await courseCacheService.invalidateCredential(credential.credentialId);
     }
 
     // Cache schedule metadata
@@ -234,24 +238,45 @@ export class TimeLockCredentialService {
   }
 
   /**
-   * Get credentials by recipient
+   * Cache-first read of a single credential.
+   * On a miss (or Redis failure) it falls back to the database and backfills
+   * the cache, so hot reads don't hit the DB on every request.
    */
-  async getCredentialsByRecipient(recipient: string): Promise<ITimeLockedCredential[]> {
-    return TimeLockedCredential.find({ recipient }).sort({ createdAt: -1 });
+  async getCredentialById(credentialId: string): Promise<ITimeLockedCredential | null> {
+    return courseCacheService.getOrSet(
+      KEY_PREFIX.CREDENTIAL + credentialId,
+      () => TimeLockedCredential.findOne({ credentialId }),
+      { ttl: DEFAULT_TTL.CREDENTIAL_DETAIL },
+    );
   }
 
   /**
-   * Get credentials by issuer
+   * Get credentials by recipient (cached, short TTL)
+   */
+  async getCredentialsByRecipient(recipient: string): Promise<ITimeLockedCredential[]> {
+    return courseCacheService.getOrSet(
+      KEY_PREFIX.CREDENTIAL_LIST + 'recipient:' + recipient,
+      () => TimeLockedCredential.find({ recipient }).sort({ createdAt: -1 }),
+      { ttl: DEFAULT_TTL.CREDENTIAL_LIST },
+    );
+  }
+
+  /**
+   * Get credentials by issuer (cached, short TTL)
    */
   async getCredentialsByIssuer(issuer: string): Promise<ITimeLockedCredential[]> {
-    return TimeLockedCredential.find({ issuer }).sort({ createdAt: -1 });
+    return courseCacheService.getOrSet(
+      KEY_PREFIX.CREDENTIAL_LIST + 'issuer:' + issuer,
+      () => TimeLockedCredential.find({ issuer }).sort({ createdAt: -1 }),
+      { ttl: DEFAULT_TTL.CREDENTIAL_LIST },
+    );
   }
 
   /**
    * Get audit trail for a credential
    */
   async getAuditTrail(credentialId: string): Promise<any> {
-    const credential = await TimeLockedCredential.findOne({ credentialId });
+    const credential = await this.getCredentialById(credentialId);
     if (!credential) {
       throw new Error('Credential not found');
     }
@@ -264,13 +289,18 @@ export class TimeLockCredentialService {
   }
 
   /**
-   * Helper: Cache credential data
+   * Helper: Cache credential data (write-through) and invalidate the
+   * recipient/issuer list caches that this credential belongs to.
    */
   private async cacheCredential(credential: ITimeLockedCredential): Promise<void> {
-    if (!this.redis) return;
+    await courseCacheService.setCredential(credential);
 
-    const cacheKey = `credential:${credential.credentialId}`;
-    await this.redis.setex(cacheKey, 86400, JSON.stringify(credential));
+    // List reads for this recipient/issuer are now stale — drop them so the
+    // next read re-fetches from the DB (invalidation on write).
+    await Promise.all([
+      courseCacheService.invalidate(KEY_PREFIX.CREDENTIAL_LIST + 'recipient:' + credential.recipient),
+      courseCacheService.invalidate(KEY_PREFIX.CREDENTIAL_LIST + 'issuer:' + credential.issuer),
+    ]);
   }
 
   /**
