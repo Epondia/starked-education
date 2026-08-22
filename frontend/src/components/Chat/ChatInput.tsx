@@ -5,7 +5,7 @@ interface ChatInputProps {
   value: string;
   onChange: (value: string) => void;
   onSend: (message: string, attachments?: any[]) => void;
-  onKeyPress?: (e: React.KeyboardEvent) => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
   disabled?: boolean;
   placeholder?: string;
   isListening?: boolean;
@@ -18,7 +18,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   value,
   onChange,
   onSend,
-  onKeyPress,
+  onKeyDown,
   disabled = false,
   placeholder = 'Type your message...',
   isListening = false,
@@ -57,12 +57,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
-    onKeyPress?.(e);
+    onKeyDown?.(e);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,7 +133,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             ref={textareaRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             placeholder={placeholder}
             disabled={disabled}
             rows={1}
