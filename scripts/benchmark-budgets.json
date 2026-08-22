@@ -1,0 +1,41 @@
+{
+  "description": "Per-endpoint latency budgets (milliseconds) for the critical backend endpoints. Single source of truth shared by scripts/benchmark-backend.js (k6 thresholds) and scripts/check-benchmark-regression.js (CI regression gate). See docs/PERFORMANCE_BUDGETS.md.",
+  "errorRatePercent": 5,
+  "endpoints": {
+    "health": {
+      "p95": 100,
+      "p99": 200,
+      "description": "GET /health/live - liveness probe"
+    },
+    "courses-list": {
+      "p95": 300,
+      "p99": 500,
+      "description": "GET /api/v1/courses?limit=10&page=1 - course listing"
+    },
+    "course-current": {
+      "p95": 300,
+      "p99": 500,
+      "description": "GET /api/v1/courses/:contentId/versions/current - course current version"
+    },
+    "search": {
+      "p95": 400,
+      "p99": 700,
+      "description": "GET /api/v1/search?q=... - course search"
+    },
+    "search-suggestions": {
+      "p95": 300,
+      "p99": 500,
+      "description": "GET /api/v1/search/suggestions?q=... - typeahead suggestions"
+    },
+    "search-trending": {
+      "p95": 300,
+      "p99": 500,
+      "description": "GET /api/v1/search/trending - trending courses"
+    },
+    "login": {
+      "p95": 500,
+      "p99": 1000,
+      "description": "POST /api/v1/auth/login - authentication"
+    }
+  }
+}

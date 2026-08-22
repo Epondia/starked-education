@@ -85,15 +85,20 @@ jobs:
       - name: Run k6 load test
         run: |
           mkdir -p benchmark-results
-          k6 run --out json=benchmark-results/backend-load.json scripts/benchmark-backend.js || true
+          # Per-endpoint p95/p99 budgets are enforced by k6 thresholds
+          # (built from scripts/benchmark-budgets.json). A breach fails the run.
+          k6 run --out json=benchmark-results/backend-load.json scripts/benchmark-backend.js
 
       - name: Check performance regression
+        # Runs even if the k6 thresholds already failed, so the report is
+        # always attached to the job. Fails when any endpoint exceeds its
+        # budget (see scripts/benchmark-budgets.json).
+        if: always()
         run: |
-          # Parse k6 results and check against baseline
-          # Fail if p95 response time > 500ms or error rate > 5%
-          node scripts/check-benchmark-regression.js benchmark-results/backend-load.json || true
+          node scripts/check-benchmark-regression.js benchmark-results/backend-load.json
 
       - name: Upload benchmark results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: backend-benchmark-results
