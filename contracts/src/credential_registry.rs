@@ -201,8 +201,6 @@ fn contains_address(vec: &Vec<Address>, target: &Address) -> bool {
     false
 }
 
-const DEFAULT_MAX_BATCH_SIZE: u32 = 100;
-
 /// Events for credential operations
 #[contracttype]
 #[derive(Clone)]

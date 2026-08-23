@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { createMetadata } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
 
