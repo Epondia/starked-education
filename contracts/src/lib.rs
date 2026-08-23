@@ -3,7 +3,7 @@ use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
-use crate::dynamic_nft::{BadgeUpgradeRecord, CertificateTier, DynamicNFT, RarityTier};
+use crate::dynamic_nft::{DynamicNFT, CertificateTier, RarityTier, BadgeUpgradeRecord};
 
 pub mod credential_registry;
 #[cfg(test)]
@@ -26,6 +26,7 @@ pub mod pause;
 pub mod tokenomics;
 #[cfg(test)]
 pub mod tokenomics_test;
+
 pub mod user_profile;
 #[cfg(test)]
 pub mod user_profile_test;

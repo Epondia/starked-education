@@ -4,10 +4,10 @@ export const dynamic = 'force-dynamic';
 
 import React from 'react';
 import { usePerformanceMonitoring } from '@/hooks/usePerformanceMonitoring';
-import dynamicImport from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-const PerformanceMetricsOverview = dynamicImport(
+const PerformanceMetricsOverview = nextDynamic(
   () => import('@/components/performance/PerformanceMetricsOverview').then((m) => m.PerformanceMetricsOverview),
   {
     loading: () => (
@@ -19,7 +19,7 @@ const PerformanceMetricsOverview = dynamicImport(
   }
 );
 
-const PerformanceAlerts = dynamicImport(
+const PerformanceAlerts = nextDynamic(
   () => import('@/components/performance/PerformanceAlerts'),
   {
     loading: () => (

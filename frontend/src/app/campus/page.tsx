@@ -2,10 +2,10 @@ import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
 
-import dynamicImport from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
 import ErrorBoundary from '../../components/ErrorBoundary';
 
-const MetaverseCampus = dynamicImport(
+const MetaverseCampus = nextDynamic(
   () => import('../../components/Metaverse').then((mod) => mod.MetaverseCampus),
   {
     loading: () => (
