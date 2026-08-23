@@ -1,5 +1,6 @@
 import { BookmarkPlus, Eye, Network } from 'lucide-react';
 import { DiscoveryCourse, ViewMode } from './types';
+import Image from 'next/image';
 
 import React from 'react';
 
@@ -21,10 +22,11 @@ export const CourseCard: React.FC<{
       <div
         className={`${view === 'list' ? 'flex-row' : 'flex-col'} flex gap-4`}
       >
-        <img
+        <Image
           src={course.thumbnail || '/placeholder-course.png'}
           alt={course.title}
-          loading="lazy"
+          width={400}
+          height={200}
           className={`${view === 'list' ? 'h-28 w-40' : 'h-40 w-full'} rounded-[20px] object-cover`}
         />
         <div className="flex flex-1 flex-col">

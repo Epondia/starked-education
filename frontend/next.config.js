@@ -268,9 +268,17 @@ const nextConfig = {
   },
   // Enable compression
   compress: true,
-  // Enable image optimization
   images: {
-    domains: ['localhost'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+      {
+        protocol: 'http',
+        hostname: '**',
+      },
+    ],
     formats: ['image/webp', 'image/avif'],
   },
   // Performance headers

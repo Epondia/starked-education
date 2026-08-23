@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, GraduationCap, MessageSquare, Video, Mic, MicOff, Share2, Globe, Settings, Book, Award, Clock, Hand } from 'lucide-react';
+import Image from 'next/image';
 
 export type ClassroomLayout = 'lecture' | 'seminar' | 'lab' | 'discussion' | 'presentation';
 export type AvatarState = 'idle' | 'listening' | 'speaking' | 'raising-hand' | 'applauding';
@@ -442,10 +443,12 @@ export function VirtualClassroom({
                   <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
                     <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
                       {student.avatarUrl ? (
-                        <img 
+                        <Image 
                           src={student.avatarUrl} 
                           alt={student.name}
-                          className="w-full h-full rounded-full object-cover"
+                          width={24}
+                          height={24}
+                          className="rounded-full object-cover"
                         />
                       ) : (
                         <div className="w-full h-full rounded-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
@@ -512,10 +515,12 @@ export function VirtualClassroom({
             {/* Avatar */}
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center shadow-xl">
               {session.instructor.avatarUrl ? (
-                <img 
+                <Image 
                   src={session.instructor.avatarUrl} 
                   alt={session.instructor.name}
-                  className="w-full h-full rounded-full object-cover"
+                  width={48}
+                  height={48}
+                  className="rounded-full object-cover"
                 />
               ) : (
                 <div className="w-full h-full rounded-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
@@ -675,10 +680,12 @@ export function VirtualClassroom({
               <div className="flex items-center gap-3 p-2 bg-purple-900/20 rounded border border-purple-500/30">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center">
                   {session.instructor.avatarUrl ? (
-                    <img 
+                    <Image 
                       src={session.instructor.avatarUrl} 
                       alt={session.instructor.name}
-                      className="w-full h-full rounded-full object-cover"
+                      width={32}
+                      height={32}
+                      className="rounded-full object-cover"
                     />
                   ) : (
                     <GraduationCap className="h-4 w-4 text-white" />
@@ -706,10 +713,12 @@ export function VirtualClassroom({
                   <div key={student.id} className="flex items-center gap-3 p-2 bg-blue-900/20 rounded border border-blue-500/30">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
                       {student.avatarUrl ? (
-                        <img 
+                        <Image 
                           src={student.avatarUrl} 
                           alt={student.name}
-                          className="w-full h-full rounded-full object-cover"
+                          width={32}
+                          height={32}
+                          className="rounded-full object-cover"
                         />
                       ) : (
                         <Users className="h-4 w-4 text-white" />

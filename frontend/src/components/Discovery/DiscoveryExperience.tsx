@@ -20,6 +20,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 
 import CourseCard from './CourseCard';
 import { CourseGridSkeleton } from './CourseCardSkeleton';
@@ -872,11 +873,14 @@ export const DiscoveryExperience: React.FC = () => {
 
               {selectedCourse ? (
                 <div className="mt-4">
-                  <img
-                    alt={selectedCourse.title}
-                    className="h-48 w-full rounded-[24px] object-cover"
-                    src={selectedCourse.thumbnail}
-                  />
+                  <div className="relative h-48 w-full">
+                    <Image
+                      src={selectedCourse.thumbnail}
+                      alt={selectedCourse.title}
+                      fill
+                      className="rounded-[24px] object-cover"
+                    />
+                  </div>
                   <h2
                     className="mt-4 text-2xl font-semibold"
                     style={{

@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   title: 'Metaverse Campus — StarkEd',
   description: 'Immersive virtual learning campus with classrooms, social spaces, and avatar interaction.',
   keywords: ['virtual campus', 'collaborative learning', 'online classroom'],
-});
+};
 
 export default function CampusPage() {
   return (

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
 
 interface InteractiveTimelineMapProps {
   contentType: 'timeline' | 'map' | 'hybrid';
@@ -577,9 +578,12 @@ const InteractiveTimelineMap: React.FC<InteractiveTimelineMapProps> = ({
             {selectedEvent.media && (
               <div className="mt-3">
                 {selectedEvent.media.type === 'image' && (
-                  <img 
+                  <Image 
                     src={selectedEvent.media.url} 
-                    alt={selectedEvent.media.caption}
+                    alt={selectedEvent.media.caption || 'Event media'}
+                    width={320}
+                    height={240}
+                    style={{ width: '100%', height: 'auto' }}
                     className="max-w-xs rounded-lg"
                   />
                 )}

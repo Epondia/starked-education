@@ -6,6 +6,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -361,11 +362,14 @@ function OverviewStep({
     <div className="space-y-6">
       <div className="grid md:grid-cols-2 gap-6">
         <div>
-          <img 
-            src={course.thumbnail} 
-            alt={course.title}
-            className="w-full h-48 object-cover rounded-lg"
-          />
+          <div className="relative w-full h-48">
+            <Image 
+              src={course.thumbnail} 
+              alt={course.title}
+              fill
+              className="object-cover rounded-lg"
+            />
+          </div>
         </div>
         <div className="space-y-4">
           <div>

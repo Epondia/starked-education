@@ -3,7 +3,7 @@ import { createMetadata } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
 
-import { VirtualScienceLab } from '../../components/Lab';
+// import { VirtualScienceLab } from '../../components/Lab';
 import ErrorBoundary from '../../components/ErrorBoundary';
 
 const VirtualScienceLab = dynamic(

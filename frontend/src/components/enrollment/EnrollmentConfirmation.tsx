@@ -6,6 +6,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -266,10 +267,12 @@ export function EnrollmentConfirmation({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex gap-4">
-              <img 
+              <Image 
                 src={course.thumbnail} 
                 alt={course.title}
-                className="w-20 h-20 object-cover rounded-lg"
+                width={80}
+                height={80}
+                className="object-cover rounded-lg"
               />
               <div className="flex-1">
                 <h3 className="font-semibold">{course.title}</h3>
