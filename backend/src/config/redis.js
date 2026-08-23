@@ -416,6 +416,18 @@ class RedisConfig {
 const redisConfig = new RedisConfig();
 
 /**
+ * Cache TTL configuration (in seconds) for hot course/credential reads.
+ * Centralized here so cache layers (courseCacheService, routes) stay consistent.
+ */
+const CACHE_TTL = {
+  COURSE_LIST: 300,        // 5 minutes
+  COURSE_DETAIL: 600,      // 10 minutes
+  TRENDING: 180,           // 3 minutes
+  CREDENTIAL_DETAIL: 86400, // 24 hours
+  CREDENTIAL_LIST: 60,     // 1 minute
+};
+
+/**
  * Check Redis connectivity with ping command
  * Used by health check endpoints to verify Redis availability
  * @returns Health status with latency and optional error message
@@ -451,3 +463,4 @@ async function checkRedisConnectivity() {
 module.exports = redisConfig;
 module.exports.checkRedisConnectivity = checkRedisConnectivity;
 module.exports.redisCircuitBreaker = redisCircuitBreaker;
+module.exports.CACHE_TTL = CACHE_TTL;
