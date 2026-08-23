@@ -1,3 +1,4 @@
+use crate::events;
 use crate::utils::storage::{EntityType, StorageUtils};
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec};
@@ -585,11 +586,8 @@ pub fn issue_credential_with_expiration(
         .instance()
         .set(&CredentialRegistryKey::CredentialCount, &credential_id);
 
-    // Emit event
-    env.events().publish(
-        (Symbol::new(env, "credential"), Symbol::new(env, "issued")),
-        (credential_id, issuer.clone()),
-    );
+    // Emit lifecycle event for off-chain indexers
+    events::emit_credential_issued(env, credential_id, &issuer);
 
     credential_id
 }
@@ -666,11 +664,8 @@ pub fn renew_credential(
         &credential,
     );
 
-    // Emit renewal event
-    env.events().publish(
-        (Symbol::new(env, "credential"), Symbol::new(env, "renewed")),
-        (credential_id, renewer, extension_duration),
-    );
+    // Emit lifecycle event for off-chain indexers
+    events::emit_credential_renewed(env, credential_id, &renewer, extension_duration);
 
     true
 }
@@ -854,10 +849,13 @@ pub fn revoke_credential(
         &record,
     );
 
-    // Emit CredentialRevoked event
-    env.events().publish(
-        (Symbol::new(env, "credential"), Symbol::new(env, "revoked")),
-        (credential_id, revoker, reason_code as u64, revocation_time),
+    // Emit lifecycle event for off-chain indexers
+    events::emit_credential_revoked(
+        env,
+        credential_id,
+        &revoker,
+        reason_code as u64,
+        revocation_time,
     );
 
     true
@@ -920,8 +918,6 @@ pub fn get_credentials_expiring_soon(env: &Env, within_seconds: u64) -> Vec<u64>
 // ═══════════════════════════════════════════════════════════════════
 //  Batch Credential Operations
 // ═══════════════════════════════════════════════════════════════════
-
-
 
 /// Get the current maximum batch size
 pub fn get_max_batch_size(env: &Env) -> u32 {
