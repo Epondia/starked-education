@@ -40,6 +40,11 @@ const { circuitBreakerRegistry } = require('../utils/circuitBreaker');
 // Package version
 const packageJson = require('../../../package.json');
 
+// Prometheus metrics (request/latency/error/queue) and the transaction queue
+// used to sample accurate queue depth at scrape time.
+const { getMetricsContent, setQueueDepth, contentType: metricsContentType } = require('../services/metricsRegistry');
+const { transactionQueue } = require('../services/transactionQueue');
+
 /**
  * Check Stellar Horizon node health via HTTP
  */
@@ -164,6 +169,83 @@ function aggregateStatus(
   );
   return criticalUnhealthy ? 'unhealthy' : 'degraded';
 }
+
+/**
+ * Normalise an IP address by stripping the IPv4-mapped IPv6 prefix so loopback
+ * comparisons work for both `127.0.0.1` and `::ffff:127.0.0.1`.
+ */
+function normalizeIp(ip: string): string {
+  return (ip || '').replace(/^::ffff:/, '');
+}
+
+/**
+ * True when the address is a loopback address.
+ */
+function isLoopbackIp(ip: string): boolean {
+  const normalized = normalizeIp(ip);
+  return normalized === '127.0.0.1' || normalized === '::1';
+}
+
+/**
+ * Metrics are operator-facing and can reveal internal topology, so they must
+ * never be served publicly. A request is allowed when it originates from a
+ * loopback address (Prometheus scraping the same host) or, for remote
+ * scrapers, when it presents the shared token configured via
+ * `PROMETHEUS_METRICS_TOKEN` (either `Authorization: Bearer <token>` or
+ * `X-Metrics-Token: <token>`).
+ */
+export function isInternalRequest(req: Request): boolean {
+  const ip = req.ip || (req.socket && req.socket.remoteAddress) || '';
+  if (isLoopbackIp(ip)) {
+    return true;
+  }
+
+  const token = process.env.PROMETHEUS_METRICS_TOKEN;
+  if (!token) {
+    return false;
+  }
+
+  const headerToken = req.get('x-metrics-token');
+  const authHeader = req.get('authorization') || '';
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+
+  return headerToken === token || bearerToken === token;
+}
+
+/**
+ * GET /metrics — Prometheus-format metrics (internal-only).
+ *
+ * Samples the transaction queue depth from the real queue before rendering so
+ * the gauge reflects actual depth rather than a stale or simulated value.
+ */
+const metricsHandler = async (req: Request, res: Response) => {
+  if (!isInternalRequest(req)) {
+    res.status(403).json({ error: 'Forbidden', message: 'Metrics endpoint is internal-only' });
+    return;
+  }
+
+  try {
+    try {
+      const stats = await transactionQueue.getQueueStats();
+      const depth = stats && typeof stats.total === 'number' ? stats.total : 0;
+      setQueueDepth('stellar_transactions', depth);
+    } catch {
+      // Queue stats are best-effort: fall back to 0 rather than failing the scrape.
+      setQueueDepth('stellar_transactions', 0);
+    }
+
+    res.set('Content-Type', metricsContentType);
+    res.send(await getMetricsContent());
+  } catch (error) {
+    console.error('Failed to render metrics:', error);
+    res.status(500).json({ error: 'Failed to collect metrics' });
+  }
+};
+
+// Exposed at both /health/metrics (below) and, via metricsRouter, at /metrics.
+router.get('/metrics', metricsHandler);
+export const metricsRouter: Router = Router();
+metricsRouter.get('/', metricsHandler);
 
 /**
  * GET /health/live

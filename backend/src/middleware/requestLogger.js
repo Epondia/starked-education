@@ -13,6 +13,7 @@
 
 const logger = require('../utils/logger');
 const crypto = require('crypto');
+const metrics = require('../services/metricsRegistry');
 
 /**
  * Mask sensitive data in request bodies and headers
@@ -90,6 +91,24 @@ function generateRequestId() {
 }
 
 /**
+ * Derive a low-cardinality route label from the request.
+ *
+ * Uses the matched route pattern (e.g. `/courses/:id`) plus the mounted base
+ * URL instead of the raw URL, so dynamic path segments and query strings never
+ * leak into metric label values.
+ */
+function getRouteLabel(req) {
+  const routePath = req.route && req.route.path;
+  if (!routePath) return 'unmatched';
+
+  const baseUrl = (req.baseUrl || '').replace(/\/$/, '');
+  if (routePath === '/') {
+    return baseUrl || '/';
+  }
+  return `${baseUrl}${routePath}`;
+}
+
+/**
  * Structured request/response logging middleware
  */
 function requestLogger(req, res, next) {
@@ -160,6 +179,14 @@ function requestLogger(req, res, next) {
         logger.http(logMessage);
     }
 
+    // Record request metrics for Prometheus (low-cardinality route label)
+    metrics.recordRequest({
+      method: requestInfo.method,
+      route: getRouteLabel(req),
+      statusCode: res.statusCode,
+      durationMs,
+    });
+
     // Call original end
     return originalEnd.call(this, chunk, encoding);
   };
@@ -168,3 +195,4 @@ function requestLogger(req, res, next) {
 }
 
 module.exports = requestLogger;
+module.exports.getRouteLabel = getRouteLabel;
