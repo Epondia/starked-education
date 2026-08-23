@@ -14,6 +14,7 @@ const securityService = require('../services/securityService');
 const Joi = require('joi');
 const { validateRequestSchema } = require('../middleware/validateRequestSchema');
 const { hashActorIdentifier } = require('../services/auditLogService');
+const userStore = require('../services/userStore');
 const router = express.Router();
 
 const registerSchema = {
@@ -50,9 +51,6 @@ const assignRoleSchema = {
   })
 };
 
-// Mock user database - replace with actual database implementation
-const users = new Map();
-
 /**
  * Generate JWT token
  * @param {Object} user - User object
@@ -81,10 +79,10 @@ router.post('/register', registerLimiter, validateRequestSchema(registerSchema),
     req.auditActorId = `identity:${hashActorIdentifier(email || username)}`;
     req.auditActorRole = role;
 
-    // Check if user already exists
-    const existingUser = Array.from(users.values()).find(
-      user => user.username === username || user.email === email
-    );
+    // Check if user already exists (persisted in Postgres, not memory)
+    const existingByUsername = await userStore.findByUsername(username);
+    const existingByEmail = await userStore.findByEmail(email);
+    const existingUser = existingByUsername || existingByEmail;
 
     if (existingUser) {
       req.auditDetails = { event: 'registration_conflict' };
@@ -99,18 +97,13 @@ router.post('/register', registerLimiter, validateRequestSchema(registerSchema),
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create new user
-    const newUser = {
-      id: Date.now().toString(),
+    // Create new user (id generated with crypto.randomUUID inside the store)
+    const newUser = await userStore.createUser({
       username,
       email,
       password: hashedPassword,
-      role,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    users.set(newUser.id, newUser);
+      role
+    });
 
     // Generate token
     req.auditActorId = newUser.id;
@@ -129,6 +122,15 @@ router.post('/register', registerLimiter, validateRequestSchema(registerSchema),
       token
     });
   } catch (error) {
+    // Concurrent duplicate username/email: the unique constraint wins the
+    // race after the existence check above (issue #390).
+    if (error && error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        error: 'User already exists',
+        message: 'A user with this username or email already exists'
+      });
+    }
     console.error('Registration error:', error);
     res.status(500).json({
       error: 'Internal server error',
@@ -146,10 +148,8 @@ router.post('/login', loginLimiter, validateRequestSchema(loginSchema), async (r
     const { username, password } = req.body;
     req.auditActorId = `identity:${hashActorIdentifier(username)}`;
 
-    // Find user by username or email
-    const user = Array.from(users.values()).find(
-      u => u.username === username || u.email === username
-    );
+    // Find user by username or email (persisted in Postgres, not memory)
+    const user = await userStore.findByUsernameOrEmail(username);
 
     if (!user) {
       req.auditDetails = { event: 'authentication_failure', reason: 'user_not_found' };
@@ -200,8 +200,8 @@ router.post('/login', loginLimiter, validateRequestSchema(loginSchema), async (r
  * Get current user profile
  * GET /api/auth/profile
  */
-router.get('/profile', readLimiter, authenticateToken, (req, res) => {
-  const user = users.get(req.user.id);
+router.get('/profile', readLimiter, authenticateToken, async (req, res) => {
+  const user = await userStore.findById(req.user.id);
   
   if (!user) {
     return res.status(404).json({
@@ -229,7 +229,7 @@ router.get('/profile', readLimiter, authenticateToken, (req, res) => {
 router.put('/profile', moderateLimiter, authenticateToken, validateRequestSchema(updateProfileSchema), async (req, res) => {
   try {
     const { username, email, currentPassword, newPassword } = req.body;
-    const user = users.get(req.user.id);
+    const user = await userStore.findById(req.user.id);
     req.auditDetails = { event: newPassword ? 'profile_and_password_update' : 'profile_update' };
 
     if (!user) {
@@ -238,6 +238,9 @@ router.put('/profile', moderateLimiter, authenticateToken, validateRequestSchema
         message: 'User profile not found'
       });
     }
+
+    // Collect only the fields that actually changed, then persist once.
+    const updates = {};
 
     // Check if changing password
     if (newPassword) {
@@ -256,15 +259,13 @@ router.put('/profile', moderateLimiter, authenticateToken, validateRequestSchema
         });
       }
 
-      user.password = await bcrypt.hash(newPassword, 10);
+      updates.password = await bcrypt.hash(newPassword, 10);
     }
 
     // Update other fields
     if (username && username !== user.username) {
       // Check if username is already taken
-      const existingUser = Array.from(users.values()).find(
-        u => u.username === username && u.id !== user.id
-      );
+      const existingUser = await userStore.findByUsername(username, user.id);
       
       if (existingUser) {
         return res.status(409).json({
@@ -273,14 +274,12 @@ router.put('/profile', moderateLimiter, authenticateToken, validateRequestSchema
         });
       }
       
-      user.username = username;
+      updates.username = username;
     }
 
     if (email && email !== user.email) {
       // Check if email is already taken
-      const existingUser = Array.from(users.values()).find(
-        u => u.email === email && u.id !== user.id
-      );
+      const existingUser = await userStore.findByEmail(email, user.id);
       
       if (existingUser) {
         return res.status(409).json({
@@ -289,19 +288,22 @@ router.put('/profile', moderateLimiter, authenticateToken, validateRequestSchema
         });
       }
       
-      user.email = email;
+      updates.email = email;
     }
 
-    user.updatedAt = new Date().toISOString();
+    const updatedUser =
+      Object.keys(updates).length > 0
+        ? await userStore.updateUser(user.id, updates)
+        : user;
 
     res.json({
       message: 'Profile updated successfully',
       user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        updatedAt: user.updatedAt
+        id: updatedUser.id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        updatedAt: updatedUser.updatedAt
       }
     });
   } catch (error) {
@@ -323,12 +325,12 @@ router.put('/assign-role/:userId',
   requireAdmin, 
   requirePermission(PERMISSIONS.USER_ASSIGN_ROLE),
   validateRequestSchema(assignRoleSchema),
-  (req, res) => {
+  async (req, res) => {
     try {
       const { role } = req.body;
       const { userId } = req.params;
 
-      const user = users.get(userId);
+      const user = await userStore.findById(userId);
       
       if (!user) {
         return res.status(404).json({
@@ -338,18 +340,17 @@ router.put('/assign-role/:userId',
       }
 
       const oldRole = user.role;
-      user.role = role;
-      user.updatedAt = new Date().toISOString();
+      const updatedUser = await userStore.updateUser(userId, { role });
 
       res.json({
         message: 'Role assigned successfully',
         user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
+          id: updatedUser.id,
+          username: updatedUser.username,
+          email: updatedUser.email,
           oldRole,
-          newRole: user.role,
-          updatedAt: user.updatedAt
+          newRole: updatedUser.role,
+          updatedAt: updatedUser.updatedAt
         }
       });
     } catch (error) {
@@ -371,17 +372,15 @@ router.get('/users',
   authenticateToken, 
   requireAdmin, 
   requirePermission(PERMISSIONS.USER_READ),
-  (req, res) => {
+  async (req, res) => {
     try {
       const { page = 1, limit = 10, role } = req.query;
-      const offset = (page - 1) * limit;
 
-      let allUsers = Array.from(users.values());
-
-      // Filter by role if specified
-      if (role) {
-        allUsers = allUsers.filter(user => user.role === role);
-      }
+      const { users: allUsers, total } = await userStore.listUsers({
+        role: role || undefined,
+        page: parseInt(page, 10) || 1,
+        limit: parseInt(limit, 10) || 10
+      });
 
       // Remove password from response
       const usersWithoutPassword = allUsers.map(user => ({
@@ -393,16 +392,13 @@ router.get('/users',
         updatedAt: user.updatedAt
       }));
 
-      // Pagination
-      const paginatedUsers = usersWithoutPassword.slice(offset, offset + parseInt(limit));
-
       res.json({
-        users: paginatedUsers,
+        users: usersWithoutPassword,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total: usersWithoutPassword.length,
-          pages: Math.ceil(usersWithoutPassword.length / limit)
+          total,
+          pages: Math.ceil(total / parseInt(limit))
         }
       });
     } catch (error) {
@@ -424,10 +420,10 @@ router.delete('/users/:userId',
   authenticateToken, 
   requireAdmin, 
   requirePermission(PERMISSIONS.USER_DELETE),
-  (req, res) => {
+  async (req, res) => {
     try {
       const { userId } = req.params;
-      const user = users.get(userId);
+      const user = await userStore.findById(userId);
 
       if (!user) {
         return res.status(404).json({
@@ -444,7 +440,7 @@ router.delete('/users/:userId',
         });
       }
 
-      users.delete(userId);
+      await userStore.deleteUser(userId);
 
       res.json({
         message: 'User deleted successfully',
