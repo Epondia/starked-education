@@ -84,13 +84,32 @@ const redisStore = new RedisStore({
 });
 ```
 
-The store uses atomic Redis operations (MULTI/EXEC) to ensure consistency across multiple server instances. If Redis is unavailable, the limiter falls back gracefully.
+The store uses atomic Redis operations (MULTI/EXEC) to ensure consistency across multiple server instances. On every hit it runs `SET key 0 EX <window> NX`, `INCRBY key 1` and `TTL key` in a single transaction: `SET ... NX` anchors the window to the first request, `INCRBY` counts the hit, and `TTL` reports the exact seconds remaining so the `Retry-After` / `X-RateLimit-Reset` headers are accurate. If Redis is unavailable, the limiter fails open (traffic is not blocked).
 
 ### Key Format
 
 Rate limit keys follow the pattern:
 - By IP: `rl:<prefix>:ip:<ip_address>`
 - By User: `rl:<prefix>:user:<user_id>`
+- By route + IP (`rateLimit.ts`): `rl:ts:ip:<ip_address>:<METHOD>:<path>`
+
+The TypeScript middleware in `backend/src/middleware/rateLimit.ts` uses the same Redis-backed `RedisStore` (not the in-memory default), so routes that use `rateLimitMiddleware` — e.g. `/api/v1/notifications` — also share counters across all server instances. Keys include the HTTP method and route path so each endpoint gets an independent bucket.
+
+## Client IP Resolution and Header Spoofing
+
+By default the rate limiter keys on the direct socket address (`req.ip`) and **never reads `X-Forwarded-For`**, so a client cannot rotate spoofed proxy headers to mint fresh counters.
+
+When the application runs behind a reverse proxy, set `RATE_LIMIT_TRUST_PROXY` in the environment to the number of trusted proxy hops (e.g. `1` for a single nginx/ELB hop):
+
+```env
+RATE_LIMIT_TRUST_PROXY=1
+```
+
+With header trust enabled, the client address is taken from the Nth entry from the right of the `X-Forwarded-For` chain (the standard algorithm for N trusted proxies). Every candidate must pass `net.isIP()` validation; malformed or garbage entries are discarded and fall back to the socket address.
+
+> **Warning**: only enable `RATE_LIMIT_TRUST_PROXY` when every proxy in front of the application is under your control and sanitizes incoming `X-Forwarded-For` headers. Otherwise a direct client can spoof the header to bypass per-IP limits.
+
+`RATE_LIMIT_TRUST_PROXY` accepts `0`/`false`/unset (no header trust), `1`/`true` (one hop), or any positive integer hop count.
 
 ## Security Logging
 
@@ -157,7 +176,9 @@ endpoints: {
 
 ## Middleware Files
 
-- `backend/src/middleware/rateLimiter.js` - Main implementation with Redis store
-- `backend/src/middleware/rateLimit.ts` - TypeScript rate limiting middleware
+- `backend/src/middleware/rateLimiter.js` - Main implementation with Redis store, client-IP resolution, and spoofing protection
+- `backend/src/middleware/rateLimit.ts` - TypeScript rate limiting middleware backed by the same Redis store
 - `backend/src/config/security.js` - Rate limit configuration
-- `backend/src/index.js` - Global limiter applied to all routes
+- `backend/src/index.js` - Global limiter applied to all routes (registered once; see below)
+
+The global limiter is registered exactly once at the app level (`app.use(globalLimiter)`), after `/health` and `/metrics`. Every `/api/v1/*` route flows through it, so endpoint-specific limiters (login, register, payment, admin, …) layer on top without the global counter being incremented twice per request.
