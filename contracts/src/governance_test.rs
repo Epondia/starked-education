@@ -1,13 +1,14 @@
 #![cfg(test)]
 
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, Env, String,
+    testutils::{Address as _, Events as _, Ledger},
+    Address, Env, String, Symbol, TryFromVal,
 };
 
 use crate::{
     governance::{
-        EligibilityCriteria, Governance, GovernanceDataKey, ProposalStatus, ScholarshipProposal,
+        EligibilityCriteria, Governance, GovernanceDataKey, ProposalStatus, Role,
+        ScholarshipProposal,
     },
     StarkEdContract,
 };
@@ -421,4 +422,287 @@ fn test_duplicate_application_rejected() {
     Governance::set_student_credentials(env.clone(), student_a.clone(), 3);
     Governance::apply_for_scholarship(env.clone(), student_a.clone(), pid);
     Governance::apply_for_scholarship(env.clone(), student_a.clone(), pid); // should panic
+}
+
+// ── Role-Based Access Control (RBAC) tests ─────────────────────────────────
+
+/// Run `f` inside a contract execution context bound to `contract`.
+fn with_contract_role<F, R>(env: &Env, contract: &Address, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    env.as_contract(contract, f)
+}
+
+fn role_setup() -> (Env, Address, Address, Address, Address) {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let verifier = Address::generate(&env);
+    let contract = env.register_contract(None, StarkEdContract);
+
+    // Grant Admin role to the admin via direct storage to bootstrap.
+    with_contract_role(&env, &contract, || {
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMember(Role::Admin, admin.clone()),
+            &true,
+        );
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMemberCount(Role::Admin),
+            &1u32,
+        );
+    });
+
+    (env, admin, issuer, verifier, contract)
+}
+
+// ── Role Granting ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_grant_role() {
+    let (env, admin, issuer, verifier, contract) = role_setup();
+
+    // Admin grants Issuer role
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+    });
+    with_contract_role(&env, &contract, || {
+        assert!(Governance::has_role(&env, &issuer, Role::Issuer));
+        assert!(!Governance::has_role(&env, &issuer, Role::Admin));
+        assert!(!Governance::has_role(&env, &issuer, Role::Verifier));
+    });
+
+    // Admin grants Verifier role
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Verifier, verifier.clone());
+    });
+    with_contract_role(&env, &contract, || {
+        assert!(Governance::has_role(&env, &verifier, Role::Verifier));
+
+        // Role member counts
+        assert_eq!(Governance::get_role_member_count(&env, Role::Admin), 1);
+        assert_eq!(Governance::get_role_member_count(&env, Role::Issuer), 1);
+        assert_eq!(Governance::get_role_member_count(&env, Role::Verifier), 1);
+    });
+}
+
+#[test]
+#[should_panic(expected = "RoleAlreadyGranted")]
+fn test_grant_role_duplicate_should_panic() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    // First grant in one context
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+    });
+    // Second grant (duplicate) in a fresh context — should panic
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+    });
+}
+
+#[test]
+#[should_panic(expected = "UnauthorizedRole")]
+fn test_grant_role_non_admin_should_panic() {
+    let (env, _admin, issuer, verifier, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        // issuer does not hold Admin — should panic
+        Governance::grant_role(&env, issuer, Role::Verifier, verifier);
+    });
+}
+
+// ── Role Revocation ────────────────────────────────────────────────────────
+
+#[test]
+fn test_revoke_role() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+        assert!(Governance::has_role(&env, &issuer, Role::Issuer));
+    });
+
+    with_contract_role(&env, &contract, || {
+        // Revoke the Issuer role
+        Governance::revoke_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+        assert!(!Governance::has_role(&env, &issuer, Role::Issuer));
+        assert_eq!(Governance::get_role_member_count(&env, Role::Issuer), 0);
+    });
+}
+
+#[test]
+#[should_panic(expected = "RoleNotFound")]
+fn test_revoke_role_not_granted_should_panic() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        // issuer has no role yet
+        Governance::revoke_role(&env, admin, Role::Issuer, issuer);
+    });
+}
+
+#[test]
+#[should_panic(expected = "CannotRevokeLastAdmin")]
+fn test_revoke_last_admin_should_panic() {
+    let (env, admin, _, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        // admin is the only Admin — revoking must panic
+        Governance::revoke_role(&env, admin.clone(), Role::Admin, admin);
+    });
+}
+
+#[test]
+fn test_revoke_last_admin_succeeds_when_another_admin_exists() {
+    let (env, admin, _, verifier, contract) = role_setup();
+
+    // Grant Admin to verifier so we have two admins
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Admin, verifier.clone());
+        assert_eq!(Governance::get_role_member_count(&env, Role::Admin), 2);
+    });
+
+    // Now revoking the original admin should succeed (within separate contract context)
+    with_contract_role(&env, &contract, || {
+        Governance::revoke_role(&env, admin.clone(), Role::Admin, admin);
+    });
+    with_contract_role(&env, &contract, || {
+        assert!(Governance::has_role(&env, &verifier, Role::Admin));
+        assert_eq!(Governance::get_role_member_count(&env, Role::Admin), 1);
+    });
+}
+
+#[test]
+#[should_panic(expected = "UnauthorizedRole")]
+fn test_revoke_role_non_admin_should_panic() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+        // issuer tries to revoke admin — should panic
+        Governance::revoke_role(&env, issuer, Role::Admin, admin);
+    });
+}
+
+// ── Role Enforcement ───────────────────────────────────────────────────────
+
+#[test]
+fn test_require_role_passes_for_holder() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin, Role::Issuer, issuer.clone());
+        // Should not panic — issuer holds Issuer role
+        Governance::require_role(&env, &issuer, Role::Issuer);
+    });
+}
+
+#[test]
+#[should_panic(expected = "UnauthorizedRole")]
+fn test_require_role_panics_for_non_holder() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin, Role::Issuer, issuer.clone());
+        // issuer does not hold Admin role — should panic
+        Governance::require_role(&env, &issuer, Role::Admin);
+    });
+}
+
+#[test]
+fn test_require_any_role_passes_for_holder() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin, Role::Issuer, issuer.clone());
+        // issuer holds Issuer, which is one of {Issuer, Verifier}
+        Governance::require_any_role(&env, &issuer, &[Role::Issuer, Role::Verifier]);
+    });
+}
+
+#[test]
+#[should_panic(expected = "UnauthorizedRole")]
+fn test_require_any_role_panics_for_non_holder() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin, Role::Issuer, issuer.clone());
+        // issuer does not hold Admin or Verifier
+        Governance::require_any_role(&env, &issuer, &[Role::Admin, Role::Verifier]);
+    });
+}
+
+// ── Event Emission ─────────────────────────────────────────────────────────
+
+#[test]
+fn test_grant_role_emits_event() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin, Role::Issuer, issuer.clone());
+    });
+
+    // Verify event: (governance, role_granted) with data (1, issuer)
+    let events = env.events().all();
+    let mut found = false;
+    for (_contract, topics, _data) in events.iter() {
+        if topics.len() >= 2 {
+            let t0 = Symbol::try_from_val(&env, &topics.get(0).unwrap());
+            let t1 = Symbol::try_from_val(&env, &topics.get(1).unwrap());
+            if t0 == Ok(Symbol::new(&env, "governance"))
+                && t1 == Ok(Symbol::new(&env, "role_granted"))
+            {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "grant_role must emit (governance, role_granted) event");
+}
+
+#[test]
+fn test_revoke_role_emits_event() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    // Grant and revoke in separate contexts to avoid double require_auth
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+    });
+    with_contract_role(&env, &contract, || {
+        Governance::revoke_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+    });
+
+    // Verify event: (governance, role_revoked) with data (1, issuer)
+    let events = env.events().all();
+    let mut found = false;
+    for (_contract, topics, _data) in events.iter() {
+        if topics.len() >= 2 {
+            let t0 = Symbol::try_from_val(&env, &topics.get(0).unwrap());
+            let t1 = Symbol::try_from_val(&env, &topics.get(1).unwrap());
+            if t0 == Ok(Symbol::new(&env, "governance"))
+                && t1 == Ok(Symbol::new(&env, "role_revoked"))
+            {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "revoke_role must emit (governance, role_revoked) event");
+}
+
+// ── Role::from_u32 / to_u32 roundtrip ──────────────────────────────────────
+
+#[test]
+fn test_role_discriminant_roundtrip() {
+    assert_eq!(Role::from_u32(Role::Admin.to_u32()), Role::Admin);
+    assert_eq!(Role::from_u32(Role::Issuer.to_u32()), Role::Issuer);
+    assert_eq!(Role::from_u32(Role::Verifier.to_u32()), Role::Verifier);
+}
+
+#[test]
+fn test_role_unknown_discriminant_defaults_to_verifier() {
+    assert_eq!(Role::from_u32(99), Role::Verifier);
 }

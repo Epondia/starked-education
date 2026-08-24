@@ -1,5 +1,6 @@
 use crate::events;
 use crate::utils::storage::{EntityType, StorageUtils};
+use crate::governance::{Governance, Role};
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
@@ -164,6 +165,9 @@ pub struct BatchResult {
     pub error: String,
 }
 
+/// Default maximum batch size (50 operations per batch invocation)
+pub const DEFAULT_MAX_BATCH_SIZE: u32 = 50;
+
 /// Batch operation storage key
 #[contracttype]
 pub enum BatchConfigKey {
@@ -248,15 +252,8 @@ pub enum CrossChainRelayKey {
 pub fn set_proof_validity_window(env: &Env, admin: Address, window_seconds: u64) {
     crate::pause::require_not_paused(env).unwrap();
     admin.require_auth();
-    let stored_admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not found"));
+    Governance::require_role(env, &admin, Role::Admin);
 
-    if admin != stored_admin {
-        panic!("Only admin can set proof validity window");
-    }
     if window_seconds == 0 {
         panic!("Validity window must be greater than zero");
     }
@@ -534,16 +531,7 @@ pub fn issue_credential_with_expiration(
 ) -> u64 {
     crate::pause::require_not_paused(env).unwrap();
     issuer.require_auth();
-
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not found"));
-
-    if issuer != admin {
-        panic!("Unauthorized issuer");
-    }
+    Governance::require_role(env, &issuer, Role::Issuer);
 
     let credential_id = StorageUtils::get_next_id(env, EntityType::Credential);
     let current_time = env.ledger().timestamp();
@@ -608,14 +596,9 @@ pub fn renew_credential(
         .get(&CredentialRegistryKey::Credential(credential_id))
         .unwrap_or_else(|| panic!("Credential not found"));
 
-    // Check if renewer is authorized (admin or credential recipient)
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not found"));
-
-    if renewer != admin && renewer != credential.recipient {
+    // Check if renewer is authorized (Issuer role or credential recipient)
+    let is_issuer = Governance::has_role(env, &renewer, Role::Issuer);
+    if !is_issuer && renewer != credential.recipient {
         panic!("Unauthorized to renew credential");
     }
 
@@ -805,20 +788,17 @@ pub fn revoke_credential(
     crate::pause::require_not_paused(env).unwrap();
     revoker.require_auth();
 
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not found"));
-
     let mut credential: CredentialRegistry = env
         .storage()
         .persistent()
         .get(&CredentialRegistryKey::Credential(credential_id))
         .unwrap_or_else(|| panic!("Credential not found"));
 
-    // Authorization: original issuer OR admin
-    if revoker != credential.issuer && revoker != admin {
+    // Authorization: original issuer (if holding Issuer role) OR holding Admin role
+    let is_issuer_of_cred = revoker == credential.issuer
+        && Governance::has_role(env, &revoker, Role::Issuer);
+    let is_admin = Governance::has_role(env, &revoker, Role::Admin);
+    if !is_issuer_of_cred && !is_admin {
         panic!("Unauthorized: only the original issuer or admin can revoke credentials");
     }
 
@@ -931,16 +911,7 @@ pub fn get_max_batch_size(env: &Env) -> u32 {
 pub fn set_max_batch_size(env: &Env, admin: Address, new_size: u32) {
     crate::pause::require_not_paused(env).unwrap();
     admin.require_auth();
-
-    let stored_admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not found"));
-
-    if admin != stored_admin {
-        panic!("Only admin can configure batch size");
-    }
+    Governance::require_role(env, &admin, Role::Admin);
 
     if new_size == 0 {
         panic!("Batch size must be greater than 0");
@@ -965,17 +936,7 @@ pub fn batch_issue_credentials(
 ) -> Vec<BatchResult> {
     crate::pause::require_not_paused(env).unwrap();
     issuer.require_auth();
-
-    // Authorize once at the top
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not found"));
-
-    if issuer != admin {
-        panic!("Unauthorized issuer");
-    }
+    Governance::require_role(env, &issuer, Role::Issuer);
 
     let max_batch = get_max_batch_size(env);
     let input_count = inputs.len() as u32;
@@ -1074,16 +1035,7 @@ pub fn batch_revoke_credentials(
 ) -> Vec<BatchResult> {
     crate::pause::require_not_paused(env).unwrap();
     revoker.require_auth();
-
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not found"));
-
-    if revoker != admin {
-        panic!("Only admin can revoke credentials");
-    }
+    Governance::require_role(env, &revoker, Role::Admin);
 
     let max_batch = get_max_batch_size(env);
     let count = credential_ids.len() as u32;
@@ -1161,12 +1113,12 @@ pub fn batch_renew_credentials(
 ) -> Vec<BatchResult> {
     crate::pause::require_not_paused(env).unwrap();
     renewer.require_auth();
-
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not found"));
+    // Admin or Issuer role can batch renew
+    let is_authorized = Governance::has_role(env, &renewer, Role::Admin)
+        || Governance::has_role(env, &renewer, Role::Issuer);
+    if !is_authorized {
+        panic!("Unauthorized: requires Admin or Issuer role");
+    }
 
     let max_batch = get_max_batch_size(env);
     let count = renewals.len() as u32;
@@ -1200,8 +1152,10 @@ pub fn batch_renew_credentials(
 
         let mut credential = credential_opt.unwrap();
 
-        // Check authorization: admin or credential recipient
-        if renewer != admin && renewer != credential.recipient {
+        // Check authorization: Admin/Issuer role or credential recipient
+        let is_auth_role = Governance::has_role(env, &renewer, Role::Admin)
+            || Governance::has_role(env, &renewer, Role::Issuer);
+        if !is_auth_role && renewer != credential.recipient {
             results.push_back(BatchResult {
                 credential_id,
                 success: false,
@@ -1331,16 +1285,7 @@ pub fn create_multi_sig_credential(
 ) -> u64 {
     crate::pause::require_not_paused(env).unwrap();
     issuer.require_auth();
-
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not found"));
-
-    if issuer != admin {
-        panic!("Unauthorized issuer");
-    }
+    Governance::require_role(env, &issuer, Role::Issuer);
 
     let signer_count = signers.len() as u32;
     if signer_count == 0 {
@@ -1562,16 +1507,7 @@ pub fn revoke_multi_sig_credential(
 ) -> bool {
     crate::pause::require_not_paused(env).unwrap();
     revoker.require_auth();
-
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not found"));
-
-    if revoker != admin {
-        panic!("Only admin can revoke multi-sig credentials");
-    }
+    Governance::require_role(env, &revoker, Role::Admin);
 
     let mut credential: MultiSigCredentialRegistry = env
         .storage()

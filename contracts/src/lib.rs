@@ -32,19 +32,14 @@ pub mod user_profile_test;
 pub mod utils;
 pub mod events;
 
-use crate::dynamic_nft::{BadgeUpgradeRecord, CertificateTier, DynamicNFT, RarityTier};
+use crate::governance::{Governance, Role};
 
 /// ─── Admin authorization helper ──────────────────────────────
-/// Verifies the caller is the stored admin. Panics if not.
+/// Verifies the caller holds the Admin role. Panics if not.
 /// Deduplicates the admin-check pattern used across multiple methods,
 /// reducing WASM binary size.
 fn check_admin(env: &Env, caller: &Address) {
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic!("Not initialized"));
-    if *caller != admin {
+    if !Governance::has_role(env, caller, Role::Admin) {
         panic!("Only admin can perform this action");
     }
 }
@@ -146,6 +141,8 @@ impl StarkEdContract {
         env.storage()
             .instance()
             .set(&DataKey::ProofValidityWindow, &3600u64);
+        // Grant Admin role to the initial admin so it can assign other roles.
+        Governance::grant_role(&env, admin.clone(), Role::Admin, admin);
     }
 
     /// Issue a new credential
@@ -263,6 +260,34 @@ impl StarkEdContract {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("Not initialized"))
+    }
+
+    // ─── Role-Based Access Control (RBAC) ──────────────────────────
+
+    /// Grant a protocol role to an address. Only callable by an existing Admin.
+    /// Role 0 = Admin, 1 = Issuer, 2 = Verifier.
+    pub fn grant_role(env: Env, admin: Address, role_discriminant: u32, grantee: Address) {
+        let role = Role::from_u32(role_discriminant);
+        Governance::grant_role(&env, admin, role, grantee);
+    }
+
+    /// Revoke a protocol role from an address. Only callable by an existing Admin.
+    /// The last Admin cannot be revoked.
+    pub fn revoke_role(env: Env, admin: Address, role_discriminant: u32, target: Address) {
+        let role = Role::from_u32(role_discriminant);
+        Governance::revoke_role(&env, admin, role, target);
+    }
+
+    /// Check whether an address holds a given role.
+    pub fn has_role(env: Env, addr: Address, role_discriminant: u32) -> bool {
+        let role = Role::from_u32(role_discriminant);
+        Governance::has_role(&env, &addr, role)
+    }
+
+    /// Get the number of addresses that hold a given role.
+    pub fn get_role_member_count(env: Env, role_discriminant: u32) -> u32 {
+        let role = Role::from_u32(role_discriminant);
+        Governance::get_role_member_count(&env, role)
     }
 
     // ─── Cross-Chain Credential Verification Relay ──────────────
