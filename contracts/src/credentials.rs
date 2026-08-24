@@ -1,3 +1,4 @@
+use crate::governance::{Governance, Role};
 use crate::utils::storage::{EntityType, StorageUtils};
 use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
 
@@ -111,11 +112,7 @@ pub fn issue_credential(
     validity_duration: Option<u64>, // Optional: duration in seconds; None = never expires
 ) -> u64 {
     issuer.require_auth();
-
-    let admin: Address = env.storage().instance().get(&Symbol::new(env, "admin"));
-    if issuer != admin {
-        panic!("Unauthorized issuer");
-    }
+    Governance::require_role(env, &issuer, Role::Issuer);
 
     // Use shared storage utility for ID generation
     let credential_id = StorageUtils::get_next_id(env, EntityType::Credential);
@@ -245,14 +242,11 @@ pub fn renew_credential(
         .get(&CredentialKey::Credential(credential_id))
         .unwrap_or_else(|| panic!("Credential not found"));
 
-    // Only the original issuer (admin) can renew
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
-    if renewer != credential.issuer && renewer != admin {
+    // Only original issuer (with Issuer role) or Admin can renew
+    let is_issuer = renewer == credential.issuer
+        && Governance::has_role(env, &renewer, Role::Issuer);
+    let is_admin = Governance::has_role(env, &renewer, Role::Admin);
+    if !is_issuer && !is_admin {
         panic!("Only original issuer or admin can renew credentials");
     }
 
@@ -305,20 +299,17 @@ pub fn revoke_credential(
 ) {
     revoker.require_auth();
 
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
     let mut credential: Credential = env
         .storage()
         .persistent()
         .get(&CredentialKey::Credential(credential_id))
         .unwrap_or_else(|| panic!("Credential not found"));
 
-    // Authorization: original issuer OR admin
-    if revoker != credential.issuer && revoker != admin {
+    // Authorization: original issuer (with Issuer role) OR holding Admin role
+    let is_issuer_of_cred = revoker == credential.issuer
+        && Governance::has_role(env, &revoker, Role::Issuer);
+    let is_admin = Governance::has_role(env, &revoker, Role::Admin);
+    if !is_issuer_of_cred && !is_admin {
         panic!("Unauthorized: only the original issuer or admin can revoke credentials");
     }
 
@@ -437,7 +428,7 @@ pub enum MultiSigEvent {
 
 /// Create a new multi-signature credential (M-of-N)
 ///
-/// Only the admin can create multi-sig credentials.
+/// Only addresses with the Issuer role can create multi-sig credentials.
 /// The credential starts inactive and requires `threshold` valid
 /// signatures from the `signers` set before it becomes active.
 pub fn create_multi_sig_credential(
@@ -452,16 +443,7 @@ pub fn create_multi_sig_credential(
     ipfs_hash: String,
 ) -> u64 {
     creator.require_auth();
-
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
-    if creator != admin {
-        panic!("Only admin can create multi-sig credentials");
-    }
+    Governance::require_role(env, &creator, Role::Issuer);
 
     let signer_count = signers.len() as u32;
     if signer_count == 0 {
@@ -631,7 +613,7 @@ pub fn get_multi_sig_signatures(env: &Env, credential_id: u64) -> Vec<Address> {
 //  Multi-Signature Signer Management
 // ═══════════════════════════════════════════════════════════════════
 
-/// Add a new signer to an existing multi-sig credential (admin only, pending state only)
+/// Add a new signer to an existing multi-sig credential (Admin role, pending state only)
 ///
 /// The credential must not yet be activated. The new signer must not already
 /// be in the signer list. After adding, the credential's threshold remains
@@ -645,16 +627,7 @@ pub fn add_signer_to_multi_sig(
     new_signer: Address,
 ) {
     admin.require_auth();
-
-    let stored_admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
-    if admin != stored_admin {
-        panic!("Only admin can manage signers");
-    }
+    Governance::require_role(env, &admin, Role::Admin);
 
     let mut credential: MultiSigCredential = env
         .storage()
@@ -692,7 +665,7 @@ pub fn add_signer_to_multi_sig(
     );
 }
 
-/// Remove a signer from an existing multi-sig credential (admin only, pending state only)
+/// Remove a signer from an existing multi-sig credential (Admin role, pending state only)
 ///
 /// Cannot remove if it would drop the signer count below the threshold.
 /// If the signer to remove has already signed, their signature is also removed.
@@ -703,16 +676,7 @@ pub fn remove_signer_from_multi_sig(
     signer_to_remove: Address,
 ) {
     admin.require_auth();
-
-    let stored_admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
-    if admin != stored_admin {
-        panic!("Only admin can manage signers");
-    }
+    Governance::require_role(env, &admin, Role::Admin);
 
     let mut credential: MultiSigCredential = env
         .storage()
@@ -780,7 +744,7 @@ pub fn remove_signer_from_multi_sig(
     );
 }
 
-/// Rotate (replace) a signer on an existing multi-sig credential (admin only, pending state only)
+/// Rotate (replace) a signer on an existing multi-sig credential (Admin role, pending state only)
 ///
 /// Replaces `old_signer` with `new_signer`. If the old signer had already signed,
 /// their signature is removed (the new signer must sign separately).
@@ -793,16 +757,7 @@ pub fn rotate_signer_in_multi_sig(
     new_signer: Address,
 ) {
     admin.require_auth();
-
-    let stored_admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
-    if admin != stored_admin {
-        panic!("Only admin can manage signers");
-    }
+    Governance::require_role(env, &admin, Role::Admin);
 
     let mut credential: MultiSigCredential = env
         .storage()

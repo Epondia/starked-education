@@ -7,6 +7,7 @@ use crate::credential_registry::{
     BatchIssueInput, BatchRenewInput, BatchResult, CredentialStatus, RegistryRevocationRecord,
     RegistryVerificationResult, RevocationReason,
 };
+use crate::governance::{GovernanceDataKey, Role};
 use crate::pause::{init_pause, is_paused, pause, unpause};
 use crate::StarkEdContract;
 use soroban_sdk::{
@@ -35,7 +36,8 @@ where
 
 /// Set up an `Env` with `mock_all_auths`, a stored admin, a registered contract
 /// address (used as the storage context) and the pause module initialized to
-/// that admin.
+/// that admin. Grants Admin and Issuer roles to the admin via direct storage
+/// (bypassing auth to avoid double-require_auth with mock_all_auths).
 fn setup_env() -> (Env, Address, Address) {
     let env = Env::default();
     env.mock_all_auths();
@@ -47,6 +49,24 @@ fn setup_env() -> (Env, Address, Address) {
             .instance()
             .set(&Symbol::new(&env, "admin"), &admin);
         init_pause(&env, admin.clone());
+        // Grant Admin and Issuer roles via direct storage to avoid
+        // double require_auth calls on the same frame with mock_all_auths.
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMember(Role::Admin, admin.clone()),
+            &true,
+        );
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMemberCount(Role::Admin),
+            &1u32,
+        );
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMember(Role::Issuer, admin.clone()),
+            &true,
+        );
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMemberCount(Role::Issuer),
+            &1u32,
+        );
     });
 
     (env, admin, contract)
