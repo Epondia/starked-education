@@ -1,6 +1,5 @@
 const express = require('express');
 const helmet = require('helmet');
-const cors = require('cors');
 const { createServer } = require('http');
 const dotenv = require('dotenv');
 
@@ -133,7 +132,14 @@ setSyncWebsocketEmitter((userId, event, data) => {
 // Middleware
 app.use(helmet());
 app.use(contentSecurityPolicy());
-app.use(cors());
+
+// CORS (issue #384): disabled unless ENABLE_CORS === 'true'; when enabled,
+// restricted to the CORS_ORIGINS allowlist with credentials.
+const { buildCorsMiddleware } = require('./middleware/cors');
+const corsMiddleware = buildCorsMiddleware();
+if (corsMiddleware) {
+  app.use(corsMiddleware);
+}
 app.post(
   '/api/v1/security/csp-report',
   express.json({
