@@ -164,6 +164,11 @@ app.use('/metrics', healthModule.metricsRouter);
 // bypass the limiter entirely (no Redis traffic from liveness/readiness checks).
 // Endpoint-specific limiters (loginLimiter, registerLimiter, paymentLimiter,
 // adminTierLimiter, etc.) take precedence over the global baseline.
+//
+// The app-level registration below covers every /api/v1 route (and /api/v2),
+// so the router-level registration was removed to avoid double-counting each
+// request against the same limiter (which halved the effective limit and
+// doubled Redis traffic).
 app.use(globalLimiter);
 
 // Apply API version extraction middleware globally
@@ -171,12 +176,6 @@ app.use(versionExtractor);
 
 // Create versioned routers
 const v1Router = createVersionedRouter('v1');
-
-// Apply baseline global rate limiting to ALL v1 API routes
-// This ensures every endpoint has at least baseline protection
-// Routes with more specific limiters (auth, transactions, etc.) will have both applied
-// See docs/RATE_LIMITING.md for complete rate limit tiers and configuration
-v1Router.use(globalLimiter);
 
 // ── v1 API Routes ──────────────────────────────────────────────
 // All existing routes are mounted under /api/v1/

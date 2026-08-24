@@ -1,9 +1,77 @@
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const net = require('net');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const rateLimit = require('express-rate-limit');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const redisConfig = require('../config/redis');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const securityConfig = require('../config/security');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const logger = require('../utils/logger');
 
 const ONE_MINUTE = 60 * 1000;
+
+/**
+ * Number of trusted reverse-proxy hops in front of the application, read from
+ * the `RATE_LIMIT_TRUST_PROXY` environment variable on every call so tests and
+ * operators can change it without a restart.
+ *
+ * - `0` (default, or `false`/empty): the `X-Forwarded-For` header is NEVER
+ *   consulted. Keys are derived from the direct socket address (`req.ip`), so a
+ *   client cannot rotate spoofed headers to evade rate limits.
+ * - `N > 0` (`true`/`1` means 1 hop): the client address is taken from the Nth
+ *   entry from the right of the `X-Forwarded-For` chain, which is the standard
+ *   algorithm when N trusted proxies sit in front of the app. Only enable this
+ *   when every proxy is under your control and sanitizes incoming headers.
+ *
+ * @returns {number} number of trusted proxy hops (0 disables header trust)
+ */
+const getTrustedProxyHops = () => {
+  const raw = process.env.RATE_LIMIT_TRUST_PROXY;
+  if (raw === undefined || raw === null || raw === '') return 0;
+  if (raw === 'true' || raw === '1') return 1;
+  if (raw === 'false' || raw === '0') return 0;
+  const hops = Number(raw);
+  return Number.isInteger(hops) && hops > 0 ? hops : 0;
+};
+
+/**
+ * Returns true when `value` is a syntactically valid IPv4 or IPv6 address.
+ * Used to discard forged or malformed `X-Forwarded-For` entries.
+ */
+const isValidIp = (value) => {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 45) return false;
+  return net.isIP(value.trim()) !== 0;
+};
+
+/**
+ * Resolves the effective client IP used for rate-limit keying, guarding
+ * against proxy/header spoofing:
+ *
+ * - By default the `X-Forwarded-For` header is ignored entirely and the direct
+ *   socket address is used, so spoofed headers cannot create fresh counters.
+ * - When `RATE_LIMIT_TRUST_PROXY` is configured, the header chain is only
+ *   honored for entries that pass `net.isIP()` validation; anything else falls
+ *   back to the direct socket address.
+ */
+const getClientIp = (req) => {
+  const trustedProxyHops = getTrustedProxyHops();
+  if (trustedProxyHops > 0) {
+    const xff = req.headers && req.headers['x-forwarded-for'];
+    if (typeof xff === 'string') {
+      const chain = xff.split(',').map((entry) => entry.trim()).filter(isValidIp);
+      if (chain.length > 0) {
+        // Each trusted proxy appends the peer it saw, so the client address is
+        // the (hops + 1)-th entry from the right; shorter chains fall back to
+        // the leftmost (original client) entry.
+        const index = Math.max(chain.length - trustedProxyHops - 1, 0);
+        return chain[index];
+      }
+    }
+  }
+  const direct = req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+  return isValidIp(direct) ? direct : 'unknown';
+};
 
 const publicRateLimitTiers = {
   strict: {
@@ -41,21 +109,27 @@ class RedisStore {
   async increment(key) {
     const fullKey = this.prefix + key;
     try {
-      // Use multi to ensure atomicity
+      // Atomic fixed-window counter:
+      // 1. SET ... NX anchors the TTL to the first request of the window.
+      // 2. INCRBY counts the hit.
+      // 3. TTL returns the seconds remaining, giving an accurate reset time
+      //    for the Retry-After / X-RateLimit-Reset headers.
       const multi = redisConfig.client.multi();
+      multi.set(fullKey, 0, { EX: this.expiry, NX: true });
       multi.incrBy(fullKey, 1);
-      multi.expire(fullKey, this.expiry);
+      multi.ttl(fullKey);
       const results = await multi.exec();
-      
-      const currentCount = Array.isArray(results[0]) ? results[0][1] : results[0];
+
+      const currentCount = Array.isArray(results[1]) ? results[1][1] : results[1];
+      const ttlSeconds = Array.isArray(results[2]) ? results[2][1] : this.expiry;
 
       return {
-        totalHits: currentCount,
-        resetTime: new Date(Date.now() + (this.expiry * 1000))
+        totalHits: Number(currentCount) || 0,
+        resetTime: new Date(Date.now() + (Number(ttlSeconds) || this.expiry) * 1000)
       };
     } catch (error) {
       logger.error(`RedisStore error for key ${fullKey}:`, error);
-      // Fallback
+      // Fail open: if Redis is unavailable, do not block traffic.
       return { totalHits: 0, resetTime: new Date() };
     }
   }
@@ -91,6 +165,7 @@ const createRateLimiter = (options = {}) => {
     keyByUser = true,
   } = options;
 
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const securityService = require('../services/securityService');
 
   return rateLimit({
@@ -107,10 +182,11 @@ const createRateLimiter = (options = {}) => {
       expiry: Math.ceil(windowMs / 1000),
     }),
     handler: (req, res, next, options) => {
-      logger.warn(`Rate limit exceeded: ${req.ip} - ${req.method} ${req.path}`);
+      const clientIp = getClientIp(req);
+      logger.warn(`Rate limit exceeded: ${clientIp} - ${req.method} ${req.path}`);
       
       // Log security event for rate limit breach
-      securityService.logSecurityEvent(req.ip, 'rate_limit_exceeded', {
+      securityService.logSecurityEvent(clientIp, 'rate_limit_exceeded', {
         path: req.path,
         method: req.method,
         prefix: keyPrefix,
@@ -123,14 +199,14 @@ const createRateLimiter = (options = {}) => {
       if (keyByUser && req.user && (req.user.id || req.user.sub || req.user.userId)) {
         return `user:${req.user.id || req.user.sub || req.user.userId}`;
       }
-      return `ip:${req.ip}`;
+      return `ip:${getClientIp(req)}`;
     },
     skip: (req) => {
       // Skip whitelisted IPs or in test environment (unless explicitly testing security)
       if (process.env.NODE_ENV === 'test' && req.headers['x-test-security'] === 'true') {
         return false;
       }
-      return securityConfig.whitelist.includes(req.ip) || process.env.NODE_ENV === 'test';
+      return securityConfig.whitelist.includes(getClientIp(req)) || process.env.NODE_ENV === 'test';
     }
   });
 };
@@ -213,7 +289,7 @@ const courseWriteLimiter = createRateLimiter({
 // Issue #17: Endpoint-specific limiters per the security best-practice guidance.
 // Each feature uses an independent Redis key prefix so counters don't bleed.
 const loginLimiter = (() => {
-  const { keyPrefix, ...rest } = securityConfig.endpoints.login;
+  const rest = securityConfig.endpoints.login;
   return createRateLimiter({
     ...rest,
     keyPrefix: 'rl:login:',
@@ -222,7 +298,7 @@ const loginLimiter = (() => {
 })();
 
 const registerLimiter = (() => {
-  const { keyPrefix, ...rest } = securityConfig.endpoints.register;
+  const rest = securityConfig.endpoints.register;
   return createRateLimiter({
     ...rest,
     keyPrefix: 'rl:register:',
@@ -231,7 +307,7 @@ const registerLimiter = (() => {
 })();
 
 const paymentLimiter = (() => {
-  const { keyPrefix, ...rest } = securityConfig.endpoints.payment;
+  const rest = securityConfig.endpoints.payment;
   return createRateLimiter({
     ...rest,
     keyPrefix: 'rl:payment:',
@@ -246,7 +322,7 @@ const paymentLimiter = (() => {
 // `tieredRateLimiter`. We deliberately give this limiter a different
 // Redis key prefix (`rl:admin:ep:`) so its counter is independent.
 const adminEndpointLimiter = (() => {
-  const { keyPrefix, ...rest } = securityConfig.endpoints.admin;
+  const rest = securityConfig.endpoints.admin;
   return createRateLimiter({
     ...rest,
     keyPrefix: 'rl:admin:ep:',
@@ -255,7 +331,7 @@ const adminEndpointLimiter = (() => {
 })();
 
 const adminAnonymousLimiter = (() => {
-  const { keyPrefix, ...rest } = securityConfig.endpoints.adminAnonymous;
+  const rest = securityConfig.endpoints.adminAnonymous;
   return createRateLimiter({
     ...rest,
     keyPrefix: 'rl:admin:anon:',
@@ -317,5 +393,8 @@ module.exports = {
   adminAnonymousLimiter,
   adminTierLimiter,
   publicRateLimitTiers,
-  createRateLimiter
+  createRateLimiter,
+  RedisStore,
+  getClientIp,
+  isValidIp
 };
