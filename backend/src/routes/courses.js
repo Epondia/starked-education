@@ -14,6 +14,12 @@ const { validateRequestSchema } = require('../middleware/validateRequestSchema')
 const courseCacheModule = require('../services/courseCacheService');
 const courseCacheService = courseCacheModule.default || courseCacheModule;
 const { CACHE_TTL } = require('../config/redis');
+const courseStore = require('../services/courseStore');
+
+// Issue #391: the listing endpoint queries Postgres by default. The
+// deterministic mock generator is kept behind this flag so the API contract
+// can still be exercised in tests/CI without a database.
+const USE_MOCK_DATA = process.env.USE_MOCK_DATA === 'true' || process.env.NODE_ENV === 'test';
 
 // ── Listing schema ──────────────────────────────────────────────────────────
 
@@ -33,6 +39,47 @@ const listCoursesSchema = {
     cursor: Joi.string().trim().optional().allow(''),
   }),
 };
+
+/**
+ * Map a courses row to the discovery response item shape the mock generator
+ * produced, so the frontend contract is identical on the mock and DB paths.
+ * Fields without a backing column are derived from stored data or returned
+ * as honest defaults (empty string / zero score) rather than invented.
+ */
+function courseRowToItem(row) {
+  const rating = Number(row.rating) || 0;
+  const enrollmentCount = row.enrollment_count || 0;
+  return {
+    id: row.id,
+    title: row.title,
+    shortDescription: row.short_description || '',
+    description: row.description || '',
+    category: row.category || '',
+    level: row.level || '',
+    language: row.language || 'en',
+    durationHours: Number(row.duration_hours) || 0,
+    price: Number(row.price) || 0,
+    rating,
+    reviewCount: row.review_count || 0,
+    enrollmentCount,
+    provider: row.provider || '',
+    thumbnail: row.thumbnail || '',
+    tags: row.tags || [],
+    skills: row.skills || [],
+    preview: '',
+    matchReasons: rating >= 4.5 ? ['Highly rated'] : [],
+    quickActions: [],
+    relevanceScore: Number((rating / 5).toFixed(3)),
+    semanticScore: 0,
+    recommendationScore: 0,
+    trendScore: 0,
+    socialProof: {
+      reviewSnippet: '',
+      enrollmentLabel: `${enrollmentCount} enrolled`,
+      ratingLabel: `${rating.toFixed(1)} stars`,
+    },
+  };
+}
 
 /**
  * GET /api/courses
@@ -107,11 +154,11 @@ router.get('/',
       const data = await courseCacheService.getOrSet(
         cacheKey,
         async () => {
-          // ── In a real implementation this would query the database ──────
-          // The mock below generates deterministic courses so the infinite-scroll
-          // integration can be exercised end-to-end without a real database.
-
-          const MOCK_TOTAL = 120;
+          // ── Mock mode (issue #391) ─────────────────────────────────────
+          // Deterministic generator kept behind USE_MOCK_DATA / NODE_ENV=test
+          // so the API contract can be exercised without a database.
+          if (USE_MOCK_DATA) {
+            const MOCK_TOTAL = 120;
 
           /** @type {Array<Record<string, unknown>>} */
           const mockItems = Array.from({ length: Math.min(limit, Math.max(0, MOCK_TOTAL - offset)) }, (_, i) => {
@@ -148,21 +195,49 @@ router.get('/',
             };
           });
 
-          const hasMore = offset + limit < MOCK_TOTAL;
+            const hasMore = offset + limit < MOCK_TOTAL;
 
-          // Build the next cursor so the client can request the following page
-          // without needing to track page numbers.
+            // Build the next cursor so the client can request the following page
+            // without needing to track page numbers.
+            const nextCursor = hasMore
+              ? Buffer.from(JSON.stringify({ offset: offset + limit })).toString('base64')
+              : null;
+
+            const currentPage = cursor
+              ? Math.floor(offset / limit) + 1
+              : Number(rawPage);
+
+            return {
+              items: mockItems,
+              total: MOCK_TOTAL,
+              page: currentPage,
+              limit,
+              hasMore,
+              nextCursor,
+            };
+          }
+
+          // ── Database path (default) ────────────────────────────────────
+          const { items: courseRows, total } = await courseStore.listCourses({
+            q,
+            categories: categoryList,
+            levels: levelList,
+            sort,
+            offset,
+            limit,
+          });
+
+          const hasMore = offset + limit < total;
           const nextCursor = hasMore
             ? Buffer.from(JSON.stringify({ offset: offset + limit })).toString('base64')
             : null;
-
           const currentPage = cursor
             ? Math.floor(offset / limit) + 1
             : Number(rawPage);
 
           return {
-            items: mockItems,
-            total: MOCK_TOTAL,
+            items: courseRows.map(courseRowToItem),
+            total,
             page: currentPage,
             limit,
             hasMore,
