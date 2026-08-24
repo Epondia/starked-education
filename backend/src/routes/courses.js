@@ -14,6 +14,12 @@ const { validateRequestSchema } = require('../middleware/validateRequestSchema')
 const courseCacheModule = require('../services/courseCacheService');
 const courseCacheService = courseCacheModule.default || courseCacheModule;
 const { CACHE_TTL } = require('../config/redis');
+const courseStore = require('../services/courseStore');
+
+// Issue #391: the listing endpoint queries Postgres by default. The
+// deterministic mock generator is kept behind this flag so the API contract
+// can still be exercised in tests/CI without a database.
+const USE_MOCK_DATA = process.env.USE_MOCK_DATA === 'true' || process.env.NODE_ENV === 'test';
 
 // ── Listing schema ──────────────────────────────────────────────────────────
 
@@ -33,6 +39,47 @@ const listCoursesSchema = {
     cursor: Joi.string().trim().optional().allow(''),
   }),
 };
+
+/**
+ * Map a courses row to the discovery response item shape the mock generator
+ * produced, so the frontend contract is identical on the mock and DB paths.
+ * Fields without a backing column are derived from stored data or returned
+ * as honest defaults (empty string / zero score) rather than invented.
+ */
+function courseRowToItem(row) {
+  const rating = Number(row.rating) || 0;
+  const enrollmentCount = row.enrollment_count || 0;
+  return {
+    id: row.id,
+    title: row.title,
+    shortDescription: row.short_description || '',
+    description: row.description || '',
+    category: row.category || '',
+    level: row.level || '',
+    language: row.language || 'en',
+    durationHours: Number(row.duration_hours) || 0,
+    price: Number(row.price) || 0,
+    rating,
+    reviewCount: row.review_count || 0,
+    enrollmentCount,
+    provider: row.provider || '',
+    thumbnail: row.thumbnail || '',
+    tags: row.tags || [],
+    skills: row.skills || [],
+    preview: '',
+    matchReasons: rating >= 4.5 ? ['Highly rated'] : [],
+    quickActions: [],
+    relevanceScore: Number((rating / 5).toFixed(3)),
+    semanticScore: 0,
+    recommendationScore: 0,
+    trendScore: 0,
+    socialProof: {
+      reviewSnippet: '',
+      enrollmentLabel: `${enrollmentCount} enrolled`,
+      ratingLabel: `${rating.toFixed(1)} stars`,
+    },
+  };
+}
 
 /**
  * GET /api/courses
@@ -107,11 +154,11 @@ router.get('/',
       const data = await courseCacheService.getOrSet(
         cacheKey,
         async () => {
-          // ── In a real implementation this would query the database ──────
-          // The mock below generates deterministic courses so the infinite-scroll
-          // integration can be exercised end-to-end without a real database.
-
-          const MOCK_TOTAL = 120;
+          // ── Mock mode (issue #391) ─────────────────────────────────────
+          // Deterministic generator kept behind USE_MOCK_DATA / NODE_ENV=test
+          // so the API contract can be exercised without a database.
+          if (USE_MOCK_DATA) {
+            const MOCK_TOTAL = 120;
 
           /** @type {Array<Record<string, unknown>>} */
           const mockItems = Array.from({ length: Math.min(limit, Math.max(0, MOCK_TOTAL - offset)) }, (_, i) => {
@@ -148,21 +195,49 @@ router.get('/',
             };
           });
 
-          const hasMore = offset + limit < MOCK_TOTAL;
+            const hasMore = offset + limit < MOCK_TOTAL;
 
-          // Build the next cursor so the client can request the following page
-          // without needing to track page numbers.
+            // Build the next cursor so the client can request the following page
+            // without needing to track page numbers.
+            const nextCursor = hasMore
+              ? Buffer.from(JSON.stringify({ offset: offset + limit })).toString('base64')
+              : null;
+
+            const currentPage = cursor
+              ? Math.floor(offset / limit) + 1
+              : Number(rawPage);
+
+            return {
+              items: mockItems,
+              total: MOCK_TOTAL,
+              page: currentPage,
+              limit,
+              hasMore,
+              nextCursor,
+            };
+          }
+
+          // ── Database path (default) ────────────────────────────────────
+          const { items: courseRows, total } = await courseStore.listCourses({
+            q,
+            categories: categoryList,
+            levels: levelList,
+            sort,
+            offset,
+            limit,
+          });
+
+          const hasMore = offset + limit < total;
           const nextCursor = hasMore
             ? Buffer.from(JSON.stringify({ offset: offset + limit })).toString('base64')
             : null;
-
           const currentPage = cursor
             ? Math.floor(offset / limit) + 1
             : Number(rawPage);
 
           return {
-            items: mockItems,
-            total: MOCK_TOTAL,
+            items: courseRows.map(courseRowToItem),
+            total,
             page: currentPage,
             limit,
             hasMore,
@@ -298,6 +373,17 @@ const versionNumberParamSchema = {
     contentId: Joi.string().trim().min(1).required(),
     versionNumber: Joi.number().integer().min(1).required(),
   })
+};
+
+// GET /:contentId/versions/export — format must be one of the supported export
+// formats (issue #389). Defaults to json when omitted.
+const versionExportSchema = {
+  params: Joi.object({
+    contentId: Joi.string().trim().min(1).required(),
+  }),
+  query: Joi.object({
+    format: Joi.string().valid('json', 'csv').default('json'),
+  }),
 };
 
 /**
@@ -483,57 +569,6 @@ router.get('/:contentId/versions/current',
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve current version',
-        error: error.message
-      });
-    }
-  }
-);
-
-/**
- * GET /api/courses/:contentId/versions/:versionNumber
- * Get specific version by version number
- * 
- * @param {string} contentId - Content ID
- * @param {number} versionNumber - Version number
- * @returns {ContentVersion} - Specific version
- * 
- * @example
- * GET /api/courses/content_123/versions/1
- */
-router.get('/:contentId/versions/:versionNumber',
-  readLimiter,
-  validateRequestSchema(versionNumberParamSchema),
-  async (req, res) => {
-    try {
-      const { contentId, versionNumber } = req.params;
-      
-      // In a real implementation, this would:
-      // 1. Fetch specific version from database
-      // 2. Return the version with matching number
-      
-      const mockVersion = {
-        id: `ver_${versionNumber}`,
-        contentId,
-        version: parseInt(versionNumber),
-        title: `Version ${versionNumber}`,
-        description: `Version ${versionNumber} of the content`,
-        content: { sections: [`version_${versionNumber}`] },
-        changes: [`Changes for version ${versionNumber}`],
-        createdBy: 'user_123',
-        createdAt: new Date(`2024-01-${versionNumber}`),
-        isCurrent: versionNumber === '2'
-      };
-      
-      res.status(200).json({
-        success: true,
-        message: 'Version retrieved successfully',
-        data: mockVersion
-      });
-    } catch (error) {
-      console.error('Error getting version:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve version',
         error: error.message
       });
     }
@@ -746,7 +781,7 @@ router.put('/:contentId/versions/settings',
  */
 router.get('/:contentId/versions/export',
   readLimiter,
-  validateRequestSchema(contentIdParamSchema),
+  validateRequestSchema(versionExportSchema),
   async (req, res) => {
     try {
       const { contentId } = req.params;
@@ -783,6 +818,14 @@ router.get('/:contentId/versions/export',
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', `attachment; filename="versions_${contentId}.csv"`);
         res.send(csv);
+      } else {
+        // Unsupported or missing format: respond with a clean 400 instead of
+        // leaving the request hanging until the client times out (issue #389).
+        res.status(400).json({
+          success: false,
+          message: `Unsupported export format "${format}". Supported formats: json, csv.`,
+          supportedFormats: ['json', 'csv']
+        });
       }
     } catch (error) {
       console.error('Error exporting versions:', error);
@@ -849,6 +892,57 @@ router.get('/:contentId/versions/statistics',
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve version statistics',
+        error: error.message
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/courses/:contentId/versions/:versionNumber
+ * Get specific version by version number
+ * 
+ * @param {string} contentId - Content ID
+ * @param {number} versionNumber - Version number
+ * @returns {ContentVersion} - Specific version
+ * 
+ * @example
+ * GET /api/courses/content_123/versions/1
+ */
+router.get('/:contentId/versions/:versionNumber',
+  readLimiter,
+  validateRequestSchema(versionNumberParamSchema),
+  async (req, res) => {
+    try {
+      const { contentId, versionNumber } = req.params;
+      
+      // In a real implementation, this would:
+      // 1. Fetch specific version from database
+      // 2. Return the version with matching number
+      
+      const mockVersion = {
+        id: `ver_${versionNumber}`,
+        contentId,
+        version: parseInt(versionNumber),
+        title: `Version ${versionNumber}`,
+        description: `Version ${versionNumber} of the content`,
+        content: { sections: [`version_${versionNumber}`] },
+        changes: [`Changes for version ${versionNumber}`],
+        createdBy: 'user_123',
+        createdAt: new Date(`2024-01-${versionNumber}`),
+        isCurrent: versionNumber === '2'
+      };
+      
+      res.status(200).json({
+        success: true,
+        message: 'Version retrieved successfully',
+        data: mockVersion
+      });
+    } catch (error) {
+      console.error('Error getting version:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve version',
         error: error.message
       });
     }

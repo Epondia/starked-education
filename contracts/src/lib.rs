@@ -1,3 +1,24 @@
+//! # StarkEd Core Contract
+//!
+//! Root entry point for the StarkEd on-chain system deployed on Stellar /
+//! Soroban.  Exposes [`StarkEdContract`] which aggregates credential
+//! issuance, course management, cross-chain credential verification, and
+//! dynamic NFT achievement badges.
+//!
+//! ## Sub-modules
+//!
+//! | Module | Purpose |
+//! |---|---|
+//! | [`governance`] | On-chain voting, proposals, and scholarship disbursement |
+//! | [`tokenomics`] | Reward-token minting, staking, and quadratic voting |
+//! | [`user_profile`] | User profiles and achievement tracking |
+//! | [`dynamic_nft`] | Dynamic NFT achievement badge lifecycle |
+//! | [`dynamic_fees`] | Dynamic fee computation |
+//! | [`marketplace`] | Course marketplace |
+//! | [`credential_registry`] | Extended credential registry |
+//! | [`pause`] | Emergency pause / circuit-breaker |
+//! | [`utils`] | Shared storage helpers and formatting utilities |
+
 #![no_std]
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
@@ -38,93 +59,168 @@ use crate::governance::{Governance, Role};
 /// Verifies the caller holds the Admin role. Panics if not.
 /// Deduplicates the admin-check pattern used across multiple methods,
 /// reducing WASM binary size.
+///
+/// # Panics
+///
+/// - `"Not initialized"` — contract has not been initialised.
+/// - `"Only admin can perform this action"` — `*caller` ≠ admin.
 fn check_admin(env: &Env, caller: &Address) {
     if !Governance::has_role(env, caller, Role::Admin) {
         panic!("Only admin can perform this action");
     }
 }
 
-/// Core storage keys
+// ─── Storage keys ─────────────────────────────────────────────────────────────
+
+/// Top-level storage keys for [`StarkEdContract`].
 #[contracttype]
 pub enum DataKey {
+    /// Address of the contract administrator.
     Admin,
+    /// [`Credential`] struct keyed by credential ID.
     Credential(u64),
+    /// Running total of issued credentials.
     CredentialCount,
+    /// Running total of created courses.
     CourseCount,
+    /// [`Course`] struct keyed by course ID.
     Course(u64),
+    /// Global achievement counter.
     AchievementCount,
-    ProofValidityWindow,  // u64: seconds a cross-chain proof remains valid
-    CrossChainProof(u64), // CrossChainProof stored by credential_id
+    /// Seconds a cross-chain proof remains valid after generation.
+    ProofValidityWindow,
+    /// [`CrossChainProof`] keyed by credential ID.
+    CrossChainProof(u64),
 }
 
-/// Credential with issuer/recipient data
-/// `expires_at` is None for non-expiring credentials, saving 8 bytes per entry.
+// ─── Core types ───────────────────────────────────────────────────────────────
+
+/// An on-chain credential issued to a learner upon course completion.
+///
+/// `expires_at` is `None` for non-expiring credentials, saving 8 bytes per
+/// entry compared to always storing a default timestamp.
 #[contracttype]
 #[derive(Clone)]
 pub struct Credential {
+    /// Auto-incremented unique identifier (1-based).
     pub id: u64,
+    /// Address of the issuing administrator.
     pub issuer: Address,
+    /// Address of the learner who received the credential.
     pub recipient: Address,
+    /// Human-readable credential title.
     pub title: String,
+    /// Off-chain course identifier.
     pub course_id: String,
+    /// IPFS CID pointing to the full credential document.
     pub ipfs_hash: String,
+    /// Ledger timestamp when the credential was issued.
     pub timestamp: u64,
+    /// Current lifecycle status of the credential.
     pub status: CredentialStatus,
+    /// Optional expiry timestamp.  `None` means the credential never expires.
     pub expires_at: Option<u64>,
 }
 
-/// Credential status for cross-chain verification
+/// Lifecycle status for cross-chain credential verification.
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CredentialStatus {
+    /// Credential is currently valid.
     Active = 0,
+    /// Credential has passed its `expires_at` timestamp.
     Expired = 1,
+    /// Credential has been explicitly revoked by the admin.
     Revoked = 2,
+    /// Credential has been created but not yet activated.
     Pending = 3,
 }
 
-/// Cross-chain verification proof for relay to external chains
-/// Compact proof that relayers can verify against on-chain state.
+/// Compact cross-chain verification proof for relay to external chains.
+///
+/// Relayers can verify the [`proof_hash`][CrossChainProof::proof_hash]
+/// against on-chain state without fetching the full [`Credential`].
 #[contracttype]
 #[derive(Clone)]
 pub struct CrossChainProof {
+    /// ID of the credential this proof covers.
     pub credential_id: u64,
+    /// Address that issued the underlying credential.
     pub issuer: Address,
+    /// Ledger timestamp when the credential was originally issued.
     pub issued_at: u64,
+    /// Status of the credential at proof-generation time.
     pub status: CredentialStatus,
+    /// Ledger timestamp when this proof was generated.
     pub proof_timestamp: u64,
+    /// Ledger timestamp after which this proof must no longer be trusted.
     pub expires_at: u64,
-    /// SHA-256 hash of (credential_id || issued_at || status as u8 || issuer)
-    /// for integrity verification by relayers
+    /// SHA-256 hash of `(credential_id ‖ issued_at ‖ status as u8 ‖ issuer)`
+    /// for integrity verification by relayers.
     pub proof_hash: BytesN<32>,
 }
 
-/// Course data
+/// An on-chain course record.
 #[contracttype]
 #[derive(Clone)]
 pub struct Course {
+    /// Auto-incremented unique identifier (1-based).
     pub id: u64,
+    /// Display title of the course.
     pub title: String,
+    /// Short description of the course content.
     pub description: String,
+    /// Enrollment price in platform token units.
     pub price: u64,
 }
 
-/// User profile summary
+/// Lightweight on-chain profile summary (full data lives in [`user_profile`]).
 #[contracttype]
 #[derive(Clone)]
 pub struct Profile {
+    /// Address that owns this profile.
     pub owner: Address,
+    /// Number of credentials held.
     pub credential_count: u32,
+    /// Number of achievements earned.
     pub achievement_count: u32,
+    /// Cumulative reputation score.
     pub reputation: u64,
 }
 
+// ─── Contract ─────────────────────────────────────────────────────────────────
+
+/// The root StarkEd smart contract.
+///
+/// Aggregates credential issuance, course management, cross-chain
+/// verification proofs, and dynamic NFT achievement badges.
+///
+/// # Deployment workflow
+///
+/// 1. Deploy this contract; call `initialize(admin)` once.
+/// 2. Use `create_course` to register courses.
+/// 3. Use `issue_credential` to award learners.
+/// 4. Use `generate_credential_proof` to produce cross-chain relay proofs.
+/// 5. Use `mint_dynamic_nft` and `evolve_nft` for badge management.
 #[contract]
 pub struct StarkEdContract;
 
 #[contractimpl]
 impl StarkEdContract {
-    /// Initialize the contract
+    /// Initialise the contract and set the admin address.
+    ///
+    /// Must be called exactly once immediately after deployment.  Counters
+    /// are set to zero and the default proof validity window is set to
+    /// 3 600 seconds (1 hour).
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `admin` – Address that will have exclusive admin authority.
+    ///
+    /// # Panics
+    ///
+    /// Panics with `"Contract already initialized"` if called more than once.
     pub fn initialize(env: Env, admin: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("Contract already initialized");
@@ -145,9 +241,28 @@ impl StarkEdContract {
         Governance::grant_role(&env, admin.clone(), Role::Admin, admin);
     }
 
-    /// Issue a new credential
-    /// `expires_at` is stored as None by default (no expiration), saving 8 bytes
-    /// of storage per credential compared to always storing a default timestamp.
+    /// Issue a new on-chain credential to a learner.
+    ///
+    /// Only the admin may call this function.  `expires_at` defaults to
+    /// `None` (no expiration), saving 8 bytes of storage per credential.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `issuer` – Caller; must be the admin address.
+    /// - `recipient` – Learner address receiving the credential.
+    /// - `title` – Human-readable credential title.
+    /// - `course_id` – Identifier of the completed course.
+    /// - `ipfs_hash` – IPFS CID of the full credential document.
+    ///
+    /// # Returns
+    ///
+    /// The newly assigned credential ID (`u64`, 1-based).
+    ///
+    /// # Panics
+    ///
+    /// - `"Not initialized"` — contract not yet initialised.
+    /// - `"Only admin can perform this action"` — `issuer` ≠ admin.
     pub fn issue_credential(
         env: Env,
         issuer: Address,
@@ -184,7 +299,20 @@ impl StarkEdContract {
         credential_id
     }
 
-    /// Get credential by ID
+    /// Retrieve a credential by its ID.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `credential_id` – 1-based ID returned by `issue_credential`.
+    ///
+    /// # Returns
+    ///
+    /// The [`Credential`] struct.
+    ///
+    /// # Panics
+    ///
+    /// Panics with `"Credential not found"` if the ID does not exist.
     pub fn get_credential(env: Env, credential_id: u64) -> Credential {
         env.storage()
             .instance()
@@ -192,14 +320,44 @@ impl StarkEdContract {
             .unwrap_or_else(|| panic!("Credential not found"))
     }
 
-    /// Verify a credential (exists check)
+    /// Check whether a credential ID exists on-chain.
+    ///
+    /// Lightweight existence check — does not load the full struct.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `credential_id` – ID to check.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the credential exists; `false` otherwise.
     pub fn verify_credential(env: Env, credential_id: u64) -> bool {
         env.storage()
             .instance()
             .has(&DataKey::Credential(credential_id))
     }
 
-    /// Create a course
+    /// Create a new course record on-chain.
+    ///
+    /// Only the admin may call this function.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `instructor` – Caller; must be the admin address.
+    /// - `title` – Display name of the course.
+    /// - `description` – Short description.
+    /// - `price` – Enrollment price in platform token units.
+    ///
+    /// # Returns
+    ///
+    /// The newly assigned course ID (`u64`, 1-based).
+    ///
+    /// # Panics
+    ///
+    /// - `"Not initialized"` — contract not yet initialised.
+    /// - `"Only admin can perform this action"` — `instructor` ≠ admin.
     pub fn create_course(
         env: Env,
         instructor: Address,
@@ -230,7 +388,20 @@ impl StarkEdContract {
         course_id
     }
 
-    /// Get course by ID
+    /// Retrieve a course by its ID.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `course_id` – 1-based ID returned by `create_course`.
+    ///
+    /// # Returns
+    ///
+    /// The [`Course`] struct.
+    ///
+    /// # Panics
+    ///
+    /// Panics with `"Course not found"` if the ID does not exist.
     pub fn get_course(env: Env, course_id: u64) -> Course {
         env.storage()
             .instance()
@@ -238,7 +409,16 @@ impl StarkEdContract {
             .unwrap_or_else(|| panic!("Course not found"))
     }
 
-    /// Get credential count
+    /// Return the total number of credentials issued.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    ///
+    /// # Returns
+    ///
+    /// Credential count (`u64`).  Returns `0` before any credentials are
+    /// issued.
     pub fn get_credential_count(env: Env) -> u64 {
         env.storage()
             .instance()
@@ -246,7 +426,15 @@ impl StarkEdContract {
             .unwrap_or(0)
     }
 
-    /// Get course count
+    /// Return the total number of courses created.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    ///
+    /// # Returns
+    ///
+    /// Course count (`u64`).  Returns `0` before any courses are created.
     pub fn get_course_count(env: Env) -> u64 {
         env.storage()
             .instance()
@@ -254,7 +442,19 @@ impl StarkEdContract {
             .unwrap_or(0)
     }
 
-    /// Get admin address
+    /// Return the admin address.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    ///
+    /// # Returns
+    ///
+    /// The admin [`Address`].
+    ///
+    /// # Panics
+    ///
+    /// Panics with `"Not initialized"` if called before `initialize`.
     pub fn get_admin(env: Env) -> Address {
         env.storage()
             .instance()
@@ -292,8 +492,12 @@ impl StarkEdContract {
 
     // ─── Cross-Chain Credential Verification Relay ──────────────
 
-    /// Compute integrity hash for a cross-chain proof.
-    /// Hash = SHA-256(credential_id || issued_at || status || issuer)
+    /// Compute an integrity hash for a cross-chain proof.
+    ///
+    /// Hash = SHA-256(`credential_id` ‖ `issued_at` ‖ `status as u8` ‖ `issuer XDR`)
+    ///
+    /// Private helper; called by `generate_credential_proof` and
+    /// `verify_cross_chain_proof`.
     fn compute_proof_hash(
         env: &Env,
         credential_id: u64,
@@ -321,8 +525,22 @@ impl StarkEdContract {
         env.crypto().sha256(&input)
     }
 
-    /// Set the validity window (in seconds) for cross-chain proofs.
-    /// Only callable by the admin.
+    /// Set the validity window (seconds) for cross-chain proofs.
+    ///
+    /// Only callable by the admin.  Emits a `(relay, validity_window_updated)`
+    /// event.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `admin` – Admin address; must sign the transaction.
+    /// - `window_seconds` – New validity duration in seconds.  Must be > 0.
+    ///
+    /// # Panics
+    ///
+    /// - `"Not initialized"` / `"Only admin can perform this action"` —
+    ///   `admin` is not the stored admin.
+    /// - `"Validity window must be greater than zero"` — `window_seconds == 0`.
     pub fn set_proof_validity_window(env: Env, admin: Address, window_seconds: u64) {
         admin.require_auth();
         check_admin(&env, &admin);
@@ -342,7 +560,15 @@ impl StarkEdContract {
         );
     }
 
-    /// Get the current proof validity window in seconds.
+    /// Return the current proof validity window in seconds.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    ///
+    /// # Returns
+    ///
+    /// Validity window (`u64`).  Defaults to `3 600` if not explicitly set.
     pub fn get_proof_validity_window(env: Env) -> u64 {
         env.storage()
             .instance()
@@ -351,9 +577,26 @@ impl StarkEdContract {
     }
 
     /// Generate a compact cross-chain verification proof for a credential.
-    /// The proof includes credential ID, issuance timestamp, revocation status,
-    /// issuer identity, and a cryptographic hash for integrity verification.
-    /// Emits a cross-chain relay event for off-chain relayers to detect.
+    ///
+    /// Stores the proof on-chain and emits a `(relay, proof_generated)` event
+    /// that off-chain relayers can detect.  The proof includes:
+    /// - Credential ID, issuance timestamp, revocation status, and issuer.
+    /// - A SHA-256 integrity hash for tamper detection.
+    /// - An `expires_at` timestamp = `now + validity_window`.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `credential_id` – ID of the credential to prove.
+    /// - `relayer` – Address requesting the proof; must sign the transaction.
+    ///
+    /// # Returns
+    ///
+    /// The generated [`CrossChainProof`].
+    ///
+    /// # Panics
+    ///
+    /// Panics with `"Credential not found"` if `credential_id` does not exist.
     pub fn generate_credential_proof(
         env: Env,
         credential_id: u64,
@@ -414,8 +657,25 @@ impl StarkEdContract {
     }
 
     /// Verify a cross-chain proof against on-chain credential state.
-    /// Returns true if the proof is valid (credential exists, proof not expired,
-    /// credential not revoked, and proof hash matches).
+    ///
+    /// Runs five sequential checks:
+    /// 1. Proof has not expired (`current_time < proof.expires_at`).
+    /// 2. Credential still exists on-chain.
+    /// 3. Credential is not revoked.
+    /// 4. Proof hash matches a freshly computed hash.
+    /// 5. Proof status matches the current on-chain credential status.
+    ///
+    /// Emits a specific event for each failure case to assist relayer
+    /// debugging.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `proof` – The [`CrossChainProof`] to verify.
+    ///
+    /// # Returns
+    ///
+    /// `true` if all checks pass; `false` otherwise.
     pub fn verify_cross_chain_proof(env: Env, proof: CrossChainProof) -> bool {
         let current_time = env.ledger().timestamp();
 
@@ -510,6 +770,20 @@ impl StarkEdContract {
     }
 
     /// Retrieve a previously generated cross-chain proof.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `credential_id` – Credential whose proof to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// The stored [`CrossChainProof`].
+    ///
+    /// # Panics
+    ///
+    /// Panics with `"No cross-chain proof found for this credential"` if no
+    /// proof has been generated for the given credential ID.
     pub fn get_cross_chain_proof(env: Env, credential_id: u64) -> CrossChainProof {
         env.storage()
             .instance()
@@ -517,8 +791,25 @@ impl StarkEdContract {
             .unwrap_or_else(|| panic!("No cross-chain proof found for this credential"))
     }
 
-    /// Revoke a credential (updates status to Revoked).
+    /// Revoke a credential, setting its status to [`CredentialStatus::Revoked`].
+    ///
+    /// Also removes any existing cross-chain proof for that credential so
+    /// relayers immediately see it as invalid.  Emits a
+    /// `(credential, revoked)` event.
+    ///
     /// Only callable by the admin.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `admin` – Admin address; must sign the transaction.
+    /// - `credential_id` – ID of the credential to revoke.
+    ///
+    /// # Panics
+    ///
+    /// - `"Not initialized"` / `"Only admin can perform this action"` —
+    ///   `admin` ≠ stored admin.
+    /// - `"Credential not found"` — `credential_id` does not exist.
     pub fn revoke_credential(env: Env, admin: Address, credential_id: u64) {
         admin.require_auth();
         check_admin(&env, &admin);
@@ -554,10 +845,25 @@ impl StarkEdContract {
         );
     }
 
-    // ─── Dynamic NFT achievement badges (Issue #328) ──────────────────
+    // ─── Dynamic NFT achievement badges ───────────────────────────────────────
 
-    /// Mint a dynamic NFT achievement badge. `creator` must be the contract
-    /// admin (the badge issuer).
+    /// Mint a dynamic NFT achievement badge.
+    ///
+    /// `creator` must be the contract admin (the badge issuer).  Mirrors the
+    /// admin address into the `dynamic_nft` module's own storage key so its
+    /// issuer gate works for on-chain callers.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `creator` – Admin address that will be the badge issuer.
+    /// - `recipient` – Address that will receive the minted badge.
+    /// - `base_uri` – Base URI for badge metadata (e.g. an IPFS gateway URL).
+    /// - `initial_metadata` – Initial metadata IPFS CID for the badge.
+    ///
+    /// # Returns
+    ///
+    /// The newly minted badge token ID (`u64`).
     pub fn mint_dynamic_nft(
         env: Env,
         creator: Address,
@@ -584,7 +890,16 @@ impl StarkEdContract {
         )
     }
 
-    /// Read a badge's full state.
+    /// Read a badge's full state by token ID.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `token_id` – ID of the badge to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// The `DynamicNFT` struct for the badge.
     pub fn get_nft(env: Env, token_id: u64) -> DynamicNFT {
         crate::dynamic_nft::get_nft(&env, token_id)
     }
@@ -601,41 +916,114 @@ impl StarkEdContract {
     }
 
     /// Fuse two badges owned by the same address into a single evolved badge.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `token1_id` – First badge to fuse.
+    /// - `token2_id` – Second badge to fuse.
+    /// - `recipient` – Address that will receive the new fused badge.
+    ///
+    /// # Returns
+    ///
+    /// The token ID of the newly created fused badge.
     pub fn fuse_nfts(env: Env, token1_id: u64, token2_id: u64, recipient: Address) -> u64 {
         crate::dynamic_nft::fuse_nfts(&env, token1_id, token2_id, recipient)
     }
 
-    /// Transfer a badge to a new owner (owner-authenticated).
+    /// Transfer a badge to a new owner.
+    ///
+    /// The current owner must authorise the transaction.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `from` – Current owner address.
+    /// - `to` – New owner address.
+    /// - `token_id` – Badge to transfer.
     pub fn transfer_nft(env: Env, from: Address, to: Address, token_id: u64) {
         crate::dynamic_nft::transfer_nft(&env, from, to, token_id)
     }
 
-    /// List the badge ids owned by an address.
+    /// Return the list of badge IDs owned by an address.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `owner` – Address to query.
+    ///
+    /// # Returns
+    ///
+    /// A [`Vec<u64>`] of token IDs owned by `owner`.
     pub fn get_owner_tokens(env: Env, owner: Address) -> Vec<u64> {
         crate::dynamic_nft::get_owner_tokens(&env, owner)
     }
 
-    /// Total number of badge ids ever minted (monotonic counter).
+    /// Return the total number of badge IDs ever minted (monotonic counter).
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    ///
+    /// # Returns
+    ///
+    /// Total minted supply (`u64`).
     pub fn get_total_supply(env: Env) -> u64 {
         crate::dynamic_nft::get_total_supply(&env)
     }
 
-    /// Full metadata URI for a badge (`base_uri`/`metadata_ipfs`).
+    /// Return the full metadata URI for a badge (`base_uri/metadata_ipfs`).
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `token_id` – Badge to query.
+    ///
+    /// # Returns
+    ///
+    /// The combined metadata URI as a Soroban [`String`].
     pub fn token_uri(env: Env, token_id: u64) -> String {
         crate::dynamic_nft::token_uri(&env, token_id)
     }
 
-    /// Whether a badge with the given id exists.
+    /// Check whether a badge with the given ID exists.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `token_id` – Badge ID to check.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the badge exists; `false` otherwise.
     pub fn nft_exists(env: Env, token_id: u64) -> bool {
         crate::dynamic_nft::nft_exists(&env, token_id)
     }
 
-    /// Owner address of a badge.
+    /// Return the owner address of a badge.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `token_id` – Badge to query.
+    ///
+    /// # Returns
+    ///
+    /// The owner [`Address`].
     pub fn owner_of(env: Env, token_id: u64) -> Address {
         crate::dynamic_nft::owner_of(&env, token_id)
     }
 
-    /// Number of badges owned by an address.
+    /// Return the number of badges owned by an address.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `owner` – Address to query.
+    ///
+    /// # Returns
+    ///
+    /// Badge count (`u64`).
     pub fn balance_of(env: Env, owner: Address) -> u64 {
         crate::dynamic_nft::balance_of(&env, owner)
     }
@@ -652,15 +1040,37 @@ impl StarkEdContract {
         crate::dynamic_nft::upgrade_nft(&env, owner, token_id, new_metadata, certificate_title)
     }
 
-    /// Read the certificate tier of a badge (Basic/Advanced).
+    /// Return the certificate tier (`Basic` or `Advanced`) of a badge.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `token_id` – Badge to query.
+    ///
+    /// # Returns
+    ///
+    /// The `CertificateTier` of the badge.
     pub fn get_nft_tier(env: Env, token_id: u64) -> CertificateTier {
         crate::dynamic_nft::get_nft_tier(&env, token_id)
     }
 
-    /// Upgrade a badge's metadata and rarity in place, preserving its token
-    /// id, owner and progress (achievements/XP/evolution history). Only the
-    /// issuer that minted the badge may upgrade it; every upgrade appends to
-    /// the badge's auditable, append-only history.
+    /// Upgrade a badge's metadata and rarity in place.
+    ///
+    /// Preserves token ID, owner, and progress (achievements/XP/evolution
+    /// history).  Only the original issuer may upgrade the badge.  Every
+    /// upgrade is appended to the badge's auditable, append-only history.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `issuer` – Original issuer address; must sign the transaction.
+    /// - `token_id` – Badge to upgrade.
+    /// - `new_metadata` – New metadata IPFS CID.
+    /// - `new_rarity` – New rarity tier for the badge.
+    ///
+    /// # Returns
+    ///
+    /// `true` on success.
     pub fn upgrade_badge_metadata(
         env: Env,
         issuer: Address,
@@ -673,7 +1083,16 @@ impl StarkEdContract {
         )
     }
 
-    /// Read a badge's append-only metadata/rarity upgrade history.
+    /// Return a badge's append-only metadata/rarity upgrade history.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `token_id` – Badge to query.
+    ///
+    /// # Returns
+    ///
+    /// A [`Vec`] of [`BadgeUpgradeRecord`] entries, oldest first.
     pub fn get_badge_upgrade_history(env: Env, token_id: u64) -> Vec<BadgeUpgradeRecord> {
         crate::dynamic_nft::get_badge_upgrade_history(&env, token_id)
     }

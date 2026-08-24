@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
@@ -517,11 +518,15 @@ const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         {currentQuestion.media && (
           <div className="mb-4">
             {currentQuestion.media.type === 'image' && (
-              <img
-                src={currentQuestion.media.url}
-                alt={currentQuestion.media.caption}
-                className="max-w-full h-auto rounded-lg"
-              />
+              <div className="relative w-full aspect-[16/9] overflow-hidden rounded-lg">
+                <Image
+                  src={currentQuestion.media.url}
+                  alt={currentQuestion.media.caption}
+                  fill
+                  sizes="100vw"
+                  className="object-cover"
+                />
+              </div>
             )}
             {currentQuestion.media.caption && (
               <p className="text-sm text-gray-600 mt-2 italic">{currentQuestion.media.caption}</p>

@@ -92,6 +92,9 @@ const createLocalStorageMock = () => {
 global.localStorage = createLocalStorageMock();
 global.sessionStorage = createLocalStorageMock();
 
+// scrollIntoView is not implemented in jsdom
+window.HTMLElement.prototype.scrollIntoView = jest.fn();
+
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

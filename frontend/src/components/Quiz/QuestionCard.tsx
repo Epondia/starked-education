@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import React from 'react';
 
 export interface Question {
@@ -85,8 +86,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const renderImage = () => (
     <div className="space-y-4">
       {question.imageUrl && (
-        <div className="mb-4 overflow-hidden rounded-lg">
-          <img src={question.imageUrl} alt="Question Context" className="max-w-full h-auto object-cover hover:scale-105 transition-transform duration-500" />
+        <div className="relative mb-4 aspect-[16/9] overflow-hidden rounded-lg">
+          <Image
+            src={question.imageUrl}
+            alt="Question Context"
+            fill
+            sizes="100vw"
+            className="object-cover hover:scale-105 transition-transform duration-500"
+          />
         </div>
       )}
       {renderMCQ()}

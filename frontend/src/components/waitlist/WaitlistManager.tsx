@@ -5,6 +5,7 @@
 
 'use client';
 
+import Image from 'next/image';
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -344,9 +345,11 @@ export function WaitlistManager({
                     <div key={entry.id} className="flex items-center justify-between p-4 border rounded-lg">
                       <div className="flex items-center gap-4">
                         {entry.course?.thumbnail && (
-                          <img
+                          <Image
                             src={entry.course.thumbnail}
                             alt={entry.course.title}
+                            width={64}
+                            height={64}
                             className="w-16 h-16 object-cover rounded-lg"
                           />
                         )}
@@ -491,9 +494,11 @@ export function WaitlistManager({
                         </div>
                         
                         {entry.user?.avatar && (
-                          <img
+                          <Image
                             src={entry.user.avatar}
                             alt={entry.user.name}
+                            width={48}
+                            height={48}
                             className="w-12 h-12 rounded-full object-cover"
                           />
                         )}

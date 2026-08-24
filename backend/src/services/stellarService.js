@@ -1,5 +1,4 @@
-const { Server, Networks, TransactionBuilder, Operation, Asset, Memo, MemoText } = require('@stellar/stellar-sdk');
-const { Contract } = require('soroban-client');
+const { Server, Networks, TransactionBuilder, Operation, Asset, Memo, MemoText, Contract, rpc } = require('@stellar/stellar-sdk');
 const axios = require('axios');
 const { circuitBreakerRegistry } = require('../utils/circuitBreaker');
 
@@ -708,9 +707,9 @@ class StellarService {
   async getCredentialsExpiringSoon(withinSeconds) {
     try {
       const contract = new Contract(this.credentialRegistry.contractId);
-      const rpc = new (require('soroban-client')).Server(this.credentialRegistry.sorobanRpc);
+      const rpcServer = new rpc.Server(this.credentialRegistry.sorobanRpc);
       
-      const result = await rpc.simulateTransaction({
+      const result = await rpcServer.simulateTransaction({
         source: process.env.ADMIN_PUBLIC_KEY,
         transaction: new TransactionBuilder(
           await this.server.loadAccount(process.env.ADMIN_PUBLIC_KEY),
@@ -742,9 +741,9 @@ class StellarService {
   async getExpiredCredentials() {
     try {
       const contract = new Contract(this.credentialRegistry.contractId);
-      const rpc = new (require('soroban-client')).Server(this.credentialRegistry.sorobanRpc);
+      const rpcServer = new rpc.Server(this.credentialRegistry.sorobanRpc);
       
-      const result = await rpc.simulateTransaction({
+      const result = await rpcServer.simulateTransaction({
         source: process.env.ADMIN_PUBLIC_KEY,
         transaction: new TransactionBuilder(
           await this.server.loadAccount(process.env.ADMIN_PUBLIC_KEY),
@@ -996,7 +995,7 @@ class StellarService {
     try {
       console.log('🔄 Running batch expiration status update...');
       
-      const rpc = new (require('soroban-client')).Server(this.credentialRegistry.sorobanRpc);
+      const rpcServer = new rpc.Server(this.credentialRegistry.sorobanRpc);
       
       // Get all credential IDs (this would need to be implemented based on your storage)
       const credentialIds = await this.getAllCredentialIds();
@@ -1007,7 +1006,7 @@ class StellarService {
       for (let i = 0; i < credentialIds.length; i += this.expirationConfig.batchSize) {
         const batch = credentialIds.slice(i, i + this.expirationConfig.batchSize);
         
-        const result = await rpc.simulateTransaction({
+        const result = await rpcServer.simulateTransaction({
           source: process.env.ADMIN_PUBLIC_KEY,
           transaction: new TransactionBuilder(
             await this.server.loadAccount(process.env.ADMIN_PUBLIC_KEY),

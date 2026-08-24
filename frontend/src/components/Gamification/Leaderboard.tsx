@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Medal, Crown, TrendingUp, Users, Filter, ChevronDown, Search, Star } from 'lucide-react';
+import Image from 'next/image';
 import { io, Socket } from 'socket.io-client';
 import { useLeaderboard, LeaderboardUser } from '../../hooks/useLeaderboard';
 
@@ -312,7 +313,7 @@ export function Leaderboard({
                       {/* Avatar */}
                       <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold">
                         {user.avatar ? (
-                          <img src={user.avatar} alt={user.name} className="w-full h-full rounded-full object-cover" />
+                          <Image src={user.avatar} alt={user.name} width={48} height={48} className="w-full h-full rounded-full object-cover" />
                         ) : (
                           user.name.charAt(0).toUpperCase()
                         )}
