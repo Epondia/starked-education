@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { useState } from "react";
 
 export interface UserProfile {
@@ -33,9 +34,11 @@ export function ProfileHeader({ user }: ProfileHeaderProps) {
           {/* Avatar */}
           <div className="w-24 h-24 rounded-full bg-white/20 border-4 border-white flex items-center justify-center shadow-lg">
             {user.avatar ? (
-              <img
+              <Image
                 src={user.avatar}
                 alt={user.name}
+                width={96}
+                height={96}
                 className="w-full h-full rounded-full object-cover"
               />
             ) : (

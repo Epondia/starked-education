@@ -19,6 +19,7 @@ import {
   Sparkles,
   Wand2,
 } from 'lucide-react';
+import Image from 'next/image';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import CourseCard from './CourseCard';
@@ -872,11 +873,15 @@ export const DiscoveryExperience: React.FC = () => {
 
               {selectedCourse ? (
                 <div className="mt-4">
-                  <img
-                    alt={selectedCourse.title}
-                    className="h-48 w-full rounded-[24px] object-cover"
-                    src={selectedCourse.thumbnail}
-                  />
+                  <div className="relative h-48 w-full overflow-hidden rounded-[24px]">
+                    <Image
+                      alt={selectedCourse.title}
+                      src={selectedCourse.thumbnail}
+                      fill
+                      sizes="(min-width: 1024px) 340px, 100vw"
+                      className="object-cover"
+                    />
+                  </div>
                   <h2
                     className="mt-4 text-2xl font-semibold"
                     style={{

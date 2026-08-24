@@ -270,8 +270,19 @@ const nextConfig = {
   compress: true,
   // Enable image optimization
   images: {
-    domains: ['localhost'],
     formats: ['image/webp', 'image/avif'],
+    remotePatterns: [
+      // Local dev server
+      { protocol: 'http', hostname: 'localhost' },
+      // Course thumbnails served by the discovery service (seed data)
+      { protocol: 'https', hostname: 'images.unsplash.com' },
+      // Default avatars in backend seed data / mock fixtures
+      { protocol: 'https', hostname: 'example.com' },
+      // Media service thumbnail placeholders
+      { protocol: 'https', hostname: 'cdn.example.com' },
+      // Uploaded media (S3)
+      { protocol: 'https', hostname: '**.s3.amazonaws.com' },
+    ],
   },
   // Performance headers
   async headers() {
