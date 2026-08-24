@@ -21,6 +21,8 @@ const DEFAULT_TTL = {
   CATEGORIES: 900,        // 15 minutes
   SUGGESTIONS: 120,       // 2 minutes
   RECOMMENDATIONS: 300,   // 5 minutes
+  CREDENTIAL_DETAIL: 86400, // 24 hours
+  CREDENTIAL_LIST: 60,    // 1 minute
 };
 
 /** Prefixes for cache keys to avoid collisions */
@@ -34,6 +36,8 @@ const KEY_PREFIX = {
   POPULAR_SEARCHES: 'cache:course:popular_searches:',
   RECOMMENDATIONS: 'cache:course:recommendations:',
   SIMILAR: 'cache:course:similar:',
+  CREDENTIAL: 'cache:credential:detail:',
+  CREDENTIAL_LIST: 'cache:credential:list:',
 };
 
 export interface CacheMetrics {
@@ -54,6 +58,12 @@ class CourseCacheService {
   private client: RedisClientType | null = null;
   private isConnected = false;
   private connectionPromise: Promise<void> | null = null;
+
+  /**
+   * In-flight getOrSet fetches keyed by cache key.
+   * Used to coalesce concurrent cache misses (prevents cache stampede on cold start).
+   */
+  private pendingFetches = new Map<string, Promise<unknown>>();
 
   public metrics: CacheMetrics = {
     hits: 0,
@@ -186,6 +196,8 @@ class CourseCacheService {
 
   /**
    * Get-or-set pattern: retrieve from cache, or compute & store.
+   * Concurrent misses for the same key are coalesced into a single factory call,
+   * protecting against cache stampedes on cold start / TTL expiry.
    */
   async getOrSet<T>(
     key: string,
@@ -198,10 +210,62 @@ class CourseCacheService {
       return cached;
     }
 
+    // Single-flight: if another request is already computing this key, reuse it.
+    const inFlight = this.pendingFetches.get(key);
+    if (inFlight) {
+      logger.debug(`Cache STAMPEDE guard: coalescing request for key: ${key.substring(0, 50)}`);
+      return inFlight as Promise<T>;
+    }
+
     logger.debug(`Cache MISS for key: ${key.substring(0, 50)}`);
-    const value = await factory();
-    await this.set(key, value, options);
-    return value;
+    const promise = (async () => {
+      const value = await factory();
+      await this.set(key, value, options);
+      return value;
+    })();
+
+    this.pendingFetches.set(key, promise);
+    try {
+      return await promise;
+    } finally {
+      this.pendingFetches.delete(key);
+    }
+  }
+
+  // ── Credential helpers ────────────────────────────────────────────────────
+
+  /**
+   * Get a cached credential by ID. Returns null on miss or cache error.
+   */
+  async getCredential<T = any>(credentialId: string): Promise<T | null> {
+    return this.get<T>(KEY_PREFIX.CREDENTIAL + credentialId);
+  }
+
+  /**
+   * Cache a credential (write-through). Uses a 24h TTL by default.
+   */
+  async setCredential(credential: any, options?: CourseCacheOptions): Promise<void> {
+    const credentialId = credential?.credentialId;
+    if (!credentialId) return;
+    await this.set(KEY_PREFIX.CREDENTIAL + credentialId, credential, {
+      ttl: options?.ttl ?? DEFAULT_TTL.CREDENTIAL_DETAIL,
+    });
+  }
+
+  /**
+   * Invalidate a single credential cache entry.
+   */
+  async invalidateCredential(credentialId: string): Promise<void> {
+    await this.invalidate(KEY_PREFIX.CREDENTIAL + credentialId);
+  }
+
+  /**
+   * Invalidate all credential-related caches (details + lists).
+   * Called when a credential is created, released, or revoked.
+   */
+  async invalidateAllCredentialCaches(): Promise<void> {
+    await this.invalidatePattern('cache:credential:*');
+    logger.info('All credential caches invalidated');
   }
 
   /**
@@ -335,4 +399,4 @@ courseCacheService.init().catch(() => {
 });
 
 export default courseCacheService;
-export { DEFAULT_TTL, KEY_PREFIX };
+export { CourseCacheService, DEFAULT_TTL, KEY_PREFIX };

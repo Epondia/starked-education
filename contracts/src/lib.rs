@@ -24,6 +24,7 @@ use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
+use crate::dynamic_nft::{DynamicNFT, CertificateTier, RarityTier, BadgeUpgradeRecord};
 
 pub mod credential_registry;
 #[cfg(test)]
@@ -50,6 +51,9 @@ pub mod user_profile;
 #[cfg(test)]
 pub mod user_profile_test;
 pub mod utils;
+pub mod events;
+
+use crate::dynamic_nft::{BadgeUpgradeRecord, CertificateTier, DynamicNFT, RarityTier};
 
 // ─── Admin helper ─────────────────────────────────────────────────────────────
 
@@ -858,7 +862,9 @@ impl StarkEdContract {
                 .instance()
                 .set(&Symbol::new(&env, "admin"), &admin);
         }
-        crate::dynamic_nft::mint_dynamic_nft(&env, creator, recipient, base_uri, initial_metadata)
+        crate::dynamic_nft::mint_dynamic_nft(
+            &env, creator, recipient, base_uri, initial_metadata,
+        )
     }
 
     /// Read a badge's full state by token ID.
@@ -876,19 +882,13 @@ impl StarkEdContract {
     }
 
     /// Unlock an achievement on a badge, earning XP and possibly triggering
-    /// evolution.
-    ///
-    /// # Parameters
-    ///
-    /// - `env` – Soroban execution environment.
-    /// - `token_id` – Badge to update.
-    /// - `achievement_id` – Achievement to unlock on the badge.
-    /// - `new_metadata` – Updated metadata IPFS CID after the achievement.
-    ///
-    /// # Returns
-    ///
-    /// `false` if the achievement was already unlocked; `true` otherwise.
-    pub fn evolve_nft(env: Env, token_id: u64, achievement_id: u64, new_metadata: String) -> bool {
+    /// evolution. Returns `false` if the achievement is already unlocked.
+    pub fn evolve_nft(
+        env: Env,
+        token_id: u64,
+        achievement_id: u64,
+        new_metadata: String,
+    ) -> bool {
         crate::dynamic_nft::evolve_nft(&env, token_id, achievement_id, new_metadata)
     }
 
@@ -1006,19 +1006,7 @@ impl StarkEdContract {
     }
 
     /// Burn a Basic badge and mint an Advanced certificate badge in its
-    /// place, preserving the achievement/XP/evolution history.
-    ///
-    /// # Parameters
-    ///
-    /// - `env` – Soroban execution environment.
-    /// - `owner` – Current badge owner; must authorise the upgrade.
-    /// - `token_id` – Basic badge to upgrade.
-    /// - `new_metadata` – New metadata IPFS CID for the Advanced badge.
-    /// - `certificate_title` – Title string for the certificate badge.
-    ///
-    /// # Returns
-    ///
-    /// The token ID of the newly minted Advanced badge.
+    /// place, preserving achievements/XP/evolution history.
     pub fn upgrade_nft(
         env: Env,
         owner: Address,
