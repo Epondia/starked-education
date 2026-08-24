@@ -300,6 +300,17 @@ const versionNumberParamSchema = {
   })
 };
 
+// GET /:contentId/versions/export — format must be one of the supported export
+// formats (issue #389). Defaults to json when omitted.
+const versionExportSchema = {
+  params: Joi.object({
+    contentId: Joi.string().trim().min(1).required(),
+  }),
+  query: Joi.object({
+    format: Joi.string().valid('json', 'csv').default('json'),
+  }),
+};
+
 /**
  * POST /api/courses/:contentId/versions
  * Create a new version for course content
@@ -483,57 +494,6 @@ router.get('/:contentId/versions/current',
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve current version',
-        error: error.message
-      });
-    }
-  }
-);
-
-/**
- * GET /api/courses/:contentId/versions/:versionNumber
- * Get specific version by version number
- * 
- * @param {string} contentId - Content ID
- * @param {number} versionNumber - Version number
- * @returns {ContentVersion} - Specific version
- * 
- * @example
- * GET /api/courses/content_123/versions/1
- */
-router.get('/:contentId/versions/:versionNumber',
-  readLimiter,
-  validateRequestSchema(versionNumberParamSchema),
-  async (req, res) => {
-    try {
-      const { contentId, versionNumber } = req.params;
-      
-      // In a real implementation, this would:
-      // 1. Fetch specific version from database
-      // 2. Return the version with matching number
-      
-      const mockVersion = {
-        id: `ver_${versionNumber}`,
-        contentId,
-        version: parseInt(versionNumber),
-        title: `Version ${versionNumber}`,
-        description: `Version ${versionNumber} of the content`,
-        content: { sections: [`version_${versionNumber}`] },
-        changes: [`Changes for version ${versionNumber}`],
-        createdBy: 'user_123',
-        createdAt: new Date(`2024-01-${versionNumber}`),
-        isCurrent: versionNumber === '2'
-      };
-      
-      res.status(200).json({
-        success: true,
-        message: 'Version retrieved successfully',
-        data: mockVersion
-      });
-    } catch (error) {
-      console.error('Error getting version:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve version',
         error: error.message
       });
     }
@@ -746,7 +706,7 @@ router.put('/:contentId/versions/settings',
  */
 router.get('/:contentId/versions/export',
   readLimiter,
-  validateRequestSchema(contentIdParamSchema),
+  validateRequestSchema(versionExportSchema),
   async (req, res) => {
     try {
       const { contentId } = req.params;
@@ -783,6 +743,14 @@ router.get('/:contentId/versions/export',
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', `attachment; filename="versions_${contentId}.csv"`);
         res.send(csv);
+      } else {
+        // Unsupported or missing format: respond with a clean 400 instead of
+        // leaving the request hanging until the client times out (issue #389).
+        res.status(400).json({
+          success: false,
+          message: `Unsupported export format "${format}". Supported formats: json, csv.`,
+          supportedFormats: ['json', 'csv']
+        });
       }
     } catch (error) {
       console.error('Error exporting versions:', error);
@@ -849,6 +817,57 @@ router.get('/:contentId/versions/statistics',
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve version statistics',
+        error: error.message
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/courses/:contentId/versions/:versionNumber
+ * Get specific version by version number
+ * 
+ * @param {string} contentId - Content ID
+ * @param {number} versionNumber - Version number
+ * @returns {ContentVersion} - Specific version
+ * 
+ * @example
+ * GET /api/courses/content_123/versions/1
+ */
+router.get('/:contentId/versions/:versionNumber',
+  readLimiter,
+  validateRequestSchema(versionNumberParamSchema),
+  async (req, res) => {
+    try {
+      const { contentId, versionNumber } = req.params;
+      
+      // In a real implementation, this would:
+      // 1. Fetch specific version from database
+      // 2. Return the version with matching number
+      
+      const mockVersion = {
+        id: `ver_${versionNumber}`,
+        contentId,
+        version: parseInt(versionNumber),
+        title: `Version ${versionNumber}`,
+        description: `Version ${versionNumber} of the content`,
+        content: { sections: [`version_${versionNumber}`] },
+        changes: [`Changes for version ${versionNumber}`],
+        createdBy: 'user_123',
+        createdAt: new Date(`2024-01-${versionNumber}`),
+        isCurrent: versionNumber === '2'
+      };
+      
+      res.status(200).json({
+        success: true,
+        message: 'Version retrieved successfully',
+        data: mockVersion
+      });
+    } catch (error) {
+      console.error('Error getting version:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve version',
         error: error.message
       });
     }
