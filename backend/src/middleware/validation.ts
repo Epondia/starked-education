@@ -695,22 +695,430 @@ export const bulkGradeSchema: ValidationSchema = {
   }),
 };
 
-// Stub validation exports for enrollment/payment routes
-export const validateEnrollment = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => next();
-export const validateEnrollmentUpdate = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => next();
-export const validatePayment = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => next();
+// ---------------------------------------------------------------------------
+// Enrollment Schemas
+// ---------------------------------------------------------------------------
+
+const enrollmentIdParam = Joi.object({
+  id: Joi.string().trim().min(1).required(),
+});
+
+const courseIdParam = Joi.object({
+  courseId: Joi.string().trim().min(1).required(),
+});
+
+// Payment details accepted by enrollment endpoints. Stellar payments carry
+// a source address + asset while gateway payments carry a currency.
+const enrollmentPaymentDetailsSchema = Joi.object({
+  amount: Joi.number().positive().strict().required(),
+  currency: Joi.string().length(3).optional(),
+  fromAddress: Joi.string().trim().min(1).optional(),
+  assetCode: Joi.string().trim().max(12).optional(),
+  assetIssuer: Joi.string().trim().min(1).optional(),
+})
+  .min(1)
+  .messages({ "object.min": '"paymentDetails" must not be empty' });
+
+export const createEnrollmentSchema: ValidationSchema = {
+  body: Joi.object({
+    courseId: Joi.string().trim().min(1).required(),
+    paymentMethod: Joi.string()
+      .valid("stellar", "credit_card", "bank_transfer", "crypto", "installment")
+      .required(),
+    paymentDetails: enrollmentPaymentDetailsSchema.required(),
+  }),
+};
+
+export const updateEnrollmentSchema: ValidationSchema = {
+  params: enrollmentIdParam,
+  body: Joi.object({
+    status: Joi.string().valid(
+      "pending",
+      "confirmed",
+      "active",
+      "completed",
+      "cancelled",
+      "suspended",
+      "refunded",
+      "expired",
+    ).optional(),
+    paymentStatus: Joi.string()
+      .valid(
+        "pending",
+        "processing",
+        "completed",
+        "failed",
+        "refunded",
+        "partially_refunded",
+      )
+      .optional(),
+    paymentMethod: Joi.string()
+      .valid("stellar", "credit_card", "bank_transfer", "crypto", "installment")
+      .optional(),
+    progress: Joi.number().min(0).max(100).optional(),
+    amountPaid: Joi.number().min(0).optional(),
+    totalAmount: Joi.number().min(0).optional(),
+    currency: Joi.string().length(3).optional(),
+    notes: Joi.string().max(2000).optional(),
+    certificateIssued: Joi.boolean().optional(),
+    metadata: Joi.object().optional(),
+  })
+    .min(1)
+    .messages({ "object.min": "At least one field must be provided for update" }),
+};
+
+export const updateEnrollmentProgressSchema: ValidationSchema = {
+  params: enrollmentIdParam,
+  body: Joi.object({
+    progress: Joi.number().min(0).max(100).required(),
+  }),
+};
+
+export const completeEnrollmentSchema: ValidationSchema = {
+  params: enrollmentIdParam,
+  body: Joi.object({
+    issueCertificate: Joi.boolean().optional(),
+  }),
+};
+
+export const cancelEnrollmentSchema: ValidationSchema = {
+  params: enrollmentIdParam,
+  body: Joi.object({
+    reason: Joi.string().trim().max(500).optional(),
+  }),
+};
+
+export const bulkEnrollmentSchema: ValidationSchema = {
+  body: Joi.object({
+    operation: Joi.string()
+      .valid("enroll", "unenroll", "activate", "suspend", "complete")
+      .required(),
+    enrollments: Joi.array()
+      .items(
+        Joi.object({
+          id: Joi.string().optional(),
+          userId: Joi.string().trim().min(1).optional(),
+          courseId: Joi.string().trim().min(1).optional(),
+          status: Joi.string().optional(),
+        }).min(1).unknown(true),
+      )
+      .min(1)
+      .required(),
+  }),
+};
+
+export const validatePrerequisitesSchema: ValidationSchema = {
+  body: Joi.object({
+    courseId: Joi.string().trim().min(1).required(),
+  }),
+};
+
+export const renewEnrollmentSchema: ValidationSchema = {
+  params: enrollmentIdParam,
+  body: Joi.object({
+    paymentDetails: enrollmentPaymentDetailsSchema.required(),
+  }),
+};
+
+export const addToWaitlistSchema: ValidationSchema = {
+  params: courseIdParam,
+};
+
+export const issueCertificateSchema: ValidationSchema = {
+  params: enrollmentIdParam,
+};
+
+// Backward-compatible middleware exports (replaces the previous pass-through
+// stubs) so existing route imports keep working.
+export const validateEnrollment = validateRequestSchema(createEnrollmentSchema);
+export const validateEnrollmentUpdate = validateRequestSchema(updateEnrollmentSchema);
+
+// ---------------------------------------------------------------------------
+// Payment Schemas
+// ---------------------------------------------------------------------------
+
+const paymentIdParam = Joi.object({
+  id: Joi.string().trim().min(1).required(),
+});
+
+export const createPaymentIntentSchema: ValidationSchema = {
+  body: Joi.object({
+    enrollmentId: Joi.string().trim().min(1).required(),
+    method: Joi.string()
+      .valid("stellar", "credit_card", "bank_transfer", "crypto", "installment")
+      .required(),
+    amount: Joi.number().positive().strict().required(),
+    currency: Joi.string().length(3).required(),
+    metadata: Joi.object().optional(),
+  }),
+};
+
+export const createStellarPaymentSchema: ValidationSchema = {
+  body: Joi.object({
+    enrollmentId: Joi.string().trim().min(1).required(),
+    fromAddress: Joi.string().trim().min(1).required(),
+    amount: Joi.number().positive().strict().required(),
+    assetCode: Joi.string().trim().max(12).optional(),
+    assetIssuer: Joi.string().trim().min(1).optional(),
+    memo: Joi.string().max(28).optional(),
+    courseId: Joi.string().trim().min(1).optional(),
+  }),
+};
+
+export const submitStellarPaymentSchema: ValidationSchema = {
+  body: Joi.object({
+    paymentIntentId: Joi.string().trim().min(1).required(),
+    signedTransactionXDR: Joi.string().trim().min(1).required(),
+  }),
+};
+
+export const processRefundSchema: ValidationSchema = {
+  params: paymentIdParam,
+  body: Joi.object({
+    amount: Joi.number().positive().strict().optional(),
+    reason: Joi.string().trim().max(500).optional(),
+  })
+    .min(1)
+    .messages({ "object.min": "At least one field must be provided for refund" }),
+};
+
+export const updatePaymentSettingsSchema: ValidationSchema = {
+  body: Joi.object({
+    acceptedMethods: Joi.array()
+      .items(
+        Joi.string().valid(
+          "stellar",
+          "credit_card",
+          "bank_transfer",
+          "crypto",
+          "installment",
+        ),
+      )
+      .optional(),
+    defaultCurrency: Joi.string().length(3).optional(),
+    supportedCurrencies: Joi.array().items(Joi.string().length(3)).optional(),
+    autoRefundEnabled: Joi.boolean().optional(),
+    refundWindowDays: Joi.number().integer().min(0).optional(),
+    installmentEnabled: Joi.boolean().optional(),
+    minInstallmentAmount: Joi.number().min(0).optional(),
+    maxInstallments: Joi.number().integer().min(1).optional(),
+    installmentFeePercentage: Joi.number().min(0).max(100).optional(),
+    stellarSettings: Joi.object({
+      network: Joi.string().valid("testnet", "mainnet", "local").optional(),
+      horizonUrl: Joi.string().uri().optional(),
+      distributionAccount: Joi.string().trim().min(1).optional(),
+      acceptedAssets: Joi.array()
+        .items(
+          Joi.object({
+            code: Joi.string().required(),
+            issuer: Joi.string().optional(),
+            name: Joi.string().required(),
+          }),
+        )
+        .optional(),
+      autoConfirmPayments: Joi.boolean().optional(),
+      confirmationThreshold: Joi.number().integer().min(1).optional(),
+      memoPrefix: Joi.string().optional(),
+    }).optional(),
+  })
+    .min(1)
+    .messages({ "object.min": "At least one setting must be provided" }),
+};
+
+export const validatePaymentParametersSchema: ValidationSchema = {
+  body: Joi.object({
+    amount: Joi.number().positive().strict().required(),
+    currency: Joi.string().length(3).optional(),
+    method: Joi.string().trim().min(1).optional(),
+    fromAddress: Joi.string().trim().min(1).optional(),
+  }),
+};
+
+export const convertCurrencySchema: ValidationSchema = {
+  body: Joi.object({
+    amount: Joi.number().positive().strict().required(),
+    from: Joi.string().length(3).required(),
+    to: Joi.string().length(3).required(),
+  }),
+};
+
+export const stellarWebhookSchema: ValidationSchema = {
+  body: Joi.object({
+    type: Joi.string().valid("payment", "refund").required(),
+    transaction: Joi.object().required(),
+  }),
+};
+
+export const paymentGatewayWebhookSchema: ValidationSchema = {
+  body: Joi.object({
+    gateway: Joi.string().valid("stripe", "paypal").required(),
+    event: Joi.string().trim().min(1).required(),
+    data: Joi.object().required(),
+  }),
+};
+
+// Backward-compatible middleware export (replaces the previous pass-through
+// stub) so the existing route import keeps working.
+export const validatePayment = validateRequestSchema(createPaymentIntentSchema);
+
+// ---------------------------------------------------------------------------
+// Moderation Schemas
+// ---------------------------------------------------------------------------
+
+const MODERATION_ACTIONS = ["approve", "reject", "request_revision"] as const;
+
+const flagIdParam = Joi.object({
+  id: Joi.string().trim().min(1).required(),
+});
+
+export const moderateFlagSchema: ValidationSchema = {
+  params: flagIdParam,
+  body: Joi.object({
+    action: Joi.string().valid(...MODERATION_ACTIONS).required(),
+    reason: Joi.string().trim().max(2000).optional(),
+    note: Joi.string().trim().max(2000).optional(),
+  }),
+};
+
+export const batchModerateSchema: ValidationSchema = {
+  body: Joi.object({
+    action: Joi.string().valid(...MODERATION_ACTIONS).required(),
+    flagIds: Joi.array()
+      .items(Joi.string().trim().min(1))
+      .min(1)
+      .required(),
+    reason: Joi.string().trim().max(2000).optional(),
+    note: Joi.string().trim().max(2000).optional(),
+  }),
+};
+
+export const reportContentSchema: ValidationSchema = {
+  body: Joi.object({
+    contentType: Joi.string()
+      .valid(
+        "course_description",
+        "user_resource",
+        "discussion_post",
+        "review",
+        "assignment_submission",
+      )
+      .required(),
+    contentId: Joi.string().trim().min(1).required(),
+    reason: Joi.string().trim().min(1).max(2000).required(),
+    authorId: Joi.string().trim().min(1).optional(),
+    courseId: Joi.string().trim().min(1).optional(),
+  }),
+};
+
+export const upsertAutoFlagRuleSchema: ValidationSchema = {
+  body: Joi.object({
+    id: Joi.string().trim().min(1).optional(),
+    contentType: Joi.string()
+      .valid(
+        "course_description",
+        "user_resource",
+        "discussion_post",
+        "review",
+        "assignment_submission",
+      )
+      .required(),
+    keyword: Joi.string().trim().min(1).required(),
+    pattern: Joi.string().optional(),
+    severity: Joi.string().valid("low", "medium", "high").required(),
+    enabled: Joi.boolean().required(),
+  }),
+};
+
+export const moderationQueueQuerySchema: ValidationSchema = {
+  query: Joi.object({
+    status: Joi.string().optional(),
+    contentType: Joi.string().optional(),
+    flaggedBy: Joi.string().trim().optional(),
+    authorId: Joi.string().trim().optional(),
+    courseId: Joi.string().trim().optional(),
+    dateFrom: Joi.date().iso().optional(),
+    dateTo: Joi.date().iso().optional(),
+    sortBy: Joi.string().valid("createdAt", "updatedAt", "contentType").optional(),
+    sortOrder: Joi.string().valid("asc", "desc").optional(),
+    page: Joi.number().integer().min(1).optional(),
+    limit: Joi.number().integer().min(1).max(100).optional(),
+  }),
+};
+
+export const moderationAuditQuerySchema: ValidationSchema = {
+  query: Joi.object({
+    flagId: Joi.string().trim().optional(),
+    moderatorId: Joi.string().trim().optional(),
+    limit: Joi.number().integer().min(1).max(500).optional(),
+  }),
+};
+
+// ---------------------------------------------------------------------------
+// Webhook Schemas
+// ---------------------------------------------------------------------------
+
+const WEBHOOK_EVENT_TYPES = [
+  "credential.issued",
+  "credential.revoked",
+  "course.created",
+  "course.updated",
+  "enrollment.created",
+  "enrollment.completed",
+  "payment.received",
+  "user.registered",
+] as const;
+
+const webhookIdParam = Joi.object({
+  id: Joi.string().trim().min(1).required(),
+});
+
+const webhookDeliveryParams = Joi.object({
+  id: Joi.string().trim().min(1).required(),
+  deliveryId: Joi.string().trim().min(1).required(),
+});
+
+export const registerWebhookSchema: ValidationSchema = {
+  body: Joi.object({
+    url: Joi.string().uri().required(),
+    events: Joi.array()
+      .items(Joi.string().valid(...WEBHOOK_EVENT_TYPES))
+      .min(1)
+      .required(),
+    secret: Joi.string().trim().min(1).optional(),
+    description: Joi.string().trim().max(500).optional(),
+  }),
+};
+
+export const updateWebhookSchema: ValidationSchema = {
+  params: webhookIdParam,
+  body: Joi.object({
+    url: Joi.string().uri().optional(),
+    events: Joi.array()
+      .items(Joi.string().valid(...WEBHOOK_EVENT_TYPES))
+      .min(1)
+      .optional(),
+    description: Joi.string().trim().max(500).optional(),
+    isActive: Joi.boolean().optional(),
+  })
+    .min(1)
+    .messages({ "object.min": "At least one field must be provided for update" }),
+};
+
+export const getWebhookByIdSchema: ValidationSchema = {
+  params: webhookIdParam,
+};
+
+export const getWebhookDeliveriesSchema: ValidationSchema = {
+  params: webhookIdParam,
+  query: Joi.object({
+    limit: Joi.number().integer().min(1).max(100).optional(),
+    offset: Joi.number().integer().min(0).optional(),
+  }),
+};
+
+export const retryWebhookDeliverySchema: ValidationSchema = {
+  params: webhookDeliveryParams,
+};
 
 // Federated Learning Validation Schemas
 
@@ -1831,3 +2239,440 @@ export const swarmLearningJoinSchema: ValidationSchema = {
     }).optional(),
   }),
 };
+
+// ---------------------------------------------------------------------------
+// Transaction Validation (Stellar) — consolidated from the former
+// middleware/validation.js CommonJS module.
+//
+// NOTE: middleware/validation.js was deleted because Node's module resolution
+// prefers `.js` over `.ts`, which made every `require('../middleware/validation')`
+// from a TypeScript route silently resolve to the JavaScript file (which only
+// exported the transaction validators). That left all Joi schemas defined here
+// unavailable at runtime in dev/test. Merging both modules into this single
+// file removes the shadowing so route imports resolve deterministically.
+// ---------------------------------------------------------------------------
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+const validateStellarPublicKey = (value: unknown, helpers: any) => {
+  try {
+    // Basic Stellar public key validation
+    if (!value || typeof value !== 'string') {
+      return helpers.error('custom.invalidPublicKey');
+    }
+
+    // Stellar public keys are 56 characters long and start with 'G'
+    if (value.length !== 56 || !value.startsWith('G')) {
+      return helpers.error('custom.invalidPublicKey');
+    }
+
+    // Check if it's valid base32
+    const base32Regex = /^[ABCDEFGHIJKLMNOPQRSTUVWXYZ234567]+$/;
+    if (!base32Regex.test(value.substring(1))) {
+      return helpers.error('custom.invalidPublicKey');
+    }
+
+    return value;
+  } catch {
+    return helpers.error('custom.invalidPublicKey');
+  }
+};
+
+const validateStellarAmount = (value: unknown, helpers: any) => {
+  try {
+    if (!value || typeof value !== 'string') {
+      return helpers.error('custom.invalidAmount');
+    }
+
+    // Stellar amounts can have up to 7 decimal places
+    const amountRegex = /^\d+(\.\d{1,7})?$/;
+    if (!amountRegex.test(value)) {
+      return helpers.error('custom.invalidAmount');
+    }
+
+    const amount = parseFloat(value);
+    if (amount <= 0) {
+      return helpers.error('custom.invalidAmount');
+    }
+
+    // Maximum amount is (2^63 - 1) stroops, i.e. 922337203685477.5807
+    // (computed rather than written as a literal to avoid precision loss)
+    const maxAmount = (2 ** 63 - 1) / 10000000;
+    if (amount > maxAmount) {
+      return helpers.error('custom.amountTooLarge');
+    }
+
+    return value;
+  } catch {
+    return helpers.error('custom.invalidAmount');
+  }
+};
+
+// Extend Joi with custom validators (must be before schema definitions)
+const customJoi: any = Joi.extend({
+  type: 'string',
+  base: Joi.string(),
+  messages: {
+    stellarPublicKey: '{{#label}} must be a valid Stellar public key',
+    stellarAmount: '{{#label}} must be a valid Stellar amount',
+  },
+  rules: {
+    stellarPublicKey: {
+      validate: validateStellarPublicKey,
+      args: [],
+    },
+    stellarAmount: {
+      validate: validateStellarAmount,
+      args: [],
+    },
+  },
+});
+
+// Transaction validation schemas
+const transactionSchemas = {
+  credential_issuance: customJoi.object({
+    sourceAccount: customJoi.string().stellarPublicKey().required(),
+    secretKey: customJoi.string().when('signatures', {
+      is: customJoi.exist(),
+      then: customJoi.optional(),
+      otherwise: customJoi.required(),
+    }),
+    signatures: customJoi.array().items(customJoi.object({
+      publicKey: customJoi.string().stellarPublicKey().required(),
+      signature: customJoi.string().required(),
+    })).optional(),
+    recipients: customJoi.alternatives().try(
+      customJoi.array().items(customJoi.object({
+        address: customJoi.string().stellarPublicKey().required(),
+        amount: customJoi.string().default('0'),
+      })).min(1).max(50),
+      customJoi.object({
+        address: customJoi.string().stellarPublicKey().required(),
+        amount: customJoi.string().default('0'),
+      })
+    ).required(),
+    credentialData: customJoi.object().pattern(customJoi.string(), customJoi.any()).optional(),
+    memoText: customJoi.string().max(28).optional(),
+    gasOptimization: customJoi.object({
+      strategy: customJoi.string().valid('economy', 'standard', 'priority').default('standard'),
+      estimatedFee: customJoi.number().integer().min(100).required(),
+      savings: customJoi.number().integer().min(0).default(0),
+      confidence: customJoi.number().min(0).max(1).required(),
+    }).required(),
+  }),
+
+  course_payment: customJoi.object({
+    sourceAccount: customJoi.string().stellarPublicKey().required(),
+    secretKey: customJoi.string().when('signatures', {
+      is: customJoi.exist(),
+      then: customJoi.optional(),
+      otherwise: customJoi.required(),
+    }),
+    signatures: customJoi.array().items(customJoi.object({
+      publicKey: customJoi.string().stellarPublicKey().required(),
+      signature: customJoi.string().required(),
+    })).optional(),
+    merchantAccount: customJoi.string().stellarPublicKey().required(),
+    amount: customJoi.string().stellarAmount().required(),
+    asset: customJoi.object({
+      code: customJoi.string().alphanum().min(1).max(12).required(),
+      issuer: customJoi.string().stellarPublicKey().required(),
+    }).optional(),
+    memoText: customJoi.string().max(28).optional(),
+    courseData: customJoi.object({
+      courseId: customJoi.string().required(),
+      userId: customJoi.string().required(),
+    }).optional(),
+    gasOptimization: customJoi.object({
+      strategy: customJoi.string().valid('economy', 'standard', 'priority', 'combined_payment', 'recurring_payment').required(),
+      estimatedFee: customJoi.number().integer().min(100).required(),
+      savings: customJoi.number().integer().min(0).default(0),
+      confidence: customJoi.number().min(0).max(1).required(),
+    }).required(),
+  }),
+
+  smart_contract_interaction: customJoi.object({
+    sourceAccount: customJoi.string().stellarPublicKey().required(),
+    secretKey: customJoi.string().when('signatures', {
+      is: customJoi.exist(),
+      then: customJoi.optional(),
+      otherwise: customJoi.required(),
+    }),
+    signatures: customJoi.array().items(customJoi.object({
+      publicKey: customJoi.string().stellarPublicKey().required(),
+      signature: customJoi.string().required(),
+    })).optional(),
+    contractId: customJoi.string().required(),
+    contractType: customJoi.string().valid('soroban', 'traditional').default('soroban'),
+    method: customJoi.string().required(),
+    args: customJoi.array().items(customJoi.any()).optional(),
+    memoText: customJoi.string().max(28).optional(),
+    batchCalls: customJoi.array().items(customJoi.object({
+      method: customJoi.string().required(),
+      args: customJoi.array().items(customJoi.any()).optional(),
+    })).optional(),
+    gasOptimization: customJoi.object({
+      strategy: customJoi.string().valid('standard', 'batch_contract_calls').required(),
+      estimatedFee: customJoi.number().integer().min(100).required(),
+      savings: customJoi.number().integer().min(0).default(0),
+      confidence: customJoi.number().min(0).max(1).required(),
+    }).required(),
+  }),
+
+  profile_update: customJoi.object({
+    sourceAccount: customJoi.string().stellarPublicKey().required(),
+    secretKey: customJoi.string().when('signatures', {
+      is: customJoi.exist(),
+      then: customJoi.optional(),
+      otherwise: customJoi.required(),
+    }),
+    signatures: customJoi.array().items(customJoi.object({
+      publicKey: customJoi.string().stellarPublicKey().required(),
+      signature: customJoi.string().required(),
+    })).optional(),
+    userId: customJoi.string().required(),
+    updatedFields: customJoi.object().pattern(customJoi.string(), customJoi.any()).required(),
+    accountOptions: customJoi.object({
+      inflationDest: customJoi.string().stellarPublicKey().optional(),
+      clearFlags: customJoi.number().integer().min(0).max(255).optional(),
+      setFlags: customJoi.number().integer().min(0).max(255).optional(),
+      masterWeight: customJoi.number().integer().min(0).max(255).optional(),
+      lowThreshold: customJoi.number().integer().min(0).max(255).optional(),
+      medThreshold: customJoi.number().integer().min(0).max(255).optional(),
+      highThreshold: customJoi.number().integer().min(0).max(255).optional(),
+      homeDomain: customJoi.string().max(32).optional(),
+      signer: customJoi.object({
+        ed25519PublicKey: customJoi.string().stellarPublicKey().required(),
+        weight: customJoi.number().integer().min(1).max(255).required(),
+      }).optional(),
+    }).optional(),
+    gasOptimization: customJoi.object({
+      strategy: customJoi.string().valid('economy', 'standard', 'bulk_update').required(),
+      estimatedFee: customJoi.number().integer().min(100).required(),
+      savings: customJoi.number().integer().min(0).default(0),
+      confidence: customJoi.number().min(0).max(1).required(),
+    }).required(),
+  }),
+};
+
+// Base transaction submission schema
+const transactionSubmissionSchema = customJoi.object({
+  type: customJoi.string().valid(
+    'credential_issuance',
+    'course_payment',
+    'smart_contract_interaction',
+    'profile_update'
+  ).required(),
+  payload: customJoi.when('type', {
+    switch: [
+      {
+        is: 'credential_issuance',
+        then: transactionSchemas.credential_issuance.required(),
+      },
+      {
+        is: 'course_payment',
+        then: transactionSchemas.course_payment.required(),
+      },
+      {
+        is: 'smart_contract_interaction',
+        then: transactionSchemas.smart_contract_interaction.required(),
+      },
+      {
+        is: 'profile_update',
+        then: transactionSchemas.profile_update.required(),
+      },
+    ],
+  }),
+  priority: customJoi.string().valid('critical', 'high', 'medium', 'low').default('medium'),
+  userId: customJoi.string().required(),
+  dependencies: customJoi.array().items(customJoi.string().uuid()).max(10).optional(),
+});
+
+// Bulk transaction submission schema
+const bulkTransactionSchema = customJoi.object({
+  transactions: customJoi.array().items(
+    customJoi.object({
+      type: customJoi.string().valid(
+        'credential_issuance',
+        'course_payment',
+        'smart_contract_interaction',
+        'profile_update'
+      ).required(),
+      payload: customJoi.when('type', {
+        switch: [
+          {
+            is: 'credential_issuance',
+            then: transactionSchemas.credential_issuance.required(),
+          },
+          {
+            is: 'course_payment',
+            then: transactionSchemas.course_payment.required(),
+          },
+          {
+            is: 'smart_contract_interaction',
+            then: transactionSchemas.smart_contract_interaction.required(),
+          },
+          {
+            is: 'profile_update',
+            then: transactionSchemas.profile_update.required(),
+          },
+        ],
+      }),
+      priority: customJoi.string().valid('critical', 'high', 'medium', 'low').default('medium'),
+      dependencies: customJoi.array().items(customJoi.string().uuid()).max(10).optional(),
+    })
+  ).min(1).max(100).required(),
+  options: customJoi.object({
+    batchSize: customJoi.number().integer().min(1).max(50).default(10),
+    continueOnError: customJoi.boolean().default(false),
+    priority: customJoi.string().valid('critical', 'high', 'medium', 'low').optional(),
+  }).optional(),
+});
+
+// Query parameter schemas
+const querySchemas = {
+  pagination: customJoi.object({
+    page: customJoi.number().integer().min(1).default(1),
+    limit: customJoi.number().integer().min(1).max(100).default(20),
+  }),
+  transactionFilter: customJoi.object({
+    status: customJoi.string().valid('queued', 'processing', 'completed', 'failed', 'cancelled').optional(),
+    type: customJoi.string().valid(
+      'credential_issuance',
+      'course_payment',
+      'smart_contract_interaction',
+      'profile_update'
+    ).optional(),
+    priority: customJoi.string().valid('critical', 'high', 'medium', 'low').optional(),
+    dateFrom: customJoi.date().iso().optional(),
+    dateTo: customJoi.date().iso().min(customJoi.ref('dateFrom')).optional(),
+  }),
+  analytics: customJoi.object({
+    timeRange: customJoi.string().valid('1h', '24h', '7d', '30d').default('24h'),
+    userId: customJoi.string().uuid().optional(),
+    type: customJoi.string().valid(
+      'credential_issuance',
+      'course_payment',
+      'smart_contract_interaction',
+      'profile_update'
+    ).optional(),
+    groupBy: customJoi.string().valid('hour', 'day', 'type', 'status').default('hour'),
+  }),
+};
+
+// Validation middleware factory
+const validate = (schema: any, source: 'body' | 'query' | 'params' = 'body') => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const { error, value } = schema.validate(req[source], {
+      abortEarly: false,
+      allowUnknown: false,
+      stripUnknown: true,
+    });
+
+    if (error) {
+      const errors = error.details.map((detail: any) => ({
+        field: detail.path.join('.'),
+        message: detail.message,
+        value: detail.context?.value,
+      }));
+
+      res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors,
+      });
+      return;
+    }
+
+    // Replace the request data with validated and sanitized data
+    (req as any)[source] = value;
+    next();
+  };
+};
+
+// Specific validation middleware functions
+export const validateTransaction = validate(transactionSubmissionSchema);
+export const validateBulkTransaction = validate(bulkTransactionSchema);
+export const validatePaginationQuery = validate(querySchemas.pagination, 'query');
+export const validateTransactionFilter = validate(querySchemas.transactionFilter, 'query');
+export const validateAnalyticsQuery = validate(querySchemas.analytics, 'query');
+
+// Advanced validation for complex scenarios
+export const validateTransactionDependencies = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { dependencies } = req.body;
+
+    if (!dependencies || dependencies.length === 0) {
+      return next();
+    }
+
+    // This would check if dependencies exist and are in valid states
+    // For now, we'll just validate the format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    for (const depId of dependencies) {
+      if (!uuidRegex.test(depId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid dependency ID format',
+          error: `Dependency ${depId} is not a valid UUID`,
+        });
+      }
+    }
+
+    next();
+  } catch (error) {
+    console.error('Dependency validation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Dependency validation failed',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+export const validateUserTierLimits = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const user = (req as any).user;
+    const { transactions } = req.body;
+
+    if (!user || !user.role) {
+      return next();
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const securityConfig = require('../config/security');
+    const roleKey = user.role === 'educator' ? 'instructor' : user.role;
+    const limits = securityConfig.tiers[roleKey] || securityConfig.tiers.default;
+
+    // Check batch size limit (if applicable for bulk transactions)
+    if (transactions && transactions.length > (limits.burst || 10)) {
+      return res.status(429).json({
+        success: false,
+        message: 'Batch size exceeds tier limit',
+        error: `Maximum ${limits.burst || 10} transactions per batch for ${user.role} role`,
+        limit: limits.burst || 10,
+        requested: transactions.length,
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Tier limit validation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Tier limit validation failed',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+export { transactionSchemas, querySchemas, customJoi };
