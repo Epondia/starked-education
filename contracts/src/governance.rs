@@ -1,10 +1,49 @@
-use soroban_sdk::{contracttype, Address, Env, String};
+use soroban_sdk::{contracttype, Address, Env, String, Symbol};
 
 pub const MAX_PROPOSAL_TITLE_BYTES: u32 = 200;
 pub const MAX_PROPOSAL_DESCRIPTION_BYTES: u32 = 2000;
 pub const MIN_VOTING_PERIOD: u64 = 300;
 pub const MAX_VOTING_PERIOD: u64 = 30 * 24 * 60 * 60;
 pub const DUPLICATE_PROPOSAL_COOLDOWN: u64 = 24 * 60 * 60;
+
+// ═══════════════════════════════════════════════════════════════════
+//  Role-Based Access Control (RBAC)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Protocol roles for least-privilege access control.
+///
+/// - `Admin`: Full contract control — can grant/revoke any role, pause, configure.
+/// - `Issuer`: Can issue and manage credentials, create courses, mint badges.
+/// - `Verifier`: Can verify credentials and generate cross-chain proofs.
+///
+/// Out of scope: multisig (tracked separately) and off-chain roles.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Role {
+    Admin = 0,
+    Issuer = 1,
+    Verifier = 2,
+}
+
+impl Role {
+    /// Pack role discriminant as u32 for event payloads and storage.
+    pub fn to_u32(&self) -> u32 {
+        match self {
+            Role::Admin => 0,
+            Role::Issuer => 1,
+            Role::Verifier => 2,
+        }
+    }
+
+    /// Unpack role discriminant from u32.
+    pub fn from_u32(v: u32) -> Self {
+        match v {
+            0 => Role::Admin,
+            1 => Role::Issuer,
+            _ => Role::Verifier,
+        }
+    }
+}
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -95,6 +134,9 @@ pub enum GovernanceDataKey {
     ScholarshipRecordCount(u64),        // number of disbursements for a proposal
     // Per-student credential count (set externally / by credential registry)
     StudentCredentials(Address),
+    // Role-based access control
+    RoleMember(Role, Address),   // bool: whether address holds the role
+    RoleMemberCount(Role),       // u32: number of addresses holding the role
 }
 
 pub struct Governance;
@@ -488,6 +530,131 @@ impl Governance {
         env.storage()
             .instance()
             .set(&GovernanceDataKey::TreasuryBalance, &(current - amount));
+    }
+
+    // ── Role-Based Access Control (RBAC) ──────────────────────────────────
+
+    /// Grant a role to an address. Only callable by an existing Admin.
+    /// On the very first Admin grant (when no Admin exists yet), the check
+    /// is bypassed so the contract can be bootstrapped. Emits an event on
+    /// grant. Rejects if the address already holds the role.
+    pub fn grant_role(env: &Env, admin: Address, role: Role, grantee: Address) {
+        admin.require_auth();
+
+        // Chicken-and-egg: the first Admin must be grantable without
+        // requiring an existing Admin.
+        let existing_admin_count: u32 = env
+            .storage()
+            .instance()
+            .get(&GovernanceDataKey::RoleMemberCount(Role::Admin))
+            .unwrap_or(0);
+        if existing_admin_count > 0 || role != Role::Admin {
+            Self::require_role(env, &admin, Role::Admin);
+        }
+
+        let key = GovernanceDataKey::RoleMember(role, grantee.clone());
+        if env.storage().instance().has(&key) {
+            panic!("RoleAlreadyGranted");
+        }
+        env.storage().instance().set(&key, &true);
+
+        let count_key = GovernanceDataKey::RoleMemberCount(role);
+        let count: u32 = env
+            .storage()
+            .instance()
+            .get(&count_key)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&count_key, &(count + 1));
+
+        // Emit role-grant event for auditability
+        env.events().publish(
+            (
+                Symbol::new(env, "governance"),
+                Symbol::new(env, "role_granted"),
+            ),
+            (role.to_u32(), grantee),
+        );
+    }
+
+    /// Revoke a role from an address. Only callable by an existing Admin.
+    /// Rejects if revoking the last Admin would lock the contract.
+    /// Emits an event on revoke.
+    pub fn revoke_role(env: &Env, admin: Address, role: Role, target: Address) {
+        admin.require_auth();
+        Self::require_role(env, &admin, Role::Admin);
+
+        let key = GovernanceDataKey::RoleMember(role, target.clone());
+        if !env.storage().instance().has(&key) {
+            panic!("RoleNotFound");
+        }
+
+        // Safety check: revoking the last Admin must not lock the contract.
+        if role == Role::Admin {
+            let count: u32 = env
+                .storage()
+                .instance()
+                .get(&GovernanceDataKey::RoleMemberCount(Role::Admin))
+                .unwrap_or(0);
+            if count <= 1 {
+                panic!("CannotRevokeLastAdmin");
+            }
+        }
+
+        env.storage().instance().remove(&key);
+
+        let count_key = GovernanceDataKey::RoleMemberCount(role);
+        let count: u32 = env
+            .storage()
+            .instance()
+            .get(&count_key)
+            .unwrap_or(1);
+        env.storage()
+            .instance()
+            .set(&count_key, &(count.saturating_sub(1)));
+
+        env.events().publish(
+            (
+                Symbol::new(env, "governance"),
+                Symbol::new(env, "role_revoked"),
+            ),
+            (role.to_u32(), target),
+        );
+    }
+
+    /// Check whether `addr` holds `role`. Returns `true` if the role is stored.
+    pub fn has_role(env: &Env, addr: &Address, role: Role) -> bool {
+        env.storage()
+            .instance()
+            .has(&GovernanceDataKey::RoleMember(role, addr.clone()))
+    }
+
+    /// Get the number of addresses that hold a given role.
+    pub fn get_role_member_count(env: &Env, role: Role) -> u32 {
+        env.storage()
+            .instance()
+            .get(&GovernanceDataKey::RoleMemberCount(role))
+            .unwrap_or(0)
+    }
+
+    /// Require that `caller` holds `required_role`. Panics with a clear message
+    /// if the caller is not authorized. Called at the top of protected functions.
+    pub fn require_role(env: &Env, caller: &Address, required_role: Role) {
+        if !Self::has_role(env, caller, required_role) {
+            panic!("UnauthorizedRole");
+        }
+    }
+
+    /// Require that `caller` holds at least one of the given roles.
+    /// Used when a function is gated on multiple possible roles (e.g. Admin OR Issuer).
+    pub fn require_any_role(env: &Env, caller: &Address, roles: &[Role]) {
+        for role in roles {
+            if Self::has_role(env, caller, *role) {
+                return;
+            }
+        }
+        panic!("UnauthorizedRole");
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

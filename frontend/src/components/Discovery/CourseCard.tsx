@@ -1,6 +1,6 @@
 import { BookmarkPlus, Eye, Network } from 'lucide-react';
-import { DiscoveryCourse, ViewMode } from './types';
 import Image from 'next/image';
+import { DiscoveryCourse, ViewMode } from './types';
 
 import React from 'react';
 
@@ -22,13 +22,23 @@ export const CourseCard: React.FC<{
       <div
         className={`${view === 'list' ? 'flex-row' : 'flex-col'} flex gap-4`}
       >
-        <Image
-          src={course.thumbnail || '/placeholder-course.png'}
-          alt={course.title}
-          width={400}
-          height={200}
-          className={`${view === 'list' ? 'h-28 w-40' : 'h-40 w-full'} rounded-[20px] object-cover`}
-        />
+        <div
+          className={`relative shrink-0 overflow-hidden rounded-[20px] ${
+            view === 'list' ? 'h-28 w-40' : 'h-40 w-full'
+          }`}
+        >
+          <Image
+            src={course.thumbnail || '/placeholder-course.png'}
+            alt={course.title}
+            fill
+            sizes={
+              view === 'list'
+                ? '160px'
+                : '(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw'
+            }
+            className="object-cover"
+          />
+        </div>
         <div className="flex flex-1 flex-col">
           <div className="flex items-start justify-between gap-3">
             <div>

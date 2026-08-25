@@ -7,12 +7,27 @@ const transactionEvents = require('../events/transactionEvents');
 const stellarUtils = require('../utils/stellarUtils');
 const logger = require('../utils/logger');
 const { transactionLimiter } = require('../middleware/rateLimiter');
+const { authenticateToken, requireAdmin, requireSelfOrAdmin } = require('../middleware/auth');
+const { UserRole } = require('../utils/roles');
 
 const router = express.Router();
 
+/**
+ * Ownership check for transaction-scoped routes (issue #383): admins may act
+ * on any transaction, everyone else only on their own. The userId is compared
+ * against the authenticated JWT, never against caller-supplied input.
+ */
+function isOwnerOrAdmin(req, transaction) {
+  const currentUserId = req.user.id || req.user.sub;
+  return req.user.role === UserRole.ADMIN || String(transaction.userId) === String(currentUserId);
+}
+
 // Validation schemas
 const createTransactionSchema = Joi.object({
-  userId: Joi.string().required(),
+  // userId is derived from the authenticated JWT on the create route
+  // (issue #383); it is accepted here only so admins/system flows can
+  // still target another user explicitly.
+  userId: Joi.string().optional(),
   type: Joi.string().valid('payment', 'account_creation', 'trustline', 'claimable_balance', 'multisig', 'other').required(),
   sourceAccount: Joi.string().required(),
   destinationAccount: Joi.string().when('type', {
@@ -56,7 +71,7 @@ const getTransactionsSchema = Joi.object({
  * POST /api/transactions
  * Create and queue a new transaction
  */
-router.post('/', transactionLimiter, async (req, res) => {
+router.post('/', transactionLimiter, authenticateToken, async (req, res) => {
   try {
     const { error, value } = createTransactionSchema.validate(req.body);
     
@@ -66,6 +81,12 @@ router.post('/', transactionLimiter, async (req, res) => {
         message: 'Validation error',
         errors: error.details.map(detail => detail.message)
       });
+    }
+
+    // Self-service route: never trust the caller-supplied userId — derive it
+    // from the JWT. Only admins may target another user (issue #383).
+    if (req.user.role !== UserRole.ADMIN) {
+      value.userId = req.user.id || req.user.sub;
     }
 
     // Validate Stellar addresses if provided
@@ -116,7 +137,7 @@ router.post('/', transactionLimiter, async (req, res) => {
  * GET /api/transactions
  * Get transactions with optional filtering
  */
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const { error, value } = getTransactionsSchema.validate(req.query);
     
@@ -125,6 +146,17 @@ router.get('/', async (req, res) => {
         success: false,
         message: 'Validation error',
         errors: error.details.map(detail => detail.message)
+      });
+    }
+
+    // Ownership guard: non-admins may only list their own transactions.
+    // The target userId comes from the request, so reject mismatches
+    // explicitly (issue #383).
+    const currentUserId = req.user.id || req.user.sub;
+    if (req.user.role !== UserRole.ADMIN && String(value.userId) !== String(currentUserId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only access your own transactions'
       });
     }
 
@@ -185,7 +217,7 @@ router.get('/', async (req, res) => {
  * GET /api/transactions/:transactionId
  * Get specific transaction details
  */
-router.get('/:transactionId', async (req, res) => {
+router.get('/:transactionId', authenticateToken, async (req, res) => {
   try {
     const { transactionId } = req.params;
 
@@ -195,6 +227,13 @@ router.get('/:transactionId', async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Transaction not found'
+      });
+    }
+
+    if (!isOwnerOrAdmin(req, transaction)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only access your own transactions'
       });
     }
 
@@ -239,7 +278,7 @@ router.get('/:transactionId', async (req, res) => {
  * GET /api/transactions/:transactionId/status
  * Get transaction status with additional details
  */
-router.get('/:transactionId/status', async (req, res) => {
+router.get('/:transactionId/status', authenticateToken, async (req, res) => {
   try {
     const { transactionId } = req.params;
 
@@ -249,6 +288,13 @@ router.get('/:transactionId/status', async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Transaction not found'
+      });
+    }
+
+    if (!isOwnerOrAdmin(req, transaction)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only access your own transactions'
       });
     }
 
@@ -297,7 +343,7 @@ router.get('/:transactionId/status', async (req, res) => {
  * POST /api/transactions/:transactionId/retry
  * Retry a failed transaction
  */
-router.post('/:transactionId/retry', async (req, res) => {
+router.post('/:transactionId/retry', authenticateToken, async (req, res) => {
   try {
     const { transactionId } = req.params;
 
@@ -307,6 +353,13 @@ router.post('/:transactionId/retry', async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Transaction not found'
+      });
+    }
+
+    if (!isOwnerOrAdmin(req, transaction)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only access your own transactions'
       });
     }
 
@@ -366,7 +419,7 @@ router.post('/:transactionId/retry', async (req, res) => {
  * GET /api/transactions/queue/stats
  * Get queue statistics
  */
-router.get('/queue/stats', async (req, res) => {
+router.get('/queue/stats', authenticateToken, async (req, res) => {
   try {
     const queueStats = await transactionQueue.getQueueStats();
     const processorStats = transactionProcessor.getStats();
@@ -395,7 +448,7 @@ router.get('/queue/stats', async (req, res) => {
  * GET /api/transactions/user/:userId/pending
  * Get pending transactions for a user
  */
-router.get('/user/:userId/pending', async (req, res) => {
+router.get('/user/:userId/pending', authenticateToken, requireSelfOrAdmin('userId'), async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -429,7 +482,7 @@ router.get('/user/:userId/pending', async (req, res) => {
  * GET /api/transactions/user/:userId/events
  * Get recent events for a user
  */
-router.get('/user/:userId/events', async (req, res) => {
+router.get('/user/:userId/events', authenticateToken, requireSelfOrAdmin('userId'), async (req, res) => {
   try {
     const { userId } = req.params;
     const { limit = 10 } = req.query;
@@ -458,9 +511,8 @@ router.get('/user/:userId/events', async (req, res) => {
  * POST /api/transactions/admin/clear-queue
  * Clear the transaction queue (admin only)
  */
-router.post('/admin/clear-queue', async (req, res) => {
+router.post('/admin/clear-queue', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // This should be protected by admin middleware in production
     await transactionQueue.clearQueue();
 
     res.json({
@@ -482,9 +534,8 @@ router.post('/admin/clear-queue', async (req, res) => {
  * POST /api/transactions/admin/retry-failed
  * Retry all failed transactions (admin only)
  */
-router.post('/admin/retry-failed', async (req, res) => {
+router.post('/admin/retry-failed', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // This should be protected by admin middleware in production
     const { limit = 10 } = req.body;
 
     const retriedCount = await transactionProcessor.retryFailedTransactions(limit);
@@ -511,7 +562,7 @@ router.post('/admin/retry-failed', async (req, res) => {
  * GET /api/transactions/stellar/account/:accountId
  * Get Stellar account information
  */
-router.get('/stellar/account/:accountId', async (req, res) => {
+router.get('/stellar/account/:accountId', authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
 

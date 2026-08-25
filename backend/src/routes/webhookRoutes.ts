@@ -9,6 +9,14 @@ import { UserRole } from '../models/User';
 import { webhookService } from '../services/webhookService';
 import { ALL_WEBHOOK_EVENT_TYPES, WebhookEventType } from '../models/Webhook';
 import { rateLimit } from 'express-rate-limit';
+import { validateRequestSchema } from '../middleware/validateRequestSchema';
+import {
+  registerWebhookSchema,
+  updateWebhookSchema,
+  getWebhookByIdSchema,
+  getWebhookDeliveriesSchema,
+  retryWebhookDeliverySchema,
+} from '../middleware/validation';
 
 const router: Router = express.Router();
 
@@ -31,27 +39,10 @@ router.post(
   authenticateToken,
   requireRole([UserRole.ADMIN]),
   webhookLimiter,
+  validateRequestSchema(registerWebhookSchema),
   async (req: Request, res: Response) => {
     try {
       const { url, events, secret, description } = req.body;
-
-      if (!url || !events || !Array.isArray(events) || events.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Fields "url" and "events" (non-empty array) are required',
-        });
-      }
-
-      const invalidEvents = events.filter(
-        (e: string) => !ALL_WEBHOOK_EVENT_TYPES.includes(e),
-      );
-      if (invalidEvents.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid event types: ${invalidEvents.join(', ')}`,
-          validEvents: ALL_WEBHOOK_EVENT_TYPES,
-        });
-      }
 
       // Use the authenticated user's ID as the tenant ID
       const tenantId = (req as any).user.id;
@@ -131,6 +122,7 @@ router.get(
   '/:id',
   authenticateToken,
   requireRole([UserRole.ADMIN]),
+  validateRequestSchema(getWebhookByIdSchema),
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -166,6 +158,7 @@ router.put(
   '/:id',
   authenticateToken,
   requireRole([UserRole.ADMIN]),
+  validateRequestSchema(updateWebhookSchema),
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -202,6 +195,7 @@ router.delete(
   '/:id',
   authenticateToken,
   requireRole([UserRole.ADMIN]),
+  validateRequestSchema(getWebhookByIdSchema),
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -232,6 +226,7 @@ router.post(
   '/:id/rotate-secret',
   authenticateToken,
   requireRole([UserRole.ADMIN]),
+  validateRequestSchema(getWebhookByIdSchema),
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -263,6 +258,7 @@ router.get(
   '/:id/deliveries',
   authenticateToken,
   requireRole([UserRole.ADMIN]),
+  validateRequestSchema(getWebhookDeliveriesSchema),
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -299,6 +295,7 @@ router.post(
   '/:id/deliveries/:deliveryId/retry',
   authenticateToken,
   requireRole([UserRole.ADMIN]),
+  validateRequestSchema(retryWebhookDeliverySchema),
   async (req: Request, res: Response) => {
     try {
       const { id, deliveryId } = req.params;

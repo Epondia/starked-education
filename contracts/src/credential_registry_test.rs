@@ -3,13 +3,17 @@
 use crate::credential_registry::{
     batch_issue_credentials, batch_renew_credentials, batch_revoke_credentials, get_credential,
     get_credential_count, get_revocation_history, is_credential_valid,
-    issue_credential_with_expiration, revoke_credential, verify_credential, BatchIssueInput,
-    BatchRenewInput, BatchResult, CredentialStatus, RegistryRevocationRecord,
+    issue_credential_with_expiration, renew_credential, revoke_credential, verify_credential,
+    BatchIssueInput, BatchRenewInput, BatchResult, CredentialStatus, RegistryRevocationRecord,
     RegistryVerificationResult, RevocationReason,
 };
+use crate::governance::{GovernanceDataKey, Role};
 use crate::pause::{init_pause, is_paused, pause, unpause};
 use crate::StarkEdContract;
-use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{
+    testutils::{Address as _, Events as _},
+    Address, Env, String, Symbol, TryFromVal, Vec,
+};
 
 // ═══════════════════════════════════════════════════════════════════
 //  Test harness
@@ -32,7 +36,8 @@ where
 
 /// Set up an `Env` with `mock_all_auths`, a stored admin, a registered contract
 /// address (used as the storage context) and the pause module initialized to
-/// that admin.
+/// that admin. Grants Admin and Issuer roles to the admin via direct storage
+/// (bypassing auth to avoid double-require_auth with mock_all_auths).
 fn setup_env() -> (Env, Address, Address) {
     let env = Env::default();
     env.mock_all_auths();
@@ -44,6 +49,24 @@ fn setup_env() -> (Env, Address, Address) {
             .instance()
             .set(&Symbol::new(&env, "admin"), &admin);
         init_pause(&env, admin.clone());
+        // Grant Admin and Issuer roles via direct storage to avoid
+        // double require_auth calls on the same frame with mock_all_auths.
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMember(Role::Admin, admin.clone()),
+            &true,
+        );
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMemberCount(Role::Admin),
+            &1u32,
+        );
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMember(Role::Issuer, admin.clone()),
+            &true,
+        );
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMemberCount(Role::Issuer),
+            &1u32,
+        );
     });
 
     (env, admin, contract)
@@ -304,4 +327,103 @@ fn test_resume_after_unpause_restores_operations() {
     assert!(with_contract(&env, &contract, || !is_credential_valid(
         &env, cred_id
     )));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Issue #315 — Event emission for credential lifecycle changes
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_issue_emits_event() {
+    let (env, admin, contract) = setup_env();
+
+    let _cred_id = with_contract(&env, &contract, || {
+        issue_credential_with_expiration(
+            &env,
+            admin.clone(),
+            Address::generate(&env),
+            s(&env, "Title"),
+            s(&env, "Desc"),
+            s(&env, "c1"),
+            s(&env, "ipfs://1"),
+            3600,
+        )
+    });
+
+    // Verify that the (credential, issued) event was emitted
+    let events = env.events().all();
+    let expected_t0 = Symbol::new(&env, "credential");
+    let expected_t1 = Symbol::new(&env, "issued");
+    let mut found = false;
+    for (_contract_id, topics, _data) in events.iter() {
+        if topics.len() >= 2 {
+            let t0 = Symbol::try_from_val(&env, &topics.get(0).unwrap());
+            let t1 = Symbol::try_from_val(&env, &topics.get(1).unwrap());
+            if t0 == Ok(expected_t0.clone()) && t1 == Ok(expected_t1.clone()) {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "issue_credential_with_expiration must emit (credential, issued) event");
+}
+
+#[test]
+fn test_renew_emits_event() {
+    let (env, admin, contract) = setup_env();
+    let cred_id = issue_one(&env, &contract, &admin);
+
+    with_contract(&env, &contract, || {
+        renew_credential(&env, cred_id, admin.clone(), 7200)
+    });
+
+    // Verify that the (credential, renewed) event was emitted
+    let events = env.events().all();
+    let expected_t0 = Symbol::new(&env, "credential");
+    let expected_t1 = Symbol::new(&env, "renewed");
+    let mut found = false;
+    for (_contract_id, topics, _data) in events.iter() {
+        if topics.len() >= 2 {
+            let t0 = Symbol::try_from_val(&env, &topics.get(0).unwrap());
+            let t1 = Symbol::try_from_val(&env, &topics.get(1).unwrap());
+            if t0 == Ok(expected_t0.clone()) && t1 == Ok(expected_t1.clone()) {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "renew_credential must emit (credential, renewed) event");
+}
+
+#[test]
+fn test_revoke_emits_event() {
+    let (env, admin, contract) = setup_env();
+    let cred_id = issue_one(&env, &contract, &admin);
+
+    with_contract(&env, &contract, || {
+        revoke_credential(
+            &env,
+            cred_id,
+            admin.clone(),
+            RevocationReason::AcademicDishonesty,
+            Some(s(&env, "Cheating")),
+        )
+    });
+
+    // Verify that the (credential, revoked) event was emitted
+    let events = env.events().all();
+    let expected_t0 = Symbol::new(&env, "credential");
+    let expected_t1 = Symbol::new(&env, "revoked");
+    let mut found = false;
+    for (_contract_id, topics, _data) in events.iter() {
+        if topics.len() >= 2 {
+            let t0 = Symbol::try_from_val(&env, &topics.get(0).unwrap());
+            let t1 = Symbol::try_from_val(&env, &topics.get(1).unwrap());
+            if t0 == Ok(expected_t0.clone()) && t1 == Ok(expected_t1.clone()) {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "revoke_credential must emit (credential, revoked) event");
 }

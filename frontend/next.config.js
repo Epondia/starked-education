@@ -269,6 +269,7 @@ const nextConfig = {
   // Enable compression
   compress: true,
   images: {
+    formats: ['image/webp', 'image/avif'],
     remotePatterns: [
       {
         protocol: 'https',
@@ -279,7 +280,6 @@ const nextConfig = {
         hostname: '**',
       },
     ],
-    formats: ['image/webp', 'image/avif'],
   },
   // Performance headers
   async headers() {

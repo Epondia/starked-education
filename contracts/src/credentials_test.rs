@@ -13,6 +13,40 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol, Vec};
 //  Existing credential tests (fixed)
 // ═══════════════════════════════════════════════════════════════════
 
+/// Helper: set up admin with stored address and RBAC roles via direct
+/// storage (bypasses auth to avoid double-require_auth with mock_all_auths).
+fn setup_admin(env: &Env, admin: &Address) {
+    env.storage()
+        .instance()
+        .set(&Symbol::new(env, "admin"), admin);
+    env.storage().instance().set(
+        &crate::governance::GovernanceDataKey::RoleMember(
+            crate::governance::Role::Admin,
+            admin.clone(),
+        ),
+        &true,
+    );
+    env.storage().instance().set(
+        &crate::governance::GovernanceDataKey::RoleMemberCount(
+            crate::governance::Role::Admin,
+        ),
+        &1u32,
+    );
+    env.storage().instance().set(
+        &crate::governance::GovernanceDataKey::RoleMember(
+            crate::governance::Role::Issuer,
+            admin.clone(),
+        ),
+        &true,
+    );
+    env.storage().instance().set(
+        &crate::governance::GovernanceDataKey::RoleMemberCount(
+            crate::governance::Role::Issuer,
+        ),
+        &1u32,
+    );
+}
+
 #[test]
 fn test_issue_and_verify_credential() {
     let env = Env::default();
@@ -21,9 +55,7 @@ fn test_issue_and_verify_credential() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -73,9 +105,7 @@ fn test_unauthorized_issuer_rejected() {
     let unauthorized = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     // Attempt to issue by unauthorized user should panic
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -99,9 +129,7 @@ fn test_revoke_nonexistent_credential() {
     env.mock_all_auths();
 
     let admin = Address::generate(&env);
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         revoke_credential(&env, 9999, admin.clone(), RevocationReason::AdministrativeError, None);
@@ -126,9 +154,7 @@ fn test_multi_sig_2_of_3_activates_after_two_signatures() {
     let signer3 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [
         signer1.clone(),
@@ -204,9 +230,7 @@ fn test_multi_sig_insufficient_signatures_remains_inactive() {
     let signer3 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [
         signer1.clone(),
@@ -256,9 +280,7 @@ fn test_multi_sig_duplicate_signature_rejected() {
     let signer2 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
 
@@ -301,9 +323,7 @@ fn test_multi_sig_unauthorized_signer_rejected() {
     let unauthorized = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
 
@@ -343,9 +363,7 @@ fn test_multi_sig_status_shows_pending_until_threshold_met() {
     let signer3 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [
         signer1.clone(),
@@ -396,9 +414,7 @@ fn test_multi_sig_1_of_1_threshold() {
     let signer1 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [signer1.clone()]);
 
@@ -435,9 +451,7 @@ fn test_multi_sig_zero_threshold_rejected() {
     let signer1 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [signer1.clone()]);
 
@@ -468,9 +482,7 @@ fn test_multi_sig_threshold_exceeds_signers_rejected() {
     let signer2 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
 
@@ -499,9 +511,7 @@ fn test_multi_sig_empty_signers_rejected() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::new(&env);
 
@@ -533,9 +543,7 @@ fn test_multi_sig_3_of_3_full_flow() {
     let signer3 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [
         signer1.clone(),
@@ -586,9 +594,7 @@ fn test_credential_with_expiration_active_before_expiry() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let validity_seconds = 31_536_000u64; // 1 year
     let cred_id = issue_credential(
@@ -623,9 +629,7 @@ fn test_credential_expires_after_validity_period() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let validity_seconds = 3600u64; // 1 hour
     let cred_id = issue_credential(
@@ -657,9 +661,7 @@ fn test_credential_without_expiration_never_expires() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -690,9 +692,7 @@ fn test_renew_credential_extends_expiration() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let validity_seconds = 3600u64; // 1 hour
     let cred_id = issue_credential(
@@ -736,9 +736,7 @@ fn test_unauthorized_renewal_rejected() {
     let unauthorized = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -767,9 +765,7 @@ fn test_cannot_renew_revoked_credential() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -808,9 +804,7 @@ fn test_get_credential_status_all_states() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     // Active credential with expiration
     let active_id = issue_credential(
@@ -884,9 +878,7 @@ fn test_multi_sig_only_admin_can_create() {
     let signer1 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [signer1.clone()]);
 
@@ -918,9 +910,7 @@ fn test_multi_sig_sign_after_activation_rejected() {
     let signer3 = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let signers = Vec::from_array(&env, [
         signer1.clone(),
@@ -965,9 +955,7 @@ fn test_revoke_credential_by_issuer_with_reason() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -1021,9 +1009,7 @@ fn test_revoke_credential_unauthorized_rejected() {
     let unauthorized = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -1061,9 +1047,7 @@ fn test_revoke_credential_double_revocation_rejected() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -1111,9 +1095,7 @@ fn test_verify_credential_revoked_returns_details() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -1157,9 +1139,7 @@ fn test_get_revocation_history_returns_full_record() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -1203,9 +1183,7 @@ fn test_revoke_credential_emits_event() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -1249,9 +1227,7 @@ fn test_revocation_is_irreversible() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,
@@ -1300,9 +1276,7 @@ fn test_all_revocation_reason_codes() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let reasons = vec![
         RevocationReason::AdministrativeError,
@@ -1345,9 +1319,7 @@ fn test_revoke_credential_without_reason_string() {
     let admin = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    env.storage()
-        .instance()
-        .set(&Symbol::new(&env, "admin"), &admin);
+    setup_admin(&env, &admin);
 
     let cred_id = issue_credential(
         &env,

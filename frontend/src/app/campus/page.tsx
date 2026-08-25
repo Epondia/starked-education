@@ -1,12 +1,11 @@
 import type { Metadata } from 'next';
-import { createMetadata } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
 
-import { MetaverseCampus } from '../../components/Metaverse';
+import nextDynamic from 'next/dynamic';
 import ErrorBoundary from '../../components/ErrorBoundary';
 
-const MetaverseCampus = dynamic(
+const MetaverseCampus = nextDynamic(
   () => import('../../components/Metaverse').then((mod) => mod.MetaverseCampus),
   {
     loading: () => (

@@ -1,6 +1,5 @@
 const express = require('express');
 const helmet = require('helmet');
-const cors = require('cors');
 const { createServer } = require('http');
 const dotenv = require('dotenv');
 
@@ -133,7 +132,14 @@ setSyncWebsocketEmitter((userId, event, data) => {
 // Middleware
 app.use(helmet());
 app.use(contentSecurityPolicy());
-app.use(cors());
+
+// CORS (issue #384): disabled unless ENABLE_CORS === 'true'; when enabled,
+// restricted to the CORS_ORIGINS allowlist with credentials.
+const { buildCorsMiddleware } = require('./middleware/cors');
+const corsMiddleware = buildCorsMiddleware();
+if (corsMiddleware) {
+  app.use(corsMiddleware);
+}
 app.post(
   '/api/v1/security/csp-report',
   express.json({
@@ -152,13 +158,23 @@ app.use(requestLogger);
 app.use(auditLogger);
 
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
-const healthRoutes = require('./routes/health').default || require('./routes/health');
+const healthModule = require('./routes/health');
+const healthRoutes = healthModule.default || healthModule;
 app.use('/health', healthRoutes);
+
+// Prometheus metrics endpoint - internal-only (loopback or shared token), exposed
+// at the conventional /metrics path. Handler lives in routes/health.ts.
+app.use('/metrics', healthModule.metricsRouter);
 
 // Issue #17: Apply the global rate limit baseline AFTER /health so probes
 // bypass the limiter entirely (no Redis traffic from liveness/readiness checks).
 // Endpoint-specific limiters (loginLimiter, registerLimiter, paymentLimiter,
 // adminTierLimiter, etc.) take precedence over the global baseline.
+//
+// The app-level registration below covers every /api/v1 route (and /api/v2),
+// so the router-level registration was removed to avoid double-counting each
+// request against the same limiter (which halved the effective limit and
+// doubled Redis traffic).
 app.use(globalLimiter);
 
 // Apply API version extraction middleware globally
@@ -166,12 +182,6 @@ app.use(versionExtractor);
 
 // Create versioned routers
 const v1Router = createVersionedRouter('v1');
-
-// Apply baseline global rate limiting to ALL v1 API routes
-// This ensures every endpoint has at least baseline protection
-// Routes with more specific limiters (auth, transactions, etc.) will have both applied
-// See docs/RATE_LIMITING.md for complete rate limit tiers and configuration
-v1Router.use(globalLimiter);
 
 // ── v1 API Routes ──────────────────────────────────────────────
 // All existing routes are mounted under /api/v1/
