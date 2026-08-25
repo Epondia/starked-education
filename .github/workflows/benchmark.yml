@@ -75,9 +75,12 @@ jobs:
           JWT_SECRET: ci-benchmark-secret-at-least-32-chars-long
           PORT: 3000
           NODE_ENV: test
+          # Elasticsearch is not provisioned in the benchmark job — the service
+          # runs in no-op mode (discoveryService is fully in-memory anyway).
+          ELASTICSEARCH_URL: ''
         run: |
           npm run migrate:up
-          node -r ts-node/register/transpile-only src/index.js &
+          node dist/index.js &
           sleep 5
           # Wait for server to be ready
           npx wait-on http://localhost:3000/health -t 30s

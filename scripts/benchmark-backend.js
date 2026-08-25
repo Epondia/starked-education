@@ -97,7 +97,7 @@ export default function () {
     // hashing); the endpoint returns 400/401 which is the expected result.
     const res = http.post(
       `${BASE_URL}/api/v1/auth/login`,
-      JSON.stringify({ email: 'benchmark@starked.test', password: 'benchmark-password' }),
+      JSON.stringify({ username: 'benchmark@starked.test', password: 'benchmark-password' }),
       {
         headers: { 'Content-Type': 'application/json' },
         tags: { endpoint: 'login' },
