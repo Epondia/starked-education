@@ -80,7 +80,7 @@ jobs:
           ELASTICSEARCH_URL: ''
         run: |
           npm run migrate:up
-          node dist/index.js &
+          node -r ts-node/register/transpile-only src/index.js &
           sleep 5
           # Wait for server to be ready
           npx wait-on http://localhost:3000/health -t 30s
