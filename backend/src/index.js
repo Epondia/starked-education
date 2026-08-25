@@ -191,7 +191,7 @@ v1Router.use('/sync', syncRoutes);
 v1Router.use('/auth', authRoutes);
 v1Router.use('/content', contentRoutes);
 v1Router.use('/courses', courseRoutes);
-v1Router.use('/search', searchRoutes);
+v1Router.use('/search', searchRoutes());
 v1Router.use('/rbac', rbacRoutes);
 v1Router.use('/transactions', transactionRoutes);
 v1Router.use('/notifications', notificationRoutes);
