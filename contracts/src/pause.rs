@@ -8,12 +8,29 @@ use soroban_sdk::{symbol_short, Address, Env, String, Symbol};
 const PAUSED: Symbol = symbol_short!("PAUSED");
 const PAUSE_ADMIN: Symbol = symbol_short!("P_ADMIN");
 
-/// Check if the contract is paused
+/// Check if the contract is paused.
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+///
+/// # Returns
+///
+/// `true` if paused; `false` otherwise.
 pub fn is_paused(env: &Env) -> bool {
     env.storage().instance().get(&PAUSED).unwrap_or(false)
 }
 
-/// Check if caller is the pause admin
+/// Check if caller is the pause admin.
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `caller` – The address to check.
+///
+/// # Returns
+///
+/// `true` if the address matches the pause admin; `false` otherwise.
 pub fn is_pause_admin(env: &Env, caller: &Address) -> bool {
     env.storage()
         .instance()
@@ -22,13 +39,27 @@ pub fn is_pause_admin(env: &Env, caller: &Address) -> bool {
         .unwrap_or(false)
 }
 
-/// Initialize the pause module with an admin
+/// Initialize the pause module with an admin.
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `admin` – The address of the pause administrator.
 pub fn init_pause(env: &Env, admin: Address) {
     env.storage().instance().set(&PAUSE_ADMIN, &admin);
     env.storage().instance().set(&PAUSED, &false);
 }
 
-/// Pause all contract operations (admin only)
+/// Pause all contract operations (admin only).
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `caller` – The address of the pause administrator; must sign.
+///
+/// # Returns
+///
+/// `Ok(())` on success, or `Err(String)` if validation fails.
 pub fn pause(env: &Env, caller: Address) -> Result<(), String> {
     caller.require_auth();
     if !is_pause_admin(env, &caller) {
@@ -46,7 +77,16 @@ pub fn pause(env: &Env, caller: Address) -> Result<(), String> {
     Ok(())
 }
 
-/// Unpause contract operations (admin only)
+/// Unpause contract operations (admin only).
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `caller` – The address of the pause administrator; must sign.
+///
+/// # Returns
+///
+/// `Ok(())` on success, or `Err(String)` if validation fails.
 pub fn unpause(env: &Env, caller: Address) -> Result<(), String> {
     caller.require_auth();
     if !is_pause_admin(env, &caller) {
@@ -64,7 +104,15 @@ pub fn unpause(env: &Env, caller: Address) -> Result<(), String> {
     Ok(())
 }
 
-/// Require the contract is not paused (call at start of state-changing functions)
+/// Require the contract is not paused (call at start of state-changing functions).
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+///
+/// # Returns
+///
+/// `Ok(())` if the contract is active, or `Err(String)` if emergency mode is active.
 pub fn require_not_paused(env: &Env) -> Result<(), String> {
     if is_paused(env) {
         return Err(String::from_str(
@@ -75,7 +123,17 @@ pub fn require_not_paused(env: &Env) -> Result<(), String> {
     Ok(())
 }
 
-/// Transfer pause admin to a new address
+/// Transfer pause admin to a new address.
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `caller` – The current pause administrator address; must sign.
+/// - `new_admin` – The new pause administrator address.
+///
+/// # Returns
+///
+/// `Ok(())` on success, or `Err(String)` if validation fails.
 pub fn transfer_pause_admin(env: &Env, caller: Address, new_admin: Address) -> Result<(), String> {
     caller.require_auth();
     if !is_pause_admin(env, &caller) {

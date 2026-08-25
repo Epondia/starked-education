@@ -15,6 +15,11 @@ pub enum CredentialStatus {
 }
 
 impl CredentialStatus {
+    /// Convert the credential status to its corresponding `u8` discriminant.
+    ///
+    /// # Returns
+    ///
+    /// The `u8` value of the status (0 = Active, 1 = Expired, 2 = Revoked, 3 = Pending).
     pub fn to_u8(&self) -> u8 {
         match self {
             CredentialStatus::Active => 0,
@@ -24,6 +29,15 @@ impl CredentialStatus {
         }
     }
 
+    /// Construct a `CredentialStatus` from a `u8` discriminant.
+    ///
+    /// # Parameters
+    ///
+    /// - `value` – The `u8` discriminant.
+    ///
+    /// # Returns
+    ///
+    /// The corresponding `CredentialStatus`, defaulting to `CredentialStatus::Pending` for unrecognized values.
     pub fn from_u8(value: u8) -> Self {
         match value {
             0 => CredentialStatus::Active,
@@ -52,6 +66,11 @@ pub enum RevocationReason {
 }
 
 impl RevocationReason {
+    /// Convert the revocation reason to its corresponding `u8` discriminant.
+    ///
+    /// # Returns
+    ///
+    /// The `u8` value of the reason (0 = AdministrativeError, 1 = AcademicDishonesty, 2 = DataCorrection, 3 = VoluntarySurrender, 4 = Other).
     pub fn to_u8(&self) -> u8 {
         match self {
             RevocationReason::AdministrativeError => 0,
@@ -62,6 +81,15 @@ impl RevocationReason {
         }
     }
 
+    /// Construct a `RevocationReason` from a `u8` discriminant.
+    ///
+    /// # Parameters
+    ///
+    /// - `v` – The `u8` discriminant.
+    ///
+    /// # Returns
+    ///
+    /// The corresponding `RevocationReason`, defaulting to `RevocationReason::Other` for unrecognized values.
     pub fn from_u8(v: u8) -> Self {
         match v {
             0 => RevocationReason::AdministrativeError,
@@ -928,7 +956,7 @@ pub fn set_max_batch_size(env: &Env, admin: Address, new_size: u32) {
 /// it is skipped with an error recorded in the result, and the remaining credentials
 /// continue to be processed. Individual events are emitted for each successful issue.
 ///
-/// Returns a Vec<BatchResult> with one entry per input, in the same order.
+/// Returns a `Vec<BatchResult>` with one entry per input, in the same order.
 pub fn batch_issue_credentials(
     env: &Env,
     issuer: Address,

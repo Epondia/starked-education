@@ -54,18 +54,34 @@ pub struct FeeCalculation {
     pub calculation_timestamp: u64,
 }
 
+/// Storage keys for the dynamic fee contract instance storage.
 #[contracttype]
 pub enum FeeKey {
+    /// Address of the contract administrator.
     Admin,
+    /// Stored [`FeeSchedule`] for fee calculation tiers.
     Schedule,
 }
 
+/// The dynamic fee smart contract.
+///
+/// Implements value-based fee calculation tiers and surge pricing based on
+/// transaction volume demand metrics.
 #[contract]
 pub struct DynamicFeeContract;
 
 #[contractimpl]
 impl DynamicFeeContract {
     /// Initialize the fee contract with a safe default schedule.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `admin` – The address designated as the administrator.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the fee system has already been initialized.
     pub fn initialize(env: Env, admin: Address) {
         if env.storage().instance().has(&FeeKey::Admin) {
             panic!("Fee system already initialized");
@@ -80,6 +96,18 @@ impl DynamicFeeContract {
     }
 
     /// Return the address authorized to update the fee policy.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    ///
+    /// # Returns
+    ///
+    /// The admin address.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the system has not been initialized.
     pub fn get_admin(env: Env) -> Address {
         env.storage()
             .instance()
@@ -88,6 +116,18 @@ impl DynamicFeeContract {
     }
 
     /// Return the currently active fee schedule.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    ///
+    /// # Returns
+    ///
+    /// The currently active [`FeeSchedule`].
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the system has not been initialized.
     pub fn get_fee_schedule(env: Env) -> FeeSchedule {
         env.storage()
             .instance()
@@ -96,6 +136,17 @@ impl DynamicFeeContract {
     }
 
     /// Replace the fee schedule. Only the configured admin may do so.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `admin` – The caller address; must match the admin address and sign.
+    /// - `schedule` – The new [`FeeSchedule`] to set.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the caller is not the admin.
+    /// - Panics if the schedule fails validation checks.
     pub fn set_fee_schedule(env: Env, admin: Address, schedule: FeeSchedule) {
         admin.require_auth();
         Self::check_admin(&env, &admin);
@@ -113,6 +164,20 @@ impl DynamicFeeContract {
     /// `transactions_per_block` is an explicit demand snapshot. The contract does
     /// not depend on an external oracle; callers can use an application-controlled
     /// snapshot or a future trusted updater without changing the schedule itself.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `transaction_value` – The value of the transaction to compute fees for.
+    /// - `transactions_per_block` – The current count of transactions per block.
+    ///
+    /// # Returns
+    ///
+    /// The calculated [`FeeCalculation`] details.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if any step in the calculation causes arithmetic overflow.
     pub fn calculate_fee(
         env: Env,
         transaction_value: u64,
@@ -152,6 +217,15 @@ impl DynamicFeeContract {
     }
 
     /// Return the fee tier selected for a transaction value.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `transaction_value` – The value of the transaction.
+    ///
+    /// # Returns
+    ///
+    /// The matching [`FeeTier`].
     pub fn get_fee_tier(env: Env, transaction_value: u64) -> FeeTier {
         let schedule = Self::get_fee_schedule(env);
         let (_, tier) = Self::select_fee_tier(&schedule.tiers, transaction_value);
@@ -159,6 +233,15 @@ impl DynamicFeeContract {
     }
 
     /// Return the surge tier selected for the supplied congestion snapshot.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `transactions_per_block` – The current count of transactions per block.
+    ///
+    /// # Returns
+    ///
+    /// The matching [`SurgeTier`].
     pub fn get_surge_tier(env: Env, transactions_per_block: u64) -> SurgeTier {
         let schedule = Self::get_fee_schedule(env);
         let (_, tier) = Self::select_surge_tier(&schedule.surge_tiers, transactions_per_block);

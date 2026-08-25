@@ -3,43 +3,72 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,
 };
 
+/// Storage keys for the tokenomics contract instance/persistent storage.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TokenomicsKey {
+    /// Token balance for a user and token type.
     TokenBalance(Address, u32),
+    /// Stored total supply for a token type.
     TotalSupply(u32),
+    /// Staking record details keyed by staker address.
     StakePool(Address),
+    /// Stored cumulative total tokens currently staked.
     StakePoolTotal,
+    /// Proposal details keyed by proposal ID.
     Proposal(u64),
+    /// Voter record keyed by (proposal_id, voter_address).
     ProposalVote(u64, Address),
+    /// Running total of proposals created.
     ProposalCount,
+    /// The UserProfile contract address used for achievement multiplier lookup.
     ProfileContract,
-    AchievementMultiplier(Address), // Store current multiplier bps for a staker
+    /// Active staking yield multiplier in basis points keyed by staker address.
+    AchievementMultiplier(Address),
 }
 
+/// A staking position record.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Stake {
+    /// The address of the staker.
     pub staker: Address,
+    /// The staked token amount.
     pub amount: u64,
+    /// The ledger timestamp when the stake was locked.
     pub start_time: u64,
+    /// The locked duration in seconds.
     pub lock_duration: u64,
+    /// The annual percentage yield in basis points.
     pub apy_bps: u32,
 }
 
+/// A proposal structure tracking voting state in tokenomics voting.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Proposal {
+    /// Unique proposal identifier.
     pub id: u64,
+    /// The address of the proposal creator.
     pub creator: Address,
+    /// Human-readable title of the proposal.
     pub title: String,
+    /// Description details of the proposal.
     pub description: String,
+    /// Total votes cast in support of the proposal.
     pub votes_for: u64,
+    /// Total votes cast against the proposal.
     pub votes_against: u64,
+    /// Ledger timestamp when voting ends.
     pub end_time: u64,
-    pub status: u32, // 0: Open, 1: Passed, 2: Rejected, 3: Executed
+    /// The proposal status (0 = Open, 1 = Passed, 2 = Rejected, 3 = Executed).
+    pub status: u32,
 }
 
+/// The tokenomics smart contract.
+///
+/// Implements platform rewards minting, staking incentives, yield multi-tokens
+/// (e.g. governance and utility tokens), and quadratic reward voting.
 #[contract]
 pub struct TokenomicsContract;
 
@@ -374,6 +403,17 @@ impl TokenomicsContract {
         multiplier_bps
     }
 
+    /// Return the token balance of a user for a given token type.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `user` – The address of the account to query.
+    /// - `token_type` – The token type to query (e.g. 0 = Reward, 1 = Governance).
+    ///
+    /// # Returns
+    ///
+    /// The token balance amount (`u64`).
     pub fn balance_of(env: Env, user: Address, token_type: u32) -> u64 {
         env.storage()
             .persistent()
@@ -381,6 +421,16 @@ impl TokenomicsContract {
             .unwrap_or(0)
     }
 
+    /// Return the total supply of a given token type.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `token_type` – The token type to query.
+    ///
+    /// # Returns
+    ///
+    /// The total supply amount (`u64`).
     pub fn total_supply(env: Env, token_type: u32) -> u64 {
         env.storage()
             .instance()
@@ -388,6 +438,13 @@ impl TokenomicsContract {
             .unwrap_or(0)
     }
 
+    /// Mint governance tokens to a user for testing purposes.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `user` – The recipient address.
+    /// - `amount` – The amount to mint.
     #[cfg(any(test, feature = "testutils"))]
     pub fn mint_gov_for_test(env: Env, user: Address, amount: u64) {
         let balance = Self::balance_of(env.clone(), user.clone(), 1);

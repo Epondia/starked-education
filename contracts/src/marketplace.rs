@@ -1,74 +1,120 @@
 use crate::utils::storage::StorageKey;
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
 
+/// Storage keys for the marketplace contract instance/persistent storage.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MarketplaceKey {
+    /// Stored [`Listing`] keyed by listing ID.
     Listing(u64),
+    /// Stored [`Rental`] keyed by (credential_id, tenant_address).
     Rental(u64, Address),
+    /// Stored [`Stake`] details keyed by (credential_id, staker_address).
     Stake(u64, Address),
+    /// Stored [`Dispute`] details keyed by dispute ID.
     Dispute(u64),
+    /// Stored [`Escrow`] details keyed by escrow ID.
     Escrow(u64),
+    /// Running total of marketplaces (unused).
     MarketplaceCount,
+    /// Running total of listings created.
     ListingCount,
+    /// Running total of disputes opened.
     DisputeCount,
+    /// Running total of escrows created.
     EscrowCount,
-    TradeCount(u64), // Trade count per credential for bonding curve
+    /// Total trade count per credential used to compute bonding curve price updates.
+    TradeCount(u64),
 }
 
+/// A credential sale listing details.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Listing {
+    /// The credential ID being sold.
     pub credential_id: u64,
+    /// The address of the seller.
     pub seller: Address,
+    /// The sale price in platform token units.
     pub price: u64,
-    pub royalty_bps: u32, // Basis points (100 = 1%)
+    /// The royalty percentage in basis points (100 = 1%) sent to issuer.
+    pub royalty_bps: u32,
+    /// Flag indicating if the listing is currently active for purchase.
     pub active: bool,
 }
 
+/// A credential rental lease details.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Rental {
+    /// The credential ID being rented.
     pub credential_id: u64,
+    /// The address of the tenant.
     pub tenant: Address,
+    /// The ledger timestamp when the rental period expires.
     pub expiry: u64,
+    /// The rental price paid.
     pub price: u64,
 }
 
+/// Staking details for a credential pool.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Stake {
+    /// The credential ID pool.
     pub credential_id: u64,
+    /// The address of the staker.
     pub staker: Address,
+    /// Staked token amount.
     pub amount: u64,
+    /// The starting ledger timestamp of the stake.
     pub start_time: u64,
 }
 
+/// A dispute opened over a listing or escrow.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Dispute {
+    /// Unique dispute identifier.
     pub id: u64,
+    /// The listing ID related to the dispute.
     pub listing_id: u64,
+    /// The address of the initiator who opened the dispute.
     pub initiator: Address,
+    /// Description reasons for opening the dispute.
     pub reason: String,
-    pub status: u32,    // 0: Open, 1: Resolved, 2: Cancelled
-    pub escrow_id: u64, // 0 if not linked to an escrow
+    /// The dispute status (0 = Open, 1 = Resolved, 2 = Cancelled).
+    pub status: u32,
+    /// The associated escrow ID, or 0 if none.
+    pub escrow_id: u64,
 }
 
 /// Escrow status: 0=Funded, 1=Released, 2=Refunded, 3=Disputed
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Escrow {
+    /// Unique escrow ID.
     pub id: u64,
+    /// Listing ID related to the escrow.
     pub listing_id: u64,
+    /// Address of the buyer.
     pub buyer: Address,
+    /// Address of the seller.
     pub seller: Address,
+    /// Amount funded in escrow.
     pub amount: u64,
-    pub status: u32, // 0=Funded, 1=Released, 2=Refunded, 3=Disputed
+    /// Status code of escrow.
+    pub status: u32,
+    /// Expiration timestamp.
     pub timeout: u64,
+    /// Creation timestamp.
     pub created_at: u64,
 }
 
+/// The marketplace smart contract.
+///
+/// Implements credential secondary markets, rental lease systems, bonding curve
+/// pricing, staking incentives, and escrow dispute resolution flows.
 #[contract]
 pub struct MarketplaceContract;
 
@@ -204,8 +250,17 @@ impl MarketplaceContract {
         );
     }
 
-    /// Bonding curve logic for price discovery
-    /// Price = BasePrice + (Slope * Trades^2)
+    /// Calculate the current purchase price of a credential using a bonding curve.
+    /// Price = BasePrice + (Slope * Trades^2).
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `credential_id` – The credential ID pool.
+    ///
+    /// # Returns
+    ///
+    /// The computed bonding price in token units.
     pub fn calculate_bonding_price(env: Env, credential_id: u64) -> u64 {
         let base_price = 100u64; // Minimum price
         let slope = 10u64;
@@ -317,6 +372,19 @@ impl MarketplaceContract {
     /// Resolve a dispute (Admin only).
     /// For escrow-linked disputes, also resolves the escrow (release if resolved,
     /// refund if cancelled). Uses checks-effects pattern: reads first, writes last.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `admin` – The administrator address resolving the dispute; must sign.
+    /// - `dispute_id` – The dispute ID to resolve.
+    /// - `resolved` – True to release escrow to seller (resolve); false to refund buyer (cancel).
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `admin` is not the configured administrator.
+    /// - Panics if the dispute ID does not exist.
+    /// - Panics if the dispute is already resolved or cancelled.
     pub fn resolve_dispute(env: Env, admin: Address, dispute_id: u64, resolved: bool) {
         admin.require_auth();
 
@@ -396,6 +464,24 @@ impl MarketplaceContract {
 
     /// Create an escrow for a listing. Buyer funds held until delivery confirmed.
     /// The listing is marked inactive (pending) and the escrow is created in Funded state.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `buyer` – The address of the buyer funding the escrow; must sign.
+    /// - `listing_id` – The sale listing ID to purchase.
+    /// - `timeout` – Relative duration in seconds after which buyer can claim a refund.
+    ///
+    /// # Returns
+    ///
+    /// The newly created escrow ID (`u64`, 1-based).
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the timeout is zero.
+    /// - Panics if the listing is not found.
+    /// - Panics if the listing is inactive.
+    /// - Panics if the buyer is also the seller.
     pub fn create_escrow(env: Env, buyer: Address, listing_id: u64, timeout: u64) -> u64 {
         buyer.require_auth();
 
@@ -460,6 +546,18 @@ impl MarketplaceContract {
 
     /// Buyer confirms delivery: funds are released to the seller.
     /// Only the escrow buyer can call this.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `buyer` – The address of the buyer; must sign.
+    /// - `escrow_id` – The escrow ID to release.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the escrow does not exist.
+    /// - Panics if the caller is not the buyer.
+    /// - Panics if the escrow is not in Funded state.
     pub fn confirm_delivery(env: Env, buyer: Address, escrow_id: u64) {
         buyer.require_auth();
 
@@ -495,6 +593,17 @@ impl MarketplaceContract {
 
     /// Claim a timeout refund for an escrow that has expired without delivery.
     /// Anyone can trigger this after the timeout has passed.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `escrow_id` – The escrow ID to refund.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the escrow does not exist.
+    /// - Panics if the escrow is not in Funded state.
+    /// - Panics if the current ledger timestamp is less than the timeout timestamp.
     pub fn claim_timeout_refund(env: Env, escrow_id: u64) {
         let mut escrow: Escrow = env
             .storage()
@@ -527,6 +636,19 @@ impl MarketplaceContract {
     }
 
     /// Query escrow state. Readable by both parties and any observer.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `escrow_id` – The escrow ID.
+    ///
+    /// # Returns
+    ///
+    /// The matching [`Escrow`] details.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the escrow does not exist.
     pub fn get_escrow(env: Env, escrow_id: u64) -> Escrow {
         env.storage()
             .instance()
@@ -536,6 +658,23 @@ impl MarketplaceContract {
 
     /// Escalate an active escrow to a dispute. Either buyer or seller can call.
     /// Links the escrow to the dispute system and marks the escrow as Disputed.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `caller` – The address of the escalating party (buyer or seller); must sign.
+    /// - `escrow_id` – The escrow ID to escalate.
+    /// - `reason` – Reason note for the escalation.
+    ///
+    /// # Returns
+    ///
+    /// The newly created dispute ID (`u64`, 1-based).
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the escrow does not exist.
+    /// - Panics if the caller is not the buyer or seller.
+    /// - Panics if the escrow is not in Funded state.
     pub fn escalate_escrow_to_dispute(
         env: Env,
         caller: Address,

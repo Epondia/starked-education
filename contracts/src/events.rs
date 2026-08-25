@@ -45,27 +45,104 @@ use soroban_sdk::{Address, Env, Symbol};
 /// Event types emitted by the contract system
 pub enum ContractEvent {
     /// Credential issued to a user
-    CredentialIssued { user: Address, credential_id: u64, timestamp: u64 },
+    CredentialIssued {
+        /// The user receiving the credential.
+        user: Address,
+        /// The ID of the credential.
+        credential_id: u64,
+        /// The issue timestamp.
+        timestamp: u64,
+    },
     /// Credential renewed (expiration extended)
-    CredentialRenewed { user: Address, credential_id: u64, extension_seconds: u64, timestamp: u64 },
+    CredentialRenewed {
+        /// The user receiving the credential.
+        user: Address,
+        /// The ID of the credential.
+        credential_id: u64,
+        /// The extension duration in seconds.
+        extension_seconds: u64,
+        /// The renewal timestamp.
+        timestamp: u64,
+    },
     /// Credential revoked
-    CredentialRevoked { user: Address, credential_id: u64, timestamp: u64 },
+    CredentialRevoked {
+        /// The user whose credential was revoked.
+        user: Address,
+        /// The ID of the credential.
+        credential_id: u64,
+        /// The revocation timestamp.
+        timestamp: u64,
+    },
     /// Credential transferred between users
-    CredentialTransferred { from: Address, to: Address, credential_id: u64, timestamp: u64 },
+    CredentialTransferred {
+        /// The sender user.
+        from: Address,
+        /// The receiver user.
+        to: Address,
+        /// The ID of the credential.
+        credential_id: u64,
+        /// The transfer timestamp.
+        timestamp: u64,
+    },
     /// Course created
-    CourseCreated { course_id: u64, instructor: Address, timestamp: u64 },
+    CourseCreated {
+        /// The course ID.
+        course_id: u64,
+        /// The instructor address.
+        instructor: Address,
+        /// The creation timestamp.
+        timestamp: u64,
+    },
     /// Student enrolled in course
-    CourseEnrolled { course_id: u64, student: Address, timestamp: u64 },
+    CourseEnrolled {
+        /// The course ID.
+        course_id: u64,
+        /// The student address.
+        student: Address,
+        /// The enrollment timestamp.
+        timestamp: u64,
+    },
     /// Course completed
-    CourseCompleted { course_id: u64, student: Address, timestamp: u64 },
+    CourseCompleted {
+        /// The course ID.
+        course_id: u64,
+        /// The student address.
+        student: Address,
+        /// The completion timestamp.
+        timestamp: u64,
+    },
     /// Achievement minted
-    AchievementMinted { user: Address, achievement_id: u64, timestamp: u64 },
+    AchievementMinted {
+        /// The user receiving the achievement.
+        user: Address,
+        /// The ID of the achievement.
+        achievement_id: u64,
+        /// The minting timestamp.
+        timestamp: u64,
+    },
     /// Achievement burned
-    AchievementBurned { user: Address, achievement_id: u64, timestamp: u64 },
+    AchievementBurned {
+        /// The user losing the achievement.
+        user: Address,
+        /// The ID of the achievement.
+        achievement_id: u64,
+        /// The burning timestamp.
+        timestamp: u64,
+    },
     /// Contract paused
-    ContractPaused { admin: Address, timestamp: u64 },
+    ContractPaused {
+        /// The admin address pausing the contract.
+        admin: Address,
+        /// The pause timestamp.
+        timestamp: u64,
+    },
     /// Contract unpaused
-    ContractUnpaused { admin: Address, timestamp: u64 },
+    ContractUnpaused {
+        /// The admin address unpausing the contract.
+        admin: Address,
+        /// The unpause timestamp.
+        timestamp: u64,
+    },
 }
 
 // ─── Credential Lifecycle Events ──────────────────────────────────
@@ -74,6 +151,12 @@ pub enum ContractEvent {
 ///
 /// Topic: `(credential, issued)`
 /// Payload: (credential_id, issuer)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `credential_id` – Stored credential ID.
+/// - `issuer` – Address of the credential issuer.
 pub fn emit_credential_issued(env: &Env, credential_id: u64, issuer: &Address) {
     env.events().publish(
         (
@@ -88,6 +171,13 @@ pub fn emit_credential_issued(env: &Env, credential_id: u64, issuer: &Address) {
 ///
 /// Topic: `(credential, renewed)`
 /// Payload: (credential_id, renewer, extension_seconds)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `credential_id` – The renewed credential ID.
+/// - `renewer` – Address of the renewer.
+/// - `extension_seconds` – Extension duration in seconds.
 pub fn emit_credential_renewed(
     env: &Env,
     credential_id: u64,
@@ -107,6 +197,14 @@ pub fn emit_credential_renewed(
 ///
 /// Topic: `(credential, revoked)`
 /// Payload: (credential_id, revoker, reason_code, timestamp)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `credential_id` – The revoked credential ID.
+/// - `revoker` – Address of the revoker.
+/// - `reason_code` – Discriminant code representing revocation reason.
+/// - `timestamp` – Ledger timestamp of revocation.
 pub fn emit_credential_revoked(
     env: &Env,
     credential_id: u64,
@@ -129,6 +227,13 @@ pub fn emit_credential_revoked(
 ///
 /// Topic: `(credential, xfer)`
 /// Payload: (from, to, credential_id, timestamp)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `from` – The source address.
+/// - `to` – The destination address.
+/// - `credential_id` – Stored credential ID.
 pub fn emit_credential_transferred(
     env: &Env,
     from: &Address,
@@ -148,6 +253,12 @@ pub fn emit_credential_transferred(
 ///
 /// Topic: `(course, created)`
 /// Payload: (course_id, instructor, timestamp)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `course_id` – Stored course ID.
+/// - `instructor` – Address of the instructor.
 pub fn emit_course_created(env: &Env, course_id: u64, instructor: &Address) {
     env.events().publish(
         (
@@ -162,6 +273,12 @@ pub fn emit_course_created(env: &Env, course_id: u64, instructor: &Address) {
 ///
 /// Topic: `(course, enrolled)`
 /// Payload: (course_id, student, timestamp)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `course_id` – Stored course ID.
+/// - `student` – Address of the enrolled student.
 pub fn emit_course_enrolled(env: &Env, course_id: u64, student: &Address) {
     env.events().publish(
         (
@@ -176,6 +293,12 @@ pub fn emit_course_enrolled(env: &Env, course_id: u64, student: &Address) {
 ///
 /// Topic: `(course, completed)`
 /// Payload: (course_id, student, timestamp)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `course_id` – Stored course ID.
+/// - `student` – Address of the completing student.
 pub fn emit_course_completed(env: &Env, course_id: u64, student: &Address) {
     env.events().publish(
         (
@@ -190,6 +313,12 @@ pub fn emit_course_completed(env: &Env, course_id: u64, student: &Address) {
 ///
 /// Topic: `(achievement, minted)`
 /// Payload: (user, achievement_id, timestamp)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `user` – Address of the recipient.
+/// - `achievement_id` – Unique achievement ID.
 pub fn emit_achievement_minted(env: &Env, user: &Address, achievement_id: u64) {
     env.events().publish(
         (
@@ -204,6 +333,12 @@ pub fn emit_achievement_minted(env: &Env, user: &Address, achievement_id: u64) {
 ///
 /// Topic: `(achievement, burned)`
 /// Payload: (user, achievement_id, timestamp)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `user` – Address of the recipient.
+/// - `achievement_id` – Unique achievement ID.
 pub fn emit_achievement_burned(env: &Env, user: &Address, achievement_id: u64) {
     env.events().publish(
         (
@@ -218,6 +353,11 @@ pub fn emit_achievement_burned(env: &Env, user: &Address, achievement_id: u64) {
 ///
 /// Topic: `(contract, paused)`
 /// Payload: (admin, timestamp)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `admin` – Address of the pause administrator.
 pub fn emit_paused(env: &Env, admin: &Address) {
     env.events().publish(
         (
@@ -232,6 +372,11 @@ pub fn emit_paused(env: &Env, admin: &Address) {
 ///
 /// Topic: `(contract, unpaused)`
 /// Payload: (admin, timestamp)
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `admin` – Address of the pause administrator.
 pub fn emit_unpaused(env: &Env, admin: &Address) {
     env.events().publish(
         (
