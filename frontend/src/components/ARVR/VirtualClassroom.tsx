@@ -442,6 +442,7 @@ export function VirtualClassroom({
                   {/* Avatar */}
                   <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
                     <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
+                      {student.avatarUrl ? (
                         <Image
                           src={student.avatarUrl}
                           alt={student.name}

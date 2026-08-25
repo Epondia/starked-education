@@ -311,7 +311,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                   {file.type.startsWith('image/') && file.url ? (
                     <div className="relative w-full h-32">
                       <Image
-                        src={file.url}
+                        src={file.url!}
                         alt={file.name}
                         fill
                         className="object-cover rounded"
