@@ -20,6 +20,7 @@
 //! | [`utils`] | Shared storage helpers and formatting utilities |
 
 #![no_std]
+#![warn(missing_docs)]
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec,
@@ -466,6 +467,18 @@ impl StarkEdContract {
 
     /// Grant a protocol role to an address. Only callable by an existing Admin.
     /// Role 0 = Admin, 1 = Issuer, 2 = Verifier.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `admin` – The caller address; must have the Admin role and sign.
+    /// - `role_discriminant` – The role to grant (0 = Admin, 1 = Issuer, 2 = Verifier).
+    /// - `grantee` – The address receiving the role.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `admin` lacks the Admin role.
+    /// - Panics if the role is already granted to `grantee`.
     pub fn grant_role(env: Env, admin: Address, role_discriminant: u32, grantee: Address) {
         let role = Role::from_u32(role_discriminant);
         Governance::grant_role(&env, admin, role, grantee);
@@ -473,18 +486,50 @@ impl StarkEdContract {
 
     /// Revoke a protocol role from an address. Only callable by an existing Admin.
     /// The last Admin cannot be revoked.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `admin` – The caller address; must have the Admin role and sign.
+    /// - `role_discriminant` – The role to revoke (0 = Admin, 1 = Issuer, 2 = Verifier).
+    /// - `target` – The address whose role is being revoked.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `admin` lacks the Admin role.
+    /// - Panics if the role was not assigned to `target`.
+    /// - Panics if attempting to revoke the last remaining Admin.
     pub fn revoke_role(env: Env, admin: Address, role_discriminant: u32, target: Address) {
         let role = Role::from_u32(role_discriminant);
         Governance::revoke_role(&env, admin, role, target);
     }
 
     /// Check whether an address holds a given role.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `addr` – The address to check.
+    /// - `role_discriminant` – The role to query (0 = Admin, 1 = Issuer, 2 = Verifier).
+    ///
+    /// # Returns
+    ///
+    /// `true` if `addr` holds the specified role; `false` otherwise.
     pub fn has_role(env: Env, addr: Address, role_discriminant: u32) -> bool {
         let role = Role::from_u32(role_discriminant);
         Governance::has_role(&env, &addr, role)
     }
 
     /// Get the number of addresses that hold a given role.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `role_discriminant` – The role to query (0 = Admin, 1 = Issuer, 2 = Verifier).
+    ///
+    /// # Returns
+    ///
+    /// The total number of members (`u32`) holding the specified role.
     pub fn get_role_member_count(env: Env, role_discriminant: u32) -> u32 {
         let role = Role::from_u32(role_discriminant);
         Governance::get_role_member_count(&env, role)
@@ -906,6 +951,21 @@ impl StarkEdContract {
 
     /// Unlock an achievement on a badge, earning XP and possibly triggering
     /// evolution. Returns `false` if the achievement is already unlocked.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `token_id` – Token ID of the badge to evolve.
+    /// - `achievement_id` – Unique identifier of the achievement.
+    /// - `new_metadata` – New metadata URI/IPFS hash to apply on evolution.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the badge was evolved/updated; `false` if the achievement was already unlocked.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the badge token does not exist.
     pub fn evolve_nft(
         env: Env,
         token_id: u64,
@@ -1030,6 +1090,23 @@ impl StarkEdContract {
 
     /// Burn a Basic badge and mint an Advanced certificate badge in its
     /// place, preserving achievements/XP/evolution history.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `owner` – Owner of the badge; must sign the transaction.
+    /// - `token_id` – Badge token ID to burn.
+    /// - `new_metadata` – Metadata URI for the upgraded Advanced badge.
+    /// - `certificate_title` – The title of the advanced certificate.
+    ///
+    /// # Returns
+    ///
+    /// The token ID of the newly minted Advanced badge.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the token does not exist or is not owned by `owner`.
+    /// - Panics if the token is already an Advanced badge.
     pub fn upgrade_nft(
         env: Env,
         owner: Address,

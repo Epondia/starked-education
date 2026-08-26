@@ -5,6 +5,15 @@ use soroban_sdk::{Env, String};
 
 /// Write a u64 as lowercase hex digits into `out`.
 /// Returns the number of bytes written.
+///
+/// # Parameters
+///
+/// - `value` – The `u64` value to format.
+/// - `out` – The output buffer slice. Must be at least 16 bytes.
+///
+/// # Returns
+///
+/// The number of bytes written (`usize`).
 pub fn write_u64_hex(value: u64, out: &mut [u8]) -> usize {
     if out.len() < 16 {
         return 0;
@@ -37,6 +46,15 @@ pub fn write_u64_hex(value: u64, out: &mut [u8]) -> usize {
 }
 
 /// Convert a u64 hash value into a hex soroban String (no std::format).
+///
+/// # Parameters
+///
+/// - `env` – Soroban execution environment.
+/// - `hash` – The `u64` value to convert.
+///
+/// # Returns
+///
+/// A Soroban [`String`] representing the hex value.
 pub fn hash_to_hex_string(env: &Env, hash: u64) -> String {
     let mut buf = [0u8; 16];
     let n = write_u64_hex(hash, &mut buf);

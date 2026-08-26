@@ -12,6 +12,17 @@ pub struct PackedUserFlags {
 }
 
 impl PackedUserFlags {
+    /// Construct a new `PackedUserFlags` instance by packing fields.
+    ///
+    /// # Parameters
+    ///
+    /// - `privacy_level` – Stored privacy level discriminant value.
+    /// - `verified` – Whether the user is verified.
+    /// - `active` – Whether the user is active.
+    ///
+    /// # Returns
+    ///
+    /// A new `PackedUserFlags` instance.
     pub fn new(privacy_level: u32, verified: bool, active: bool) -> Self {
         let mut flags = privacy_level & 0x03;
         if verified {
@@ -23,12 +34,29 @@ impl PackedUserFlags {
         Self { flags }
     }
 
+    /// Extract the privacy level from packed flags.
+    ///
+    /// # Returns
+    ///
+    /// The privacy level discriminant (`u32`).
     pub fn privacy_level(&self) -> u32 {
         self.flags & 0x03
     }
+
+    /// Check if the user is verified from packed flags.
+    ///
+    /// # Returns
+    ///
+    /// `true` if verified; `false` otherwise.
     pub fn is_verified(&self) -> bool {
         (self.flags & 0x04) != 0
     }
+
+    /// Check if the user is active from packed flags.
+    ///
+    /// # Returns
+    ///
+    /// `true` if active; `false` otherwise.
     pub fn is_active(&self) -> bool {
         (self.flags & 0x08) != 0
     }
@@ -38,11 +66,23 @@ impl PackedUserFlags {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PackedTimestamps {
+    /// Creation timestamp.
     pub created_at: u64,
+    /// Update timestamp.
     pub updated_at: u64,
 }
 
 impl PackedTimestamps {
+    /// Construct a new `PackedTimestamps` instance.
+    ///
+    /// # Parameters
+    ///
+    /// - `created_at` – Stored created_at ledger timestamp.
+    /// - `updated_at` – Stored updated_at ledger timestamp.
+    ///
+    /// # Returns
+    ///
+    /// A new `PackedTimestamps` instance.
     pub fn new(created_at: u64, updated_at: u64) -> Self {
         Self {
             created_at,
@@ -50,9 +90,20 @@ impl PackedTimestamps {
         }
     }
 
+    /// Get the created_at ledger timestamp.
+    ///
+    /// # Returns
+    ///
+    /// The creation timestamp.
     pub fn created_at(&self) -> u64 {
         self.created_at
     }
+
+    /// Get the updated_at ledger timestamp.
+    ///
+    /// # Returns
+    ///
+    /// The update timestamp.
     pub fn updated_at(&self) -> u64 {
         self.updated_at
     }
@@ -68,14 +119,35 @@ pub struct PackedRating {
 }
 
 impl PackedRating {
+    /// Construct a new `PackedRating` instance.
+    ///
+    /// # Parameters
+    ///
+    /// - `rating_bps` – The rating value in basis points.
+    /// - `review_count` – Stored review count.
+    ///
+    /// # Returns
+    ///
+    /// A new `PackedRating` instance.
     pub fn new(rating_bps: u32, review_count: u32) -> Self {
         let packed = ((rating_bps as u64) << 32) | (review_count as u64);
         Self { packed }
     }
 
+    /// Get the rating value in basis points.
+    ///
+    /// # Returns
+    ///
+    /// The rating in bps.
     pub fn rating_bps(&self) -> u32 {
         (self.packed >> 32) as u32
     }
+
+    /// Get the total count of reviews.
+    ///
+    /// # Returns
+    ///
+    /// The review count.
     pub fn review_count(&self) -> u32 {
         (self.packed & 0xFFFFFFFF) as u32
     }
@@ -85,34 +157,46 @@ impl PackedRating {
 #[contracttype]
 #[derive(Clone)]
 pub enum StorageKey {
-    /// User data namespace
+    /// User data namespace.
     User(Address),
+    /// User packed flags.
     UserFlags(Address),
+    /// User packed timestamps.
     UserTimestamps(Address),
+    /// User achievements list.
     UserAchievements(Address),
+    /// User credentials list.
     UserCredentials(Address),
+    /// Username to user address mapping index.
     UsernameMap(String),
 
-    /// Course data namespace  
+    /// Course data namespace.  
     Course(String),
+    /// Course packed flags.
     CourseFlags(String),
+    /// Course packed rating.
     CourseRating(String),
+    /// Course packed timestamps.
     CourseTimestamps(String),
+    /// Global course count tracker.
     CourseCount,
 
-    /// Credential namespace
+    /// Credential namespace.
     Credential(u64),
+    /// Global credential count tracker.
     CredentialCount,
 
-    /// Achievement namespace
+    /// Achievement namespace.
     Achievement(u64),
+    /// Global achievement count tracker.
     AchievementCount,
 
-    /// Analytics namespace
-    Analytics(u64), // timestamp-based
+    /// Analytics namespace.
+    Analytics(u64),
+    /// Global analytics count tracker.
     AnalyticsCount,
 
-    /// Global admin
+    /// Global admin.
     Admin,
 }
 
@@ -120,7 +204,19 @@ pub enum StorageKey {
 pub struct StorageUtils;
 
 impl StorageUtils {
-    /// Store user data with minimal storage slots
+    /// Store user data with minimal storage slots.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `user` – The user address.
+    /// - `username` – User's username display name.
+    /// - `email` – Optional email string.
+    /// - `bio` – Optional biography text.
+    /// - `avatar_url` – Optional avatar image URL.
+    /// - `privacy_level` – Privacy settings discriminant.
+    /// - `verified` – Verification status flag.
+    /// - `active` – Account status flag.
     pub fn store_user_compact(
         env: &Env,
         user: Address,
@@ -152,7 +248,21 @@ impl StorageUtils {
             .set(&StorageKey::UserTimestamps(user), &timestamps);
     }
 
-    /// Store course data with packed structures
+    /// Store course data with packed structures.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `course_id` – Stored course ID string.
+    /// - `instructor` – Address of the instructor.
+    /// - `title` – Display name of the course.
+    /// - `description` – Short course description.
+    /// - `category` – The course category grouping.
+    /// - `level` – Target skill level string.
+    /// - `duration` – The duration of the course in seconds.
+    /// - `price` – Stored price in token units.
+    /// - `max_students` – Limit on the number of enrolled students.
+    /// - `certificate_enabled` – True if completion awards a certificate.
     pub fn store_course_compact(
         env: &Env,
         course_id: String,
@@ -204,7 +314,14 @@ impl StorageUtils {
             .set(&StorageKey::CourseTimestamps(course_id), &timestamps);
     }
 
-    /// Efficiently add ID to user's list (achievements/credentials)
+    /// Efficiently add ID to user's list (achievements/credentials).
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `user` – The user address.
+    /// - `id` – The achievement or credential ID.
+    /// - `list_type` – The list type being added to.
     pub fn add_to_user_list(env: &Env, user: Address, id: u64, list_type: ListType) {
         let key = match list_type {
             ListType::Achievements => StorageKey::UserAchievements(user),
@@ -224,6 +341,16 @@ impl StorageUtils {
     }
 
     /// Get next ID for any entity type
+    /// Get next ID for any entity type, incrementing the counter.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `entity_type` – The target entity type.
+    ///
+    /// # Returns
+    ///
+    /// The incremented new ID (`u64`).
     pub fn get_next_id(env: &Env, entity_type: EntityType) -> u64 {
         let key = match entity_type {
             EntityType::Course => StorageKey::CourseCount,
@@ -239,7 +366,19 @@ impl StorageUtils {
         next_id
     }
 
-    /// Batch store analytics data to reduce storage operations
+    /// Batch store analytics data to reduce storage operations.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `timestamp` – Stored analytics timestamp snapshot.
+    /// - `total_users` – Stored total users count.
+    /// - `active_users` – Stored active users count.
+    /// - `total_courses` – Stored total courses count.
+    /// - `total_completions` – Stored total completions count.
+    /// - `avg_progress_bps` – Average student progress in basis points.
+    /// - `avg_quiz_score_bps` – Average student quiz score in basis points.
+    /// - `total_time_spent` – Cumulative student time spent in seconds.
     pub fn store_analytics_batch(
         env: &Env,
         timestamp: u64,
@@ -268,16 +407,23 @@ impl StorageUtils {
     }
 }
 
+/// The type of list associated with a user profile (Achievements or Credentials).
 #[derive(Clone)]
 pub enum ListType {
+    /// Achievements list namespace.
     Achievements,
+    /// Credentials list namespace.
     Credentials,
 }
 
+/// The entity types used in unique ID generation.
 #[derive(Clone)]
 pub enum EntityType {
+    /// Course entity.
     Course,
+    /// Credential entity.
     Credential,
+    /// Achievement entity.
     Achievement,
 }
 
@@ -285,7 +431,16 @@ pub enum EntityType {
 pub struct GasProfiler;
 
 impl GasProfiler {
-    /// Measure gas cost of storage operations
+    /// Measure gas cost of storage operations.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `operation` – Closures hosting operations to measure.
+    ///
+    /// # Returns
+    ///
+    /// The measured cost in gas units.
     pub fn measure_storage_cost<F, R>(env: &Env, operation: F) -> u64
     where
         F: FnOnce(&Env) -> R,

@@ -13,14 +13,44 @@ pub struct ContractVersion {
 }
 
 impl ContractVersion {
+    /// Construct a new `ContractVersion` instance.
+    ///
+    /// # Parameters
+    ///
+    /// - `major` – The major version number.
+    /// - `minor` – The minor version number.
+    /// - `patch` – The patch version number.
+    ///
+    /// # Returns
+    ///
+    /// A new `ContractVersion` instance.
     pub fn new(major: u32, minor: u32, patch: u32) -> Self {
         Self { major, minor, patch }
     }
 
+    /// Format the version numbers as a dot-separated string representation.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    ///
+    /// # Returns
+    ///
+    /// A Soroban `String` containing the formatted version (e.g. "1.0.0").
     pub fn to_string(&self, env: &Env) -> String {
         String::from_str(env, &format!("{}.{}.{}", self.major, self.minor, self.patch))
     }
 
+    /// Check compatibility with another version.
+    /// A version is compatible if the major version matches and the current minor version is greater than or equal to the other.
+    ///
+    /// # Parameters
+    ///
+    /// - `other` – The other version to compare against.
+    ///
+    /// # Returns
+    ///
+    /// `true` if compatible; `false` otherwise.
     pub fn is_compatible(&self, other: &ContractVersion) -> bool {
         self.major == other.major && self.minor >= other.minor
     }
