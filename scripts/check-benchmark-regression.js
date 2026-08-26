@@ -48,7 +48,7 @@ for (const line of fs.readFileSync(resultsFile, 'utf8').split('\n')) {
   } catch {
     continue; // tolerate stray non-JSON lines
   }
-  if (entry.type !== 'Point' || !entry.data) continue;
+  if ((entry.type !== 'Point' && entry.type !== 'Metric') || !entry.data) continue;
 
   const { metric, data } = entry;
   if (metric === 'http_req_duration' && typeof data.value === 'number') {
@@ -56,10 +56,21 @@ for (const line of fs.readFileSync(resultsFile, 'utf8').split('\n')) {
     if (!endpoint) continue;
     if (!durationsByEndpoint.has(endpoint)) durationsByEndpoint.set(endpoint, []);
     durationsByEndpoint.get(endpoint).push(data.value);
-  } else if (metric === 'http_reqs' && typeof data.count === 'number') {
-    totalRequests = data.count;
-  } else if (metric === 'http_req_failed' && typeof data.count === 'number') {
-    failedRequests = data.count;
+  } else if (metric === 'http_reqs') {
+    // k6 Point entries carry data.value = 1 per request; Metric entries
+    // carry a final data.values.count summary.  Handle both so the
+    // total is accurate regardless of k6 version.
+    if (typeof data.value === 'number') {
+      totalRequests += 1;
+    } else if (entry.type === 'Metric' && data.values && typeof data.values.count === 'number') {
+      totalRequests = data.values.count;
+    }
+  } else if (metric === 'http_req_failed') {
+    if (typeof data.value === 'number') {
+      failedRequests += data.value > 0 ? 1 : 0;
+    } else if (entry.type === 'Metric' && data.values && typeof data.values.count === 'number') {
+      failedRequests = data.values.count;
+    }
   }
 }
 

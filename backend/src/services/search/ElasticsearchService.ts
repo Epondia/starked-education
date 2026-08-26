@@ -2,7 +2,10 @@ import { Client } from '@elastic/elasticsearch';
 import logger from '../../utils/logger';
 
 export class ElasticsearchService {
-  private client: Client;
+  // `null` when Elasticsearch is intentionally disabled (ELASTICSEARCH_URL unset).
+  // Using `null` avoids constructing the Client — and opening TCP connections —
+  // when ES is not available (e.g. the benchmark CI job).
+  private client: Client | null;
   private readonly indices = {
     courses: 'courses',
     users: 'users',
@@ -10,16 +13,30 @@ export class ElasticsearchService {
   };
 
   constructor() {
+    const esUrl = process.env.ELASTICSEARCH_URL;
+
+    if (!esUrl) {
+      // Elasticsearch is not configured — operate in no-op mode.
+      // All methods will return empty results without blocking.
+      logger.warn('ELASTICSEARCH_URL is not set — ElasticsearchService running in no-op mode');
+      this.client = null;
+      return;
+    }
+
     this.client = new Client({
-      node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
+      node: esUrl,
       auth: {
         username: process.env.ELASTICSEARCH_USERNAME || 'elastic',
         password: process.env.ELASTICSEARCH_PASSWORD || 'changeme'
-      }
-    });
+      },
+      // Fail fast when ES is unreachable instead of hanging for 60 s.
+      requestTimeout: 5000,
+      sniffOnStart: false,
+    } as any);
   }
 
   async initializeIndices() {
+    if (!this.client) return; // ES not configured — no-op
     try {
       const courseIndexExists = await this.client.indices.exists({ index: this.indices.courses });
       if (!courseIndexExists) {
@@ -74,6 +91,7 @@ export class ElasticsearchService {
   }
 
   async indexCourse(course: any) {
+    if (!this.client) return; // ES not configured — no-op
     try {
       await (this.client as any).index({
         index: this.indices.courses,
@@ -96,6 +114,10 @@ export class ElasticsearchService {
   }
 
   async searchCourses(query: string, filters: any, from = 0, size = 10) {
+    if (!this.client) {
+      // ES not configured — return empty result set immediately.
+      return { hits: [], total: 0, aggregations: {} };
+    }
     try {
       const must: any[] = [];
       const filter: any[] = [];
@@ -157,6 +179,7 @@ export class ElasticsearchService {
   }
 
   async getSuggestions(query: string): Promise<string[]> {
+    if (!this.client) return []; // ES not configured — no-op
     try {
       const response = await this.client.search({
         index: this.indices.courses,
@@ -182,4 +205,20 @@ export class ElasticsearchService {
   }
 }
 
-export default new ElasticsearchService();
+// Lazy singleton — the Client is only constructed on first use so importing
+// this module never opens a TCP connection to Elasticsearch at startup.
+let _instance: ElasticsearchService | null = null;
+export default {
+  get instance(): ElasticsearchService {
+    if (!_instance) _instance = new ElasticsearchService();
+    return _instance;
+  },
+  initializeIndices: (...args: Parameters<ElasticsearchService['initializeIndices']>) =>
+    (_instance ?? (_instance = new ElasticsearchService())).initializeIndices(...args),
+  indexCourse: (...args: Parameters<ElasticsearchService['indexCourse']>) =>
+    (_instance ?? (_instance = new ElasticsearchService())).indexCourse(...args),
+  searchCourses: (...args: Parameters<ElasticsearchService['searchCourses']>) =>
+    (_instance ?? (_instance = new ElasticsearchService())).searchCourses(...args),
+  getSuggestions: (...args: Parameters<ElasticsearchService['getSuggestions']>) =>
+    (_instance ?? (_instance = new ElasticsearchService())).getSuggestions(...args),
+};

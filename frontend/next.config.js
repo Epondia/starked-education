@@ -268,20 +268,17 @@ const nextConfig = {
   },
   // Enable compression
   compress: true,
-  // Enable image optimization
   images: {
     formats: ['image/webp', 'image/avif'],
     remotePatterns: [
-      // Local dev server
-      { protocol: 'http', hostname: 'localhost' },
-      // Course thumbnails served by the discovery service (seed data)
-      { protocol: 'https', hostname: 'images.unsplash.com' },
-      // Default avatars in backend seed data / mock fixtures
-      { protocol: 'https', hostname: 'example.com' },
-      // Media service thumbnail placeholders
-      { protocol: 'https', hostname: 'cdn.example.com' },
-      // Uploaded media (S3)
-      { protocol: 'https', hostname: '**.s3.amazonaws.com' },
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+      {
+        protocol: 'http',
+        hostname: '**',
+      },
     ],
   },
   // Performance headers

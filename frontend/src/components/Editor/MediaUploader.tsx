@@ -4,7 +4,12 @@
  */
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Upload, X, FileImage, FileVideo, FileText, AlertCircle, Check } from 'lucide-react';
+import { Upload, X, File, Image as ImageIcon, Video, Music, Link as LinkIcon, Youtube } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import Image from 'next/image';
 
 interface MediaFile {
   id: string;
@@ -304,11 +309,14 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
                 {/* File Preview */}
                 <div className="file-preview mb-3">
                   {file.type.startsWith('image/') && file.url ? (
-                    <img
-                      src={file.url}
-                      alt={file.name}
-                      className="w-full h-32 object-cover rounded"
-                    />
+                    <div className="relative w-full h-32">
+                      <Image
+                        src={file.url!}
+                        alt={file.name}
+                        fill
+                        className="object-cover rounded"
+                      />
+                    </div>
                   ) : (
                     <div className="w-full h-32 bg-gray-100 rounded flex items-center justify-center">
                       {getFileIcon(file.type)}

@@ -19,7 +19,6 @@ import {
   Sparkles,
   Wand2,
 } from 'lucide-react';
-import Image from 'next/image';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import CourseCard from './CourseCard';

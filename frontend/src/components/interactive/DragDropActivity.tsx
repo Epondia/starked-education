@@ -281,7 +281,7 @@ const DragDropLearningActivity: React.FC<DragDropActivityProps> = ({
       }}
     >
       {item.image && (
-        <Image src={item.image} alt={item.content} width={64} height={64} className="w-16 h-16 mx-auto mb-2 rounded" />
+        <Image src={item.image} alt={item.content} width={64} height={64} className="w-16 h-16 mx-auto mb-2 rounded object-cover" />
       )}
       <p className="text-center font-medium text-gray-800">{item.content}</p>
     </motion.div>
