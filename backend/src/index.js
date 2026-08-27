@@ -13,6 +13,10 @@ const SecureRealtimeCommunication = require('./services/secureRealtimeCommunicat
 // Import circuit breaker registry
 const { circuitBreakerRegistry } = require('./utils/circuitBreaker');
 
+// Import timeout and circuit-breaker middleware (Issue #307)
+const { routeTimeout } = require('./middleware/timeout');
+const { circuitBreakerMiddleware, circuitBreakerStatusHandler } = require('./middleware/circuitBreakerMiddleware');
+
 const { transactionQueue } = require('./services/transactionQueue');
 const transactionProcessor = require('./workers/transactionProcessor');
 const transactionEvents = require('./events/transactionEvents');
@@ -180,39 +184,51 @@ app.use(globalLimiter);
 // Apply API version extraction middleware globally
 app.use(versionExtractor);
 
+// ── Per-route timeouts & circuit breakers (Issue #307) ──────────
+// Timeout defaults (ms) – different endpoint classes get different limits.
+const TIMEOUTS = {
+  auth: parseInt(process.env.TIMEOUT_AUTH_MS) || 15000,       // auth should be fast
+  read: parseInt(process.env.TIMEOUT_READ_MS) || 30000,       // standard read
+  write: parseInt(process.env.TIMEOUT_WRITE_MS) || 30000,     // standard write
+  upload: parseInt(process.env.TIMEOUT_UPLOAD_MS) || 120000,  // file uploads
+  search: parseInt(process.env.TIMEOUT_SEARCH_MS) || 15000,   // search queries
+  realtime: parseInt(process.env.TIMEOUT_REALTIME_MS) || 10000, // collaborative/realtime
+  external: parseInt(process.env.TIMEOUT_EXTERNAL_MS) || 30000, // external service calls
+};
+
 // Create versioned routers
 const v1Router = createVersionedRouter('v1');
 
 // ── v1 API Routes ──────────────────────────────────────────────
 // All existing routes are mounted under /api/v1/
-v1Router.use('/quizzes', quizRoutes);
-v1Router.use('/events', eventLoggerRoutes);
-v1Router.use('/sync', syncRoutes);
-v1Router.use('/auth', authRoutes);
-v1Router.use('/content', contentRoutes);
-v1Router.use('/courses', courseRoutes);
-v1Router.use('/search', searchRoutes());
-v1Router.use('/rbac', rbacRoutes);
-v1Router.use('/transactions', transactionRoutes);
-v1Router.use('/notifications', notificationRoutes);
-v1Router.use('/webhooks', webhookRoutes);
-v1Router.use('/collaboration', collaborationRoutes);
-v1Router.use('/holographic', holographicRoutes);
-v1Router.use('/aco', acoRoutes);
-v1Router.use('/federated-learning', federatedLearningRoutes);
-v1Router.use('/swarm-learning', swarmLearningRoutes);
-v1Router.use('/smart-wallet', smartWalletRoutes);
-v1Router.use('/secure-comm', secureCommRoutes);
-v1Router.use('/agi-tutor', agiTutorRoutes);
-v1Router.use('/analytics', analyticsRoutes);
+v1Router.use('/quizzes', routeTimeout(TIMEOUTS.read, { label: 'quizzes' }), quizRoutes);
+v1Router.use('/events', routeTimeout(TIMEOUTS.write, { label: 'events' }), eventLoggerRoutes);
+v1Router.use('/sync', routeTimeout(TIMEOUTS.write, { label: 'sync' }), circuitBreakerMiddleware('redis', { failureThreshold: 3, timeoutWindow: 30000, halfOpenMaxRequests: 2 }), syncRoutes);
+v1Router.use('/auth', routeTimeout(TIMEOUTS.auth, { label: 'auth' }), authRoutes);
+v1Router.use('/content', routeTimeout(TIMEOUTS.write, { label: 'content' }), contentRoutes);
+v1Router.use('/courses', routeTimeout(TIMEOUTS.read, { label: 'courses' }), courseRoutes);
+v1Router.use('/search', routeTimeout(TIMEOUTS.search, { label: 'search' }), searchRoutes());
+v1Router.use('/rbac', routeTimeout(TIMEOUTS.read, { label: 'rbac' }), rbacRoutes);
+v1Router.use('/transactions', routeTimeout(TIMEOUTS.write, { label: 'transactions' }), circuitBreakerMiddleware('stellar', { failureThreshold: 3, timeoutWindow: 30000, halfOpenMaxRequests: 2 }), transactionRoutes);
+v1Router.use('/notifications', routeTimeout(TIMEOUTS.read, { label: 'notifications' }), notificationRoutes);
+v1Router.use('/webhooks', routeTimeout(TIMEOUTS.write, { label: 'webhooks' }), webhookRoutes);
+v1Router.use('/collaboration', routeTimeout(TIMEOUTS.realtime, { label: 'collaboration' }), collaborationRoutes);
+v1Router.use('/holographic', routeTimeout(TIMEOUTS.upload, { label: 'holographic' }), circuitBreakerMiddleware('ipfs', { failureThreshold: 3, timeoutWindow: 30000, halfOpenMaxRequests: 2 }), holographicRoutes);
+v1Router.use('/aco', routeTimeout(TIMEOUTS.external, { label: 'aco' }), acoRoutes);
+v1Router.use('/federated-learning', routeTimeout(TIMEOUTS.external, { label: 'federated-learning' }), federatedLearningRoutes);
+v1Router.use('/swarm-learning', routeTimeout(TIMEOUTS.external, { label: 'swarm-learning' }), swarmLearningRoutes);
+v1Router.use('/smart-wallet', routeTimeout(TIMEOUTS.write, { label: 'smart-wallet' }), circuitBreakerMiddleware('stellar', { failureThreshold: 3, timeoutWindow: 30000, halfOpenMaxRequests: 2 }), smartWalletRoutes);
+v1Router.use('/secure-comm', routeTimeout(TIMEOUTS.realtime, { label: 'secure-comm' }), secureCommRoutes);
+v1Router.use('/agi-tutor', routeTimeout(TIMEOUTS.read, { label: 'agi-tutor' }), agiTutorRoutes);
+v1Router.use('/analytics', routeTimeout(TIMEOUTS.read, { label: 'analytics' }), analyticsRoutes);
 
 // Autonomous Agents routes
 const autonomousAgentsRoutes = require('./routes/autonomousAgents');
-v1Router.use('/autonomous-agents', autonomousAgentsRoutes);
+v1Router.use('/autonomous-agents', routeTimeout(TIMEOUTS.external, { label: 'autonomous-agents' }), autonomousAgentsRoutes);
 
 // Gamification routes
 const gamificationRoutes = require('./routes/gamification');
-v1Router.use('/gamification', gamificationRoutes);
+v1Router.use('/gamification', routeTimeout(TIMEOUTS.read, { label: 'gamification' }), gamificationRoutes);
 
 // Bridge routes — module not yet implemented, use empty router
 console.warn('Warning: Bridge routes module not found, using empty router');
@@ -221,25 +237,28 @@ v1Router.use('/bridge', bridgeRoutes);
 
 // Time-Locked Credential routes
 const timeLockCredentialsRoutes = resolveRoute(require('./routes/timeLockCredentials'));
-v1Router.use('/time-lock', timeLockCredentialsRoutes);
+v1Router.use('/time-lock', routeTimeout(TIMEOUTS.write, { label: 'time-lock' }), timeLockCredentialsRoutes);
 
 // VRF (Verifiable Random Function) routes
 const vrfRoutes = resolveRoute(require('./routes/vrf'));
-v1Router.use('/vrf', vrfRoutes);
+v1Router.use('/vrf', routeTimeout(TIMEOUTS.write, { label: 'vrf' }), vrfRoutes);
 
 // Real-time Translation routes
 const translationRoutes = resolveRoute(require('./routes/translation'));
-v1Router.use('/translate', translationRoutes);
+v1Router.use('/translate', routeTimeout(TIMEOUTS.read, { label: 'translate' }), translationRoutes);
 
 // Cross-Protocol Bridge routes
 const crossProtocolBridgeRoutes = resolveRoute(require('./routes/crossProtocolBridge'));
-v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
+v1Router.use('/cross-protocol-bridge', routeTimeout(TIMEOUTS.external, { label: 'cross-protocol-bridge' }), crossProtocolBridgeRoutes);
 
 // Admin dashboard routes
 const adminRoutes = require('./routes/admin');
-v1Router.use('/admin', adminRoutes);
+v1Router.use('/admin', routeTimeout(TIMEOUTS.write, { label: 'admin' }), adminRoutes);
 
 // Event Indexer admin routes (start / stop / status)
+// Circuit breaker status endpoint (admin-only, registered before indexer routes)
+v1Router.get('/circuit-breakers', require('./middleware/auth').requireAdmin, circuitBreakerStatusHandler);
+
 const indexerAdminRouter = require('express').Router();
 
 indexerAdminRouter.get('/status', (req, res) => {
