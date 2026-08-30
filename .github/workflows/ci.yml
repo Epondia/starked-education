@@ -22,6 +22,14 @@ jobs:
         with:
           toolchain: 1.85.0
 
+      - name: Check contracts (compile gate)
+        # Runs cargo check without continue-on-error so duplicate module
+        # declarations, missing imports, and other compile errors block the PR.
+        # This is intentionally placed before build/test to fail fast and
+        # surface errors like the duplicate `pub mod credential_registry`
+        # declarations described in issue #400.
+        run: cd contracts && cargo check --all-targets
+
       - name: Build contracts
         continue-on-error: true
         run: cd contracts && cargo build --lib
