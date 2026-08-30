@@ -98,7 +98,7 @@ pub struct VisualTraits {
     pub emblem: u32,
     pub glow_effect: u32,
     // u32 rather than u8: soroban-sdk 20 does not implement the Val
-    // conversion traits for u8 (see fix_v21.sh migration note).
+    // conversion traits for u8.
     pub special_effects: Vec<u32>,
     pub rarity_tier: RarityTier,
 }
