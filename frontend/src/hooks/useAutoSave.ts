@@ -95,12 +95,14 @@ export const useAutoSave = (
     }
   }, [onSave, onError, maxRetries]);
 
-  // Manual save trigger
+  // Manual save trigger — saves when there are unsaved changes. Comparing
+  // against the current `content` would always be false (content === content),
+  // so the dirty flag is used instead.
   const saveNow = useCallback(() => {
-    if (content && hasContentChanged(content)) {
+    if (content && status.isDirty) {
       saveContent(content);
     }
-  }, [content, hasContentChanged, saveContent]);
+  }, [content, status.isDirty, saveContent]);
 
   // Debounced save function
   const debouncedSave = useCallback(

@@ -42,53 +42,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.7,
     },
     {
-      url: `${SITE_URL}/performance`,
+      url: `${SITE_URL}/notifications-demo`,
       lastModified: new Date(),
       changeFrequency: 'weekly' as const,
       priority: 0.6,
     },
     {
-      url: `${SITE_URL}/settings/notifications`,
+      url: `${SITE_URL}/demo-features`,
       lastModified: new Date(),
       changeFrequency: 'monthly' as const,
       priority: 0.5,
     },
     {
-      url: `${SITE_URL}/profile`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly' as const,
-      priority: 0.5,
-    },
-    // Admin routes
-    {
-      url: `${SITE_URL}/admin`,
+      url: `${SITE_URL}/collaboration`,
       lastModified: new Date(),
       changeFrequency: 'weekly' as const,
-      priority: 0.4,
-    },
-    {
-      url: `${SITE_URL}/admin/analytics`,
-      lastModified: new Date(),
-      changeFrequency: 'daily' as const,
-      priority: 0.5,
-    },
-    {
-      url: `${SITE_URL}/admin/users`,
-      lastModified: new Date(),
-      changeFrequency: 'daily' as const,
-      priority: 0.5,
-    },
-    {
-      url: `${SITE_URL}/admin/settings`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly' as const,
-      priority: 0.3,
-    },
-    {
-      url: `${SITE_URL}/admin/content/moderation`,
-      lastModified: new Date(),
-      changeFrequency: 'daily' as const,
-      priority: 0.5,
+      priority: 0.6,
     },
   ];
 

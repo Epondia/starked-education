@@ -147,15 +147,23 @@ export class MLModel {
     }
   }
 
-  private calculateConfidence(values: Float32Array): number {
+  private calculateConfidence(values: Float32Array | Int32Array | Uint8Array): number {
     const variance = this.calculateVariance(values);
     return Math.max(0, 1 - variance);
   }
 
-  private calculateVariance(values: Float32Array): number {
-    const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
-    const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
-    return variance;
+  private calculateVariance(values: Float32Array | Int32Array | Uint8Array): number {
+    // Manual loop: Array.reduce has incompatible signatures across the typed-array union.
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) {
+      sum += values[i];
+    }
+    const mean = sum / values.length;
+    let variance = 0;
+    for (let i = 0; i < values.length; i++) {
+      variance += Math.pow(values[i] - mean, 2);
+    }
+    return variance / values.length;
   }
 
   extractFeatures(signals: BrainSignal[], cognitiveHistory: CognitiveState[]): number[] {

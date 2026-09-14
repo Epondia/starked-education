@@ -31,12 +31,19 @@ const { checkRedisConnectivity } = require('../config/redis');
 
 // Elasticsearch check
 import ElasticsearchService from '../services/search/ElasticsearchService';
+import { getIndexerStatus } from '../services/eventIndexer';
+import { IndexerStatus } from '../models/IndexedEvent';
 
 // Circuit breaker metrics
 const { circuitBreakerRegistry } = require('../utils/circuitBreaker');
 
 // Package version
 const packageJson = require('../../../package.json');
+
+// Prometheus metrics (request/latency/error/queue) and the transaction queue
+// used to sample accurate queue depth at scrape time.
+const { getMetricsContent, setQueueDepth, contentType: metricsContentType } = require('../services/metricsRegistry');
+const { transactionQueue } = require('../services/transactionQueue');
 
 /**
  * Check Stellar Horizon node health via HTTP
@@ -134,7 +141,6 @@ async function checkAllDependencies() {
 
   return { postgres, redis, stellar, ipfs, elasticsearch };
 }
-
 /**
  * Critical dependencies: failure of any of these indicates the service cannot
  * reliably perform its core functions, so the aggregate status is "unhealthy".
@@ -163,6 +169,83 @@ function aggregateStatus(
   );
   return criticalUnhealthy ? 'unhealthy' : 'degraded';
 }
+
+/**
+ * Normalise an IP address by stripping the IPv4-mapped IPv6 prefix so loopback
+ * comparisons work for both `127.0.0.1` and `::ffff:127.0.0.1`.
+ */
+function normalizeIp(ip: string): string {
+  return (ip || '').replace(/^::ffff:/, '');
+}
+
+/**
+ * True when the address is a loopback address.
+ */
+function isLoopbackIp(ip: string): boolean {
+  const normalized = normalizeIp(ip);
+  return normalized === '127.0.0.1' || normalized === '::1';
+}
+
+/**
+ * Metrics are operator-facing and can reveal internal topology, so they must
+ * never be served publicly. A request is allowed when it originates from a
+ * loopback address (Prometheus scraping the same host) or, for remote
+ * scrapers, when it presents the shared token configured via
+ * `PROMETHEUS_METRICS_TOKEN` (either `Authorization: Bearer <token>` or
+ * `X-Metrics-Token: <token>`).
+ */
+export function isInternalRequest(req: Request): boolean {
+  const ip = req.ip || (req.socket && req.socket.remoteAddress) || '';
+  if (isLoopbackIp(ip)) {
+    return true;
+  }
+
+  const token = process.env.PROMETHEUS_METRICS_TOKEN;
+  if (!token) {
+    return false;
+  }
+
+  const headerToken = req.get('x-metrics-token');
+  const authHeader = req.get('authorization') || '';
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+
+  return headerToken === token || bearerToken === token;
+}
+
+/**
+ * GET /metrics — Prometheus-format metrics (internal-only).
+ *
+ * Samples the transaction queue depth from the real queue before rendering so
+ * the gauge reflects actual depth rather than a stale or simulated value.
+ */
+const metricsHandler = async (req: Request, res: Response) => {
+  if (!isInternalRequest(req)) {
+    res.status(403).json({ error: 'Forbidden', message: 'Metrics endpoint is internal-only' });
+    return;
+  }
+
+  try {
+    try {
+      const stats = await transactionQueue.getQueueStats();
+      const depth = stats && typeof stats.total === 'number' ? stats.total : 0;
+      setQueueDepth('stellar_transactions', depth);
+    } catch {
+      // Queue stats are best-effort: fall back to 0 rather than failing the scrape.
+      setQueueDepth('stellar_transactions', 0);
+    }
+
+    res.set('Content-Type', metricsContentType);
+    res.send(await getMetricsContent());
+  } catch (error) {
+    console.error('Failed to render metrics:', error);
+    res.status(500).json({ error: 'Failed to collect metrics' });
+  }
+};
+
+// Exposed at both /health/metrics (below) and, via metricsRouter, at /metrics.
+router.get('/metrics', metricsHandler);
+export const metricsRouter: Router = Router();
+metricsRouter.get('/', metricsHandler);
 
 /**
  * GET /health/live
@@ -224,8 +307,13 @@ router.get('/', async (req: Request, res: Response) => {
 
     const memory = process.memoryUsage();
 
-    // Get circuit breaker states
-    const circuitBreakers = circuitBreakerRegistry ? circuitBreakerRegistry.getStates() : {};
+    // Safely read the event indexer status (may not be initialised yet)
+    let indexerStatus: Partial<IndexerStatus> = { status: 'stopped' };
+    try {
+      indexerStatus = getIndexerStatus();
+    } catch {
+      // Indexer not yet initialised – report as stopped
+    }
 
     res.status(200).json({
       status: aggregateStatus(dependencies),
@@ -238,7 +326,14 @@ router.get('/', async (req: Request, res: Response) => {
         heapTotal: memory.heapTotal,
         rss: memory.rss
       },
-      circuitBreakers,
+      eventIndexer: {
+        status:          indexerStatus.status ?? 'stopped',
+        lastLedger:      indexerStatus.lastLedger ?? 0,
+        eventsProcessed: indexerStatus.eventsProcessed ?? 0,
+        lag:             indexerStatus.lag ?? 0,
+        ...(indexerStatus.errorMessage && { errorMessage: indexerStatus.errorMessage }),
+        ...(indexerStatus.startedAt && { startedAt: indexerStatus.startedAt }),
+      },
       dependencies: Object.fromEntries(
         Object.entries(dependencies).map(([key, value]) => {
           const dep = value as DependencyHealth;
@@ -278,7 +373,7 @@ router.get('/', async (req: Request, res: Response) => {
         heapTotal: 0,
         rss: 0
       },
-      circuitBreakers: circuitBreakerRegistry ? circuitBreakerRegistry.getStates() : {},
+      eventIndexer: { status: 'stopped', lastLedger: 0, eventsProcessed: 0, lag: 0 },
       dependencies: {
         postgres: { status: 'unhealthy', latencyMs: 0, error: 'Check failed' },
         redis: { status: 'unhealthy', latencyMs: 0, error: 'Check failed' },

@@ -38,7 +38,7 @@ export function LanguageSwitcher({
   showNativeName = true,
   className = ''
 }: LanguageSwitcherProps) {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null);

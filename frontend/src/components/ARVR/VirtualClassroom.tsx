@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
 import { Users, GraduationCap, MessageSquare, Video, Mic, MicOff, Share2, Globe, Settings, Book, Award, Clock, Hand } from 'lucide-react';
 
 export type ClassroomLayout = 'lecture' | 'seminar' | 'lab' | 'discussion' | 'presentation';
@@ -442,9 +443,11 @@ export function VirtualClassroom({
                   <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
                     <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
                       {student.avatarUrl ? (
-                        <img 
-                          src={student.avatarUrl} 
+                        <Image
+                          src={student.avatarUrl}
                           alt={student.name}
+                          width={24}
+                          height={24}
                           className="w-full h-full rounded-full object-cover"
                         />
                       ) : (
@@ -512,9 +515,11 @@ export function VirtualClassroom({
             {/* Avatar */}
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center shadow-xl">
               {session.instructor.avatarUrl ? (
-                <img 
-                  src={session.instructor.avatarUrl} 
+                <Image
+                  src={session.instructor.avatarUrl}
                   alt={session.instructor.name}
+                  width={48}
+                  height={48}
                   className="w-full h-full rounded-full object-cover"
                 />
               ) : (
@@ -675,9 +680,11 @@ export function VirtualClassroom({
               <div className="flex items-center gap-3 p-2 bg-purple-900/20 rounded border border-purple-500/30">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center">
                   {session.instructor.avatarUrl ? (
-                    <img 
-                      src={session.instructor.avatarUrl} 
+                    <Image
+                      src={session.instructor.avatarUrl}
                       alt={session.instructor.name}
+                      width={32}
+                      height={32}
                       className="w-full h-full rounded-full object-cover"
                     />
                   ) : (
@@ -706,9 +713,11 @@ export function VirtualClassroom({
                   <div key={student.id} className="flex items-center gap-3 p-2 bg-blue-900/20 rounded border border-blue-500/30">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
                       {student.avatarUrl ? (
-                        <img 
-                          src={student.avatarUrl} 
+                        <Image
+                          src={student.avatarUrl}
                           alt={student.name}
+                          width={32}
+                          height={32}
                           className="w-full h-full rounded-full object-cover"
                         />
                       ) : (

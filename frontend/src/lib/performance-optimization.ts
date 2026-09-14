@@ -145,7 +145,7 @@ class PerformanceOptimizationService {
     }
 
     // Check for render-blocking scripts
-    const blockingScripts = Array.from(scripts).filter(script => 
+    const blockingScripts = (Array.from(scripts) as HTMLScriptElement[]).filter(script => 
       !script.async && !script.defer && script.hasAttribute('src')
     );
 
@@ -272,7 +272,7 @@ class PerformanceOptimizationService {
 
     return {
       totalSize: this.estimateTotalSize(resources),
-      requestCount: resources.length,        loadTime: navigation?.loadEventEnd - navigation?.activationStart || 0,        renderTime: navigation?.domContentLoadedEventEnd - navigation?.activationStart || 0,
+      requestCount: resources.length,        loadTime: navigation?.loadEventEnd - (navigation?.activationStart ?? 0) || 0,        renderTime: navigation?.domContentLoadedEventEnd - (navigation?.activationStart ?? 0) || 0,
     };
   }
 

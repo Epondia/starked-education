@@ -1,8 +1,16 @@
 import { Server, Socket } from 'socket.io';
 import { createServer } from 'http';
+import jwt from 'jsonwebtoken';
 import { INotification } from '../models/Notification';
 import collaborationService from './collaborationService';
 import { getSyncStatus } from './syncService'; // Hook into tracking system
+import logger from '../utils/logger';
+
+// Helper: sanitize log strings to prevent log injection (strip control chars)
+function sanitizeLog(data: unknown): string {
+  // eslint-disable-next-line no-control-regex
+  return String(data).replace(/[\x00-\x1f\x7f-\x9f]/g, '_');
+}
 
 interface ClientNotificationData {
   id: string;
@@ -27,7 +35,7 @@ class WebsocketService {
 
   constructor(server?: any) {
     const corsOptions = {
-      origin: process.env.FRONTEND_URL || '*',
+      origin: process.env.FRONTEND_URL || undefined,
       methods: ['GET', 'POST'],
       credentials: true
     };
@@ -38,17 +46,55 @@ class WebsocketService {
 
   private setupConnectionHandlers(): void {
     this.io.on('connection', (socket: Socket) => {
-      console.log(`User connected: ${socket.id}`);
+      logger.info(`User connected: ${socket.id}`);
 
       // Instantly notify connection health state upon initial handshake
       socket.emit('connection-state-changed', { status: 'connected' });
 
-      socket.on('register-user', async (payload: { userId: string; lastOffset?: number }) => {
-        const { userId, lastOffset } = typeof payload === 'string' ? { userId: payload, lastOffset: 0 } : payload;
+      socket.on('register-user', async (payload: { userId: string; lastOffset?: number; token?: string }) => {
+        const { userId: claimedUserId, lastOffset, token } =
+          typeof payload === 'string' ? { userId: payload, lastOffset: 0, token: undefined } : payload;
+
+        // Authenticate the user via JWT token to prevent identity spoofing
+        if (!token) {
+          logger.warn(`register-user rejected: no token provided for socket ${socket.id}`);
+          socket.emit('auth-error', { message: 'Authentication required' });
+          return;
+        }
+
+        let verifiedUserId: string;
+        try {
+          const jwtSecret = process.env.JWT_SECRET;
+          if (!jwtSecret) {
+            logger.error('JWT_SECRET not configured');
+            return;
+          }
+          const decoded = jwt.verify(token, jwtSecret) as { id: string };
+          verifiedUserId = decoded.id;
+        } catch {
+          logger.warn(`register-user rejected: invalid token for socket ${socket.id}`);
+          socket.emit('auth-error', { message: 'Invalid token' });
+          return;
+        }
+
+        // Use the verified userId from the JWT, not the client-supplied one
+        const userId = verifiedUserId;
         
         this.socketUsers[socket.id] = userId;
         this.addUserSocket(userId, socket);
-        console.log(`User ${userId} registered with socket ${socket.id}`);
+        logger.info(`User ${sanitizeLog(userId)} registered with socket ${socket.id}`);
+
+        // Deliver missed notifications on reconnect
+        try {
+          const { notificationService } = await import('./notificationService');
+          const deliveredCount = await notificationService.deliverMissedNotifications(userId);
+          if (deliveredCount > 0) {
+            logger.info(`Delivered ${deliveredCount} missed notifications to user ${sanitizeLog(userId)} on reconnect`);
+          }
+        } catch (error) {
+          const err = error instanceof Error ? error.message : String(error);
+          logger.error(`Failed to deliver missed notifications for user ${sanitizeLog(userId)}: ${sanitizeLog(err)}`);
+        }
 
         // State recovery implementation: Replay missed sync messages if lastOffset is provided
         if (lastOffset && lastOffset > 0) {
@@ -62,13 +108,27 @@ class WebsocketService {
               });
             }
           } catch (error) {
-            console.error(`Failed to replay state recovery logs for user ${userId}:`, error);
+            const err = error instanceof Error ? error.message : String(error);
+            logger.error(`Failed to replay state recovery logs for user ${sanitizeLog(userId)}: ${sanitizeLog(err)}`);
           }
         }
       });
 
       socket.on('join-classroom', (payload: { classroomId: string; userId: string; name: string; role?: 'student' | 'instructor' | 'moderator' | 'reviewer' }) => {
-        const classroom = collaborationService.joinClassroom(payload.classroomId, payload);
+        // Rebuild payload from verified identity, ignoring client-supplied userId/role to prevent privilege escalation
+        const verifiedUserId = this.socketUsers[socket.id];
+        if (!verifiedUserId) {
+          logger.warn(`join-classroom rejected: unauthenticated socket ${socket.id}`);
+          socket.emit('auth-error', { message: 'Authentication required to join classroom' });
+          return;
+        }
+        const participant = {
+          classroomId: payload.classroomId,
+          userId: verifiedUserId,
+          name: payload.name || 'Anonymous',
+          role: 'student' as const, // Default role; real role fetched from DB by collaborationService
+        };
+        const classroom = collaborationService.joinClassroom(payload.classroomId, participant);
         socket.join(this.getRoomName(payload.classroomId));
         socket.emit('classroom-state', classroom);
         this.io.to(this.getRoomName(payload.classroomId)).emit('classroom-presence-updated', classroom.participants);
@@ -114,14 +174,20 @@ class WebsocketService {
       });
 
       socket.on('document-sync', (payload: { workspaceId: string; documentId: string; title: string; userId: string; version: number; updatedAt?: Date; content: Record<string, unknown>; strategy?: any }) => {
+        // Validate workspaceId to prevent dynamic event injection
+        if (typeof payload.workspaceId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(payload.workspaceId)) {
+          logger.warn(`document-sync rejected: invalid workspaceId from socket ${socket.id}`);
+          return;
+        }
+        const safeWorkspaceId = payload.workspaceId;
         const document = collaborationService.syncDocument(payload);
-        this.io.emit(`workspace-document-${payload.workspaceId}`, document);
+        this.io.emit(`workspace-document-${safeWorkspaceId}`, document);
       });
 
       socket.on('disconnect', () => {
         delete this.socketUsers[socket.id];
         this.removeSocket(socket);
-        console.log(`User disconnected: ${socket.id}`);
+        logger.info(`User disconnected: ${socket.id}`);
       });
     });
   }
@@ -175,7 +241,7 @@ class WebsocketService {
             timestamp: notification.createdAt,
           });
         });
-        console.log(`Notification sent via websocket to user ${userId}`);
+        logger.info(`Notification sent via websocket to user ${sanitizeLog(userId)}`);
       } else {
         delete this.userSockets[userId];
       }
@@ -184,6 +250,16 @@ class WebsocketService {
 
   public broadcastToAll(data: any, event: string): void {
     this.io.emit(event, data);
+  }
+
+  /// Broadcast to all connected sockets
+  public broadcast(event: string, data: any): void {
+    this.io.emit(event, data);
+  }
+
+  /// Get count of connected sockets
+  public getConnectedCount(): number {
+    return this.io.engine?.clientsCount || Object.keys(this.userSockets).length;
   }
 
   public emitToUser(userId: string, event: string, data: unknown): void {

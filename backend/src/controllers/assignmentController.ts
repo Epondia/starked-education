@@ -20,7 +20,7 @@ import { PlagiarismService } from '../services/plagiarismService';
 import { NotificationService } from '../services/notificationService';
 import { getEmailService } from '../services/emailService';
 import { validateAssignment, validateSubmission } from '../utils/validation';
-import { logger } from '../utils/logger';
+import logger from '../utils/logger';
 
 export class AssignmentController {
   constructor(

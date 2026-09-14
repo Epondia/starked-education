@@ -53,10 +53,10 @@ export const ProgressChart: React.FC<ProgressChartProps> = ({
     }
   };
 
-  const formatTooltipValue = (value: number, name: string) => {
+  const formatTooltipValue = (value: unknown, name: unknown) => {
     if (name === 'totalTime') return `${value} min`;
     if (name === 'quizScores') return `${value}%`;
-    return value.toString();
+    return String(value);
   };
 
   if (loading) {

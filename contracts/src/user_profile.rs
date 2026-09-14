@@ -1,30 +1,43 @@
-#![no_std]
-use crate::utils::storage::{PackedTimestamps, PackedUserFlags, StorageUtils};
+use crate::utils::storage::{PackedTimestamps, PackedUserFlags};
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec};
 
 /// Achievement tier with weight
 #[contracttype]
 #[derive(Copy, Clone)]
 pub enum AchievementTier {
-    Bronze = 0,   // Course completion - weight 1
-    Silver = 1,   // Multiple courses - weight 2
-    Gold = 2,     // Advanced credentials - weight 3
-    Platinum = 3, // Degree-level - weight 4
+    /// Course completion - weight 1
+    Bronze = 0,
+    /// Multiple courses - weight 2
+    Silver = 1,
+    /// Advanced credentials - weight 3
+    Gold = 2,
+    /// Degree-level - weight 4
+    Platinum = 3,
 }
 
 /// Optimized user profile with packed storage
 #[contracttype]
 #[derive(Clone)]
 pub struct UserProfile {
+    /// Owner address of this profile.
     pub owner: Address,
+    /// Display username.
     pub username: String,
-    pub email_hash: String,  // Hash of email string
-    pub bio_hash: String,    // Hash of bio string
-    pub avatar_hash: String, // Hash of avatar URL
+    /// Hash of email string.
+    pub email_hash: String,
+    /// Hash of bio string.
+    pub bio_hash: String,
+    /// Hash of avatar URL.
+    pub avatar_hash: String,
+    /// Packed creation and update timestamps.
     pub timestamps: PackedTimestamps,
+    /// Count of achievements earned.
     pub achievement_count: u32,
+    /// Count of credentials earned.
     pub credential_count: u32,
+    /// Reputation points.
     pub reputation: u64,
+    /// Packed settings flags.
     pub flags: PackedUserFlags,
 }
 
@@ -32,16 +45,33 @@ pub struct UserProfile {
 #[contracttype]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PrivacyLevel {
+    /// Public privacy setting.
     Public = 0,
+    /// Private privacy setting.
     Private = 1,
+    /// Friends-only privacy setting.
     FriendsOnly = 2,
 }
 
 impl PrivacyLevel {
+    /// Convert the privacy level to its corresponding `u32` value.
+    ///
+    /// # Returns
+    ///
+    /// The `u32` value (0 = Public, 1 = Private, 2 = FriendsOnly).
     pub fn to_u32(&self) -> u32 {
         *self as u32
     }
 
+    /// Construct a `PrivacyLevel` from a `u32` value.
+    ///
+    /// # Parameters
+    ///
+    /// - `value` – The `u32` value representing privacy level.
+    ///
+    /// # Returns
+    ///
+    /// The corresponding `PrivacyLevel`, defaulting to `PrivacyLevel::Public` for unrecognized values.
     pub fn from_u32(value: u32) -> Self {
         match value & 0x03 {
             0 => PrivacyLevel::Public,
@@ -56,16 +86,27 @@ impl PrivacyLevel {
 #[contracttype]
 #[derive(Clone)]
 pub enum ProfileKey {
+    /// User profile data.
     User(Address),
-    UserEmail(Address),        // Separate email storage
-    UserBio(Address),          // Separate bio storage
-    UserAvatar(Address),       // Separate avatar storage
-    UserAchievements(Address), // Achievement ID list
-    UserCredentials(Address),  // Credential ID list
+    /// Separate email storage.
+    UserEmail(Address),
+    /// Separate bio storage.
+    UserBio(Address),
+    /// Separate avatar storage.
+    UserAvatar(Address),
+    /// Achievement ID list.
+    UserAchievements(Address),
+    /// Credential ID list.
+    UserCredentials(Address),
+    /// Achievement details by ID.
     Achievement(u64),
+    /// Username index mapping.
     Username(String),
+    /// Achievement status check.
     AchievementByUser(Address, u64),
+    /// Running counter of achievements.
     AchievementCount,
+    /// Running counter of credentials.
     CredentialCount,
 }
 
@@ -73,16 +114,28 @@ pub enum ProfileKey {
 #[contracttype]
 #[derive(Clone)]
 pub struct Achievement {
+    /// Unique identifier for the achievement.
     pub id: u64,
+    /// The user address earning the achievement.
     pub user: Address,
+    /// Title of the achievement.
     pub title: String,
+    /// Detailed description.
     pub description: String,
-    pub timestamp: u64,     // Packed earned_at and verification status
-    pub badge_hash: String, // Hash of badge URL
-    pub tier: u32,          // 0-3 mapping to AchievementTier
-    pub weight: u32,        // Computed weight value based on tier
+    /// Packed earned_at and verification status timestamp.
+    pub timestamp: u64,
+    /// Hash of badge URL.
+    pub badge_hash: String,
+    /// Achievement tier (0-3 mapping to AchievementTier).
+    pub tier: u32,
+    /// Computed weight value based on tier.
+    pub weight: u32,
 }
 
+/// The user profile smart contract.
+///
+/// Implements user profile registration, achievements progression weight tracking,
+/// user-specific credential links, and privacy settings controls.
 #[contract]
 pub struct UserProfileContract;
 
@@ -546,7 +599,7 @@ impl UserProfileContract {
     }
 
     /// Add a credential to user's profile with optimized storage
-    pub fn add_credential(env: &Env, user: Address, credential_id: u64) {
+    pub fn add_credential(env: Env, user: Address, credential_id: u64) {
         let mut profile = env
             .storage()
             .instance()
@@ -556,10 +609,10 @@ impl UserProfileContract {
                 let now = env.ledger().timestamp();
                 UserProfile {
                     owner: user.clone(),
-                    username: String::from_str(env, "unknown"),
-                    email_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
-                    bio_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
-                    avatar_hash: Self::generate_string_hash(env, &String::from_str(env, "")),
+                    username: String::from_str(&env, "unknown"),
+                    email_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
+                    bio_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
+                    avatar_hash: Self::generate_string_hash(&env, &String::from_str(&env, "")),
                     timestamps: PackedTimestamps::new(now, now),
                     achievement_count: 0,
                     credential_count: 0,
@@ -581,8 +634,8 @@ impl UserProfileContract {
             .storage()
             .instance()
             .get(&ProfileKey::UserCredentials(user.clone()))
-            .unwrap_or_else(|| Vec::new(env));
-        if !user_creds.contains(&credential_id) {
+            .unwrap_or_else(|| Vec::new(&env));
+        if !Self::vec_contains_u64(&user_creds, credential_id) {
             user_creds.push_back(credential_id);
             env.storage()
                 .instance()
@@ -591,11 +644,23 @@ impl UserProfileContract {
     }
 
     /// Get all credential IDs for a user (fast path)
-    pub fn get_user_credential_ids(env: &Env, user: Address) -> Vec<u64> {
+    pub fn get_user_credential_ids(env: Env, user: Address) -> Vec<u64> {
         env.storage()
             .instance()
             .get(&ProfileKey::UserCredentials(user))
-            .unwrap_or_else(|| Vec::new(env))
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Check if a soroban-sdk Vec<u64> contains a given value.
+    /// soroban-sdk 20.5.0 Vec has no portable contains across element types,
+    /// so we provide an explicit linear scan.
+    fn vec_contains_u64(vec: &Vec<u64>, target: u64) -> bool {
+        for item in vec.iter() {
+            if item == target {
+                return true;
+            }
+        }
+        false
     }
 
     /// Generate hash for string data

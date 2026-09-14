@@ -692,21 +692,6 @@ const streamModel = async (modelId: string) => {
 };
 ```
 
-### **Holographic Recording**
-```typescript
-// Session recording and playback
-const recordSession = () => {
-  const recorder = new HolographicRecorder({
-    captureVideo: true,
-    captureAudio: true,
-    captureGestures: true,
-    capturePhysics: true
-  });
-  
-  recorder.start();
-};
-```
-
 ## 🚀 Getting Started
 
 ### **Installation**

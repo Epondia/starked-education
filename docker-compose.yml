@@ -1,103 +1,166 @@
-version: '3.8'
+# =============================================================================
+# StarkEd Education Platform — Production Docker Compose
+# =============================================================================
+# Usage: docker compose up -d
+# This starts all services: frontend, backend, PostgreSQL, Redis, and IPFS.
+# =============================================================================
+
+version: "3.8"
 
 services:
+  # ─── Frontend ──────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runner
+    container_name: starked-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+      - NEXT_PUBLIC_STELLAR_NETWORK=${STELLAR_NETWORK:-testnet}
+      - NEXT_PUBLIC_CONTRACT_ADDRESS=${CONTRACT_ADDRESS:-}
+      - NEXT_PUBLIC_STELLAR_RECEIVER_ADDRESS=${STELLAR_RECEIVER_ADDRESS:-}
+    env_file:
+      - .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - starked-network
+
+  # ─── Backend ───────────────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
+      target: runner
+    container_name: starked-backend
+    restart: unless-stopped
     ports:
-      - "5000:5000"
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
+      - "3001:3001"
     environment:
-      - NODE_ENV=development
-      - PORT=5000
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=starked_dev
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-starked}:${POSTGRES_PASSWORD:-starked123}@postgres:5432/${POSTGRES_DB:-starked_education}
       - REDIS_URL=redis://redis:6379
-      - IPFS_URL=http://ipfs:5001
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - IPFS_HOST=ipfs
+      - IPFS_PORT=5001
+      - IPFS_PROTOCOL=http
+      - IPFS_API_URL=http://ipfs:5001/api/v0
+      - IPFS_GATEWAY_URL=http://ipfs:8080/ipfs/
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-24h}
+      - STELLAR_NETWORK=${STELLAR_NETWORK:-testnet}
+      - STELLAR_SECRET_KEY=${STELLAR_SECRET_KEY:-}
+      - STELLAR_HORIZON_URL=${STELLAR_HORIZON_URL:-https://horizon-testnet.stellar.org}
+      - STELLAR_RPC_URL=${STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}
+      - CONTRACT_ADDRESS=${CONTRACT_ADDRESS:-}
+      - MONGODB_URI=${MONGODB_URI:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - ENABLE_CORS=true
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ipfs:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    ports:
-      - "3000:3000"
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    environment:
-      - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://localhost:5000/api
-    depends_on:
-      - backend
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      - backend_logs:/app/logs
+    networks:
+      - starked-network
 
+  # ─── PostgreSQL ────────────────────────────────────────────────────────
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
+    container_name: starked-postgres
+    restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=starked_dev
+      - POSTGRES_USER=${POSTGRES_USER:-starked}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-starked123}
+      - POSTGRES_DB=${POSTGRES_DB:-starked_education}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d starked_dev"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-starked} -d ${POSTGRES_DB:-starked_education}"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - starked-network
 
+  # ─── Redis ─────────────────────────────────────────────────────────────
   redis:
-    image: redis:7
+    image: redis:7-alpine
+    container_name: starked-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  ipfs:
-    image: ipfs/kubo:latest
-    ports:
-      - "4001:4001"
-      - "5001:5001"
-      - "8080:8080"
-    volumes:
-      - ipfs_data:/data/ipfs
-    healthcheck:
-      test: ["CMD", "ipfs", "diag", "cmds"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+    networks:
+      - starked-network
 
+  # ─── IPFS ──────────────────────────────────────────────────────────────
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: starked-ipfs
+    restart: unless-stopped
+    ports:
+      - "4001:4001"   # Swarm
+      - "5001:5001"   # API
+      - "8080:8080"   # Gateway
+    volumes:
+      - ipfs_data:/data/ipfs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/v0/id"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - starked-network
+
+# ─── Volumes ─────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
+    driver: local
   redis_data:
+    driver: local
   ipfs_data:
+    driver: local
+  backend_logs:
+    driver: local
+
+# ─── Networks ────────────────────────────────────────────────────────────
+networks:
+  starked-network:
+    driver: bridge

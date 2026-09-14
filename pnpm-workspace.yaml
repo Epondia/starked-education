@@ -1,0 +1,4 @@
+allowBuilds:
+  aws-sdk: true
+  ffmpeg-static: true
+  sharp: true

@@ -1,3 +1,4 @@
+use crate::governance::{Governance, Role};
 use crate::utils::storage::{EntityType, StorageUtils};
 use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
 
@@ -8,7 +9,7 @@ pub enum CredentialKey {
     UserCredentials(Address),
     CredentialCount,
     CredentialMetadata(u64),    // Separate metadata storage
-    CredentialRevocations(u64), // Separate revocation tracking
+    CredentialRevocations(u64), // Separate revocation tracking (stores RevocationRecord)
 }
 
 /// Credential status enumeration
@@ -18,6 +19,71 @@ pub enum CredentialStatus {
     Active = 0,
     Expired = 1,
     Revoked = 2,
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Revocation Types
+// ═══════════════════════════════════════════════════════════════════
+
+/// Reason codes for credential revocation — stored as u8 for gas efficiency
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RevocationReason {
+    AdministrativeError  = 0,
+    AcademicDishonesty   = 1,
+    DataCorrection       = 2,
+    VoluntarySurrender   = 3,
+    Other                = 4,
+}
+
+impl RevocationReason {
+    /// Pack reason code as a single byte for gas-efficient storage
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            RevocationReason::AdministrativeError => 0,
+            RevocationReason::AcademicDishonesty  => 1,
+            RevocationReason::DataCorrection      => 2,
+            RevocationReason::VoluntarySurrender  => 3,
+            RevocationReason::Other               => 4,
+        }
+    }
+
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            0 => RevocationReason::AdministrativeError,
+            1 => RevocationReason::AcademicDishonesty,
+            2 => RevocationReason::DataCorrection,
+            3 => RevocationReason::VoluntarySurrender,
+            _ => RevocationReason::Other,
+        }
+    }
+}
+
+/// Immutable revocation record written once and never overwritten.
+/// `reason_code` is stored as u8 and `timestamp` as u64 for compact on-chain storage.
+#[contracttype]
+#[derive(Clone)]
+pub struct RevocationRecord {
+    /// u64 unix timestamp — packed for gas efficiency
+    pub timestamp:   u64,
+    /// Reason code packed as u8
+    pub reason_code: u8,
+    /// Optional human-readable detail — capped at 256 bytes by the caller
+    pub reason_str:  Option<String>,
+    /// The address that performed the revocation
+    pub revoker:     Address,
+}
+
+/// Return type for `verify_credential` — carries revocation metadata when revoked
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum VerificationResult {
+    /// Credential is valid and active
+    Valid,
+    /// Credential has expired
+    Expired,
+    /// Credential is revoked; includes the reason code (u8) and the revocation timestamp
+    Revoked { reason_code: u8, timestamp: u64 },
 }
 
 /// Optimized credential with packed verification status and expiration
@@ -46,11 +112,7 @@ pub fn issue_credential(
     validity_duration: Option<u64>, // Optional: duration in seconds; None = never expires
 ) -> u64 {
     issuer.require_auth();
-
-    let admin: Address = env.storage().instance().get(&Symbol::new(env, "admin"));
-    if issuer != admin {
-        panic!("Unauthorized issuer");
-    }
+    Governance::require_role(env, &issuer, Role::Issuer);
 
     // Use shared storage utility for ID generation
     let credential_id = StorageUtils::get_next_id(env, EntityType::Credential);
@@ -130,10 +192,38 @@ pub fn get_credential_status(env: &Env, credential_id: u64) -> CredentialStatus 
     CredentialStatus::Active
 }
 
-/// Verify a credential using packed timestamp and expiration check
-pub fn verify_credential(env: &Env, credential_id: u64) -> bool {
-    let status = get_credential_status(env, credential_id);
-    status == CredentialStatus::Active
+/// Verify a credential — returns a `VerificationResult` describing the credential state.
+/// Callers that only need a boolean can check `result == VerificationResult::Valid`.
+pub fn verify_credential(env: &Env, credential_id: u64) -> VerificationResult {
+    let credential: Credential = env
+        .storage()
+        .persistent()
+        .get(&CredentialKey::Credential(credential_id))
+        .unwrap_or_else(|| panic!("Credential not found"));
+
+    // Check revocation bit (bit 0 of packed timestamp)
+    if (credential.timestamp & 1) != 0 {
+        // Fetch the rich revocation record for reason / timestamp
+        let record: RevocationRecord = env
+            .storage()
+            .persistent()
+            .get(&CredentialKey::CredentialRevocations(credential_id))
+            .unwrap_or_else(|| panic!("Revocation record missing for revoked credential"));
+        return VerificationResult::Revoked {
+            reason_code: record.reason_code,
+            timestamp:   record.timestamp,
+        };
+    }
+
+    // Check expiration (lazy evaluation — checked at read time for gas efficiency)
+    if let Some(expires_at) = credential.expires_at {
+        let current_time = env.ledger().timestamp();
+        if current_time >= expires_at {
+            return VerificationResult::Expired;
+        }
+    }
+
+    VerificationResult::Valid
 }
 
 /// Renew a credential — extends expiration, callable by original issuer only
@@ -152,18 +242,15 @@ pub fn renew_credential(
         .get(&CredentialKey::Credential(credential_id))
         .unwrap_or_else(|| panic!("Credential not found"));
 
-    // Only the original issuer (admin) can renew
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
-    if renewer != credential.issuer && renewer != admin {
+    // Only original issuer (with Issuer role) or Admin can renew
+    let is_issuer = renewer == credential.issuer
+        && Governance::has_role(env, &renewer, Role::Issuer);
+    let is_admin = Governance::has_role(env, &renewer, Role::Admin);
+    if !is_issuer && !is_admin {
         panic!("Only original issuer or admin can renew credentials");
     }
 
-    // Check if revoked — revoked credentials cannot be renewed
+    // Check if revoked — revoked credentials cannot be renewed (bit 0 set)
     if (credential.timestamp & 1) != 0 {
         panic!("Cannot renew revoked credential");
     }
@@ -171,10 +258,8 @@ pub fn renew_credential(
     let old_expires_at = credential.expires_at;
     credential.expires_at = Some(new_expires_at);
 
-    // Clear any stored expiration marker
-    env.storage()
-        .instance()
-        .remove(&CredentialKey::CredentialRevocations(credential_id));
+    // Clear any stored expiration marker (if any)
+    // (No need to remove the revocation record as revoked creds cannot reach here)
 
     env.storage()
         .persistent()
@@ -192,14 +277,27 @@ pub fn renew_credential(
     true
 }
 
-/// Revoke a credential using packed timestamp
-pub fn revoke_credential(env: &Env, credential_id: u64, revoker: Address) {
+/// Revoke a credential with a structured reason.
+///
+/// Only the original issuer or the contract admin may call this function.
+/// Revocation is **irreversible** — an already-revoked credential will panic.
+///
+/// # Arguments
+/// * `credential_id` – the credential to revoke
+/// * `revoker`       – must be the original issuer **or** admin (auth required)
+/// * `reason`        – one of the `RevocationReason` variants
+/// * `reason_str`    – optional free-text note, **truncated to 256 bytes** by the caller
+///
+/// # Emits
+/// `CredentialRevoked` event with `(credential_id, revoker, reason_code_u8, timestamp)`.
+pub fn revoke_credential(
+    env:           &Env,
+    credential_id: u64,
+    revoker:       Address,
+    reason:        RevocationReason,
+    reason_str:    Option<String>,
+) {
     revoker.require_auth();
-
-    let admin: Address = env.storage().instance().get(&Symbol::new(env, "admin"));
-    if revoker != admin {
-        panic!("Only admin can revoke");
-    }
 
     let mut credential: Credential = env
         .storage()
@@ -207,18 +305,59 @@ pub fn revoke_credential(env: &Env, credential_id: u64, revoker: Address) {
         .get(&CredentialKey::Credential(credential_id))
         .unwrap_or_else(|| panic!("Credential not found"));
 
-    // Set revocation bit (bit 0)
+    // Authorization: original issuer (with Issuer role) OR holding Admin role
+    let is_issuer_of_cred = revoker == credential.issuer
+        && Governance::has_role(env, &revoker, Role::Issuer);
+    let is_admin = Governance::has_role(env, &revoker, Role::Admin);
+    if !is_issuer_of_cred && !is_admin {
+        panic!("Unauthorized: only the original issuer or admin can revoke credentials");
+    }
+
+    // Revocation is irreversible — reject if already revoked (bit 0 set)
+    if (credential.timestamp & 1) != 0 {
+        panic!("AlreadyRevoked");
+    }
+
+    let revocation_time = env.ledger().timestamp();
+    let reason_code     = reason.to_u8();
+
+    // Pack revocation status into bit 0 of the timestamp
     credential.timestamp |= 1u64;
     env.storage()
         .persistent()
         .set(&CredentialKey::Credential(credential_id), &credential);
 
-    // Store revocation record
-    let revocation_time = env.ledger().timestamp();
-    env.storage().instance().set(
-        &CredentialKey::CredentialRevocations(credential_id),
-        &revocation_time,
+    // Write the full RevocationRecord to persistent storage
+    let record = RevocationRecord {
+        timestamp:   revocation_time,
+        reason_code,
+        reason_str:  reason_str.clone(),
+        revoker:     revoker.clone(),
+    };
+    env.storage()
+        .persistent()
+        .set(&CredentialKey::CredentialRevocations(credential_id), &record);
+
+    // Emit CredentialRevoked event
+    // Payload: (credential_id, issuer/revoker address, reason_code u8, timestamp u64)
+    env.events().publish(
+        (Symbol::new(env, "credential"), Symbol::new(env, "revoked")),
+        (credential_id, revoker, reason_code, revocation_time),
     );
+}
+
+/// Return the `RevocationRecord` for a given credential, or `None` if not revoked.
+pub fn get_revocation_history(env: &Env, credential_id: u64) -> Option<RevocationRecord> {
+    // Confirm credential exists first
+    let _: Credential = env
+        .storage()
+        .persistent()
+        .get(&CredentialKey::Credential(credential_id))
+        .unwrap_or_else(|| panic!("Credential not found"));
+
+    env.storage()
+        .persistent()
+        .get(&CredentialKey::CredentialRevocations(credential_id))
 }
 
 /// Get user credentials with optimized storage
@@ -242,13 +381,6 @@ pub fn get_credential_description(env: &Env, credential_id: u64) -> Option<Strin
     env.storage()
         .instance()
         .get(&CredentialKey::CredentialMetadata(credential_id))
-}
-
-/// Get credential revocation time
-pub fn get_credential_revocation_time(env: &Env, credential_id: u64) -> Option<u64> {
-    env.storage()
-        .instance()
-        .get(&CredentialKey::CredentialRevocations(credential_id))
 }
 
 /// Get credential count with optimized storage
@@ -296,7 +428,7 @@ pub enum MultiSigEvent {
 
 /// Create a new multi-signature credential (M-of-N)
 ///
-/// Only the admin can create multi-sig credentials.
+/// Only addresses with the Issuer role can create multi-sig credentials.
 /// The credential starts inactive and requires `threshold` valid
 /// signatures from the `signers` set before it becomes active.
 pub fn create_multi_sig_credential(
@@ -311,16 +443,7 @@ pub fn create_multi_sig_credential(
     ipfs_hash: String,
 ) -> u64 {
     creator.require_auth();
-
-    let admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
-    if creator != admin {
-        panic!("Only admin can create multi-sig credentials");
-    }
+    Governance::require_role(env, &creator, Role::Issuer);
 
     let signer_count = signers.len() as u32;
     if signer_count == 0 {
@@ -490,7 +613,7 @@ pub fn get_multi_sig_signatures(env: &Env, credential_id: u64) -> Vec<Address> {
 //  Multi-Signature Signer Management
 // ═══════════════════════════════════════════════════════════════════
 
-/// Add a new signer to an existing multi-sig credential (admin only, pending state only)
+/// Add a new signer to an existing multi-sig credential (Admin role, pending state only)
 ///
 /// The credential must not yet be activated. The new signer must not already
 /// be in the signer list. After adding, the credential's threshold remains
@@ -504,16 +627,7 @@ pub fn add_signer_to_multi_sig(
     new_signer: Address,
 ) {
     admin.require_auth();
-
-    let stored_admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
-    if admin != stored_admin {
-        panic!("Only admin can manage signers");
-    }
+    Governance::require_role(env, &admin, Role::Admin);
 
     let mut credential: MultiSigCredential = env
         .storage()
@@ -551,7 +665,7 @@ pub fn add_signer_to_multi_sig(
     );
 }
 
-/// Remove a signer from an existing multi-sig credential (admin only, pending state only)
+/// Remove a signer from an existing multi-sig credential (Admin role, pending state only)
 ///
 /// Cannot remove if it would drop the signer count below the threshold.
 /// If the signer to remove has already signed, their signature is also removed.
@@ -562,16 +676,7 @@ pub fn remove_signer_from_multi_sig(
     signer_to_remove: Address,
 ) {
     admin.require_auth();
-
-    let stored_admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
-    if admin != stored_admin {
-        panic!("Only admin can manage signers");
-    }
+    Governance::require_role(env, &admin, Role::Admin);
 
     let mut credential: MultiSigCredential = env
         .storage()
@@ -639,7 +744,7 @@ pub fn remove_signer_from_multi_sig(
     );
 }
 
-/// Rotate (replace) a signer on an existing multi-sig credential (admin only, pending state only)
+/// Rotate (replace) a signer on an existing multi-sig credential (Admin role, pending state only)
 ///
 /// Replaces `old_signer` with `new_signer`. If the old signer had already signed,
 /// their signature is removed (the new signer must sign separately).
@@ -652,16 +757,7 @@ pub fn rotate_signer_in_multi_sig(
     new_signer: Address,
 ) {
     admin.require_auth();
-
-    let stored_admin: Address = env
-        .storage()
-        .instance()
-        .get(&Symbol::new(env, "admin"))
-        .unwrap_or_else(|| panic!("Admin not set"));
-
-    if admin != stored_admin {
-        panic!("Only admin can manage signers");
-    }
+    Governance::require_role(env, &admin, Role::Admin);
 
     let mut credential: MultiSigCredential = env
         .storage()

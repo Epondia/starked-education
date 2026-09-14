@@ -10,6 +10,29 @@ import {
   AchievementProgress
 } from '../types/profile';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+export interface UseProfileOptions {
+  userId?: string;
+  useMockData?: boolean;
+}
+
+const mapBackendAchievement = (backend: any): Achievement => ({
+  id: backend._id || backend.id,
+  name: backend.name,
+  description: backend.description,
+  icon: backend.icon || '',
+  earnedDate: backend.isEarned ? backend.earnedDate : undefined,
+  rarity: backend.rarity || 'common',
+  requirement: backend.badgeId || backend.requirement || '',
+  category: backend.category || 'milestone',
+  progress: backend.progress?.current,
+  maxProgress: backend.progress?.max,
+  points: backend.points,
+  badgeId: backend.badgeId,
+  isEarned: backend.isEarned ?? !!backend.earnedDate,
+});
+
 const MOCK_USER: UserProfile = {
   id: '1',
   name: 'John Doe',
@@ -38,7 +61,8 @@ const MOCK_ACHIEVEMENTS: Achievement[] = [
     requirement: 'Complete any course',
     category: 'milestone',
     progress: 1,
-    maxProgress: 1
+    maxProgress: 1,
+    points: 10
   },
   {
     id: '2',
@@ -50,7 +74,8 @@ const MOCK_ACHIEVEMENTS: Achievement[] = [
     requirement: 'Study for 7 consecutive days',
     category: 'streak',
     progress: 7,
-    maxProgress: 7
+    maxProgress: 7,
+    points: 50
   },
   {
     id: '3',
@@ -62,7 +87,8 @@ const MOCK_ACHIEVEMENTS: Achievement[] = [
     requirement: 'Complete 10 courses',
     category: 'learning',
     progress: 12,
-    maxProgress: 10
+    maxProgress: 10,
+    points: 100
   },
   {
     id: '4',
@@ -73,7 +99,8 @@ const MOCK_ACHIEVEMENTS: Achievement[] = [
     requirement: 'Reach level 10',
     category: 'level',
     progress: 5,
-    maxProgress: 10
+    maxProgress: 10,
+    points: 500
   }
 ];
 
@@ -146,7 +173,8 @@ const MOCK_SETTINGS: ProfileSettings = {
   }
 };
 
-export const useProfile = () => {
+export const useProfile = (options: UseProfileOptions = {}) => {
+  const { userId, useMockData = true } = options;
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [credentials, setCredentials] = useState<Credential[]>([]);
@@ -161,17 +189,6 @@ export const useProfile = () => {
     setError(null);
 
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Load from localStorage or use mock data
-      const savedProfile = localStorage.getItem('userProfile');
-      const savedAchievements = localStorage.getItem('userAchievements');
-      const savedCredentials = localStorage.getItem('userCredentials');
-      const savedStats = localStorage.getItem('userStats');
-      const savedSettings = localStorage.getItem('userSettings');
-
-      // Safe JSON parsing with fallback
       const parseJSON = (data: string | null, fallback: any) => {
         if (!data) return fallback;
         try {
@@ -182,18 +199,37 @@ export const useProfile = () => {
         }
       };
 
+      const savedProfile = localStorage.getItem('userProfile');
+      const savedCredentials = localStorage.getItem('userCredentials');
+      const savedStats = localStorage.getItem('userStats');
+      const savedSettings = localStorage.getItem('userSettings');
+
       setProfile(parseJSON(savedProfile, MOCK_USER));
-      setAchievements(parseJSON(savedAchievements, MOCK_ACHIEVEMENTS));
       setCredentials(parseJSON(savedCredentials, MOCK_CREDENTIALS));
       setStats(parseJSON(savedStats, MOCK_STATS));
       setSettings(parseJSON(savedSettings, MOCK_SETTINGS));
+
+      if (userId && !useMockData) {
+        const response = await fetch(
+          `${API_BASE_URL}/api/v1/gamification/achievements?userId=${userId}`
+        );
+        if (!response.ok) {
+          throw new Error(`Failed to fetch achievements: ${response.status}`);
+        }
+        const result = await response.json();
+        const mappedAchievements = (result.data || []).map(mapBackendAchievement);
+        setAchievements(mappedAchievements);
+      } else {
+        const savedAchievements = localStorage.getItem('userAchievements');
+        setAchievements(parseJSON(savedAchievements, MOCK_ACHIEVEMENTS));
+      }
     } catch (err) {
-      setError('Failed to load profile data');
+      setError(err instanceof Error ? err.message : 'Failed to load profile data');
       console.error('Error loading profile data:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userId, useMockData]);
 
   // Update profile
   const updateProfile = useCallback(async (formData: ProfileFormData): Promise<ProfileUpdateResponse> => {

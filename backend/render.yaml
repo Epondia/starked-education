@@ -1,0 +1,45 @@
+# Render Blueprint — one-click deploy for the StarkEd backend API.
+# Docs: https://render.com/docs/blueprint-spec
+# Import via: Render dashboard → New → Blueprint → connect this repo.
+#
+# Notes:
+# - Root directory is `backend/` (the API lives here, not the repo root).
+# - Build uses `--legacy-peer-deps` because the monorepo's pnpm workspace
+#   pins conflicting peer deps (wagmi/viem) in the sibling frontend.
+# - `npm run build` (tsc) emits dist/ including dist/index.js (allowJs).
+# - The app boots without Redis/Postgres (in-memory fallbacks + graceful
+#   degradation); a managed Postgres is provisioned for the transaction
+#   queue and event indexer. Add a managed Redis later if you want rate
+#   limiting + realtime collaboration to use distributed storage.
+services:
+  - type: web
+    name: starked-api
+    runtime: node
+    repo: https://github.com/Epondia/starked-education
+    rootDir: backend
+    buildCommand: npm install --legacy-peer-deps && npm run build
+    startCommand: sh -c "mkdir -p logs && node dist/index.js"
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: ENABLE_CORS
+        value: "true"
+      - key: CORS_ORIGINS
+        value: https://starked-education-frontend.vercel.app
+      - key: STELLAR_NETWORK
+        value: testnet
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: starked-db
+          property: connectionString
+
+databases:
+  - name: starked-db
+    databaseName: starked
+    user: starked

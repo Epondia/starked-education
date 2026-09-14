@@ -7,9 +7,18 @@ import express, { Router } from "express";
 import { enrollmentController } from "../controllers/EnrollmentController";
 import { authenticateToken, requireRole } from "../middleware/auth";
 import { UserRole } from "../models/User";
+import { validateRequestSchema } from "../middleware/validateRequestSchema";
 import {
   validateEnrollment,
   validateEnrollmentUpdate,
+  updateEnrollmentProgressSchema,
+  cancelEnrollmentSchema,
+  completeEnrollmentSchema,
+  issueCertificateSchema,
+  addToWaitlistSchema,
+  bulkEnrollmentSchema,
+  validatePrerequisitesSchema,
+  renewEnrollmentSchema,
 } from "../middleware/validation";
 import { rateLimit } from "express-rate-limit";
 
@@ -76,7 +85,12 @@ router.put(
  * @desc Cancel enrollment
  * @access Private
  */
-router.delete("/:id", authenticateToken, (req, res, next) => enrollmentController.cancelEnrollment(req, res));
+router.delete(
+  "/:id",
+  authenticateToken,
+  validateRequestSchema(cancelEnrollmentSchema),
+  (req, res, next) => enrollmentController.cancelEnrollment(req, res),
+);
 
 /**
  * @route POST /api/enrollments/:id/complete
@@ -86,6 +100,7 @@ router.delete("/:id", authenticateToken, (req, res, next) => enrollmentControlle
 router.post(
   "/:id/complete",
   authenticateToken,
+  validateRequestSchema(completeEnrollmentSchema),
   (req, res, next) => enrollmentController.completeEnrollment(req, res),
 );
 
@@ -108,6 +123,7 @@ router.get(
 router.put(
   "/:id/progress",
   authenticateToken,
+  validateRequestSchema(updateEnrollmentProgressSchema),
   (req, res, next) => enrollmentController.updateEnrollmentProgress(req, res),
 );
 
@@ -132,6 +148,7 @@ router.post(
   "/:id/certificate",
   authenticateToken,
   requireRole([UserRole.EDUCATOR, UserRole.ADMIN]),
+  validateRequestSchema(issueCertificateSchema),
   (req, res, next) => enrollmentController.issueCertificate(req, res),
 );
 
@@ -156,6 +173,7 @@ router.post(
   "/waitlist/:courseId",
   authenticateToken,
   enrollmentLimiter,
+  validateRequestSchema(addToWaitlistSchema),
   (req, res, next) => enrollmentController.addToWaitlist(req, res),
 );
 
@@ -214,6 +232,7 @@ router.post(
   "/bulk",
   authenticateToken,
   requireRole([UserRole.ADMIN]),
+  validateRequestSchema(bulkEnrollmentSchema),
   (req, res, next) => enrollmentController.bulkEnrollmentOperations(req, res),
 );
 
@@ -236,6 +255,7 @@ router.get(
 router.post(
   "/validate-prerequisites",
   authenticateToken,
+  validateRequestSchema(validatePrerequisitesSchema),
   (req, res, next) => enrollmentController.validatePrerequisites(req, res),
 );
 
@@ -259,6 +279,7 @@ router.post(
   "/:id/renew",
   authenticateToken,
   paymentLimiter,
+  validateRequestSchema(renewEnrollmentSchema),
   (req, res, next) => enrollmentController.renewEnrollment(req, res),
 );
 

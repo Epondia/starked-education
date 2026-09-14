@@ -77,7 +77,7 @@ A TypeScript Express server that acts as the application layer between clients a
 chain. Its `src/` is organized into:
 
 - `routes/` — REST API endpoints (auth, courses, credentials, profiles, content,
-  holographic storage, gas reporting).
+  and gas reporting).
 - `middleware/` — authentication (JWT), request validation (Joi), rate limiting, security
   headers (Helmet).
 - `models/` — data models for off-chain persistence.

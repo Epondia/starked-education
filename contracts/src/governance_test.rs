@@ -1,18 +1,31 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Events as _, Ledger},
+    Address, Env, String, Symbol, TryFromVal,
+};
 
-use crate::governance::{
-    EligibilityCriteria, Governance, GovernanceDataKey, ProposalStatus, ScholarshipProposal,
+use crate::{
+    governance::{
+        EligibilityCriteria, Governance, GovernanceDataKey, ProposalStatus, Role,
+        ScholarshipProposal,
+    },
+    StarkEdContract,
 };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-fn setup(env: &Env) -> (Address, Address, Address) {
-    let proposer = Address::generate(env);
-    let student_a = Address::generate(env); // eligible
-    let student_b = Address::generate(env); // ineligible
-    (proposer, student_a, student_b)
+fn setup() -> (Env, Address, Address, Address, Address) {
+    let env = Env::default();
+    // Register a contract so require_auth has a host context, and return its
+    // address so tests can run storage accesses inside `env.as_contract`.
+    let contract = env.register_contract(None, StarkEdContract);
+    env.mock_all_auths();
+
+    let proposer = Address::generate(&env);
+    let student_a = Address::generate(&env); // eligible
+    let student_b = Address::generate(&env); // ineligible
+    (env, contract, proposer, student_a, student_b)
 }
 
 fn eligibility(env: &Env) -> EligibilityCriteria {
@@ -23,6 +36,7 @@ fn eligibility(env: &Env) -> EligibilityCriteria {
 }
 
 /// Seed the treasury so scholarship funds can be reserved.
+/// Callers must be inside `env.as_contract(contract, ...)`.
 fn fund_treasury(env: &Env, amount: i128) {
     env.storage()
         .instance()
@@ -34,6 +48,7 @@ fn advance(env: &Env, secs: u64) {
     env.ledger().with_mut(|l| l.timestamp += secs);
 }
 
+/// Callers must be inside `env.as_contract(contract, ...)`.
 fn create_valid_proposal(env: &Env, proposer: Address, title: &str) -> u64 {
     Governance::create_proposal(
         env.clone(),
@@ -49,126 +64,131 @@ fn create_valid_proposal(env: &Env, proposer: Address, title: &str) -> u64 {
 
 #[test]
 fn test_create_proposal_with_valid_input() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, contract, proposer, _, _) = setup();
 
-    let pid = create_valid_proposal(&env, proposer, "CS Scholarship");
+    env.as_contract(&contract, || {
+        let pid = create_valid_proposal(&env, proposer.clone(), "CS Scholarship");
 
-    assert_eq!(pid, 1);
-    let proposal: crate::governance::Proposal = env
-        .storage()
-        .instance()
-        .get(&GovernanceDataKey::Proposal(pid))
-        .unwrap();
-    assert_eq!(proposal.title, String::from_str(&env, "CS Scholarship"));
+        assert_eq!(pid, 1);
+        let proposal: crate::governance::Proposal = env
+            .storage()
+            .instance()
+            .get(&GovernanceDataKey::Proposal(pid))
+            .unwrap();
+        assert_eq!(proposal.title, String::from_str(&env, "CS Scholarship"));
+    });
 }
 
 #[test]
 #[should_panic(expected = "InvalidTitle: title must be non-empty")]
 fn test_create_proposal_rejects_empty_title() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, contract, proposer, _, _) = setup();
 
-    Governance::create_proposal(
-        env.clone(),
-        proposer,
+    env.as_contract(&contract, || {
+        Governance::create_proposal(
+            env.clone(),
+            proposer,
         String::from_str(&env, ""),
         String::from_str(&env, "Fund CS students"),
         3600,
         10,
     );
+    });
 }
 
 #[test]
 #[should_panic(expected = "InvalidTitle: title exceeds 200 bytes")]
 fn test_create_proposal_rejects_title_over_200_bytes() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, contract, proposer, _, _) = setup();
 
-    Governance::create_proposal(
-        env.clone(),
-        proposer,
+    env.as_contract(&contract, || {
+        Governance::create_proposal(
+            env.clone(),
+            proposer,
         String::from_str(&env, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
         String::from_str(&env, "Fund CS students"),
         3600,
         10,
     );
+    });
 }
 
 #[test]
 #[should_panic(expected = "InvalidDescription: description exceeds 2000 bytes")]
 fn test_create_proposal_rejects_description_over_2000_bytes() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, contract, proposer, _, _) = setup();
 
-    Governance::create_proposal(
-        env.clone(),
-        proposer,
-        String::from_str(&env, "CS Scholarship"),
-        String::from_str(&env, "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
-        3600,
-        10,
-    );
+    env.as_contract(&contract, || {
+        Governance::create_proposal(
+            env.clone(),
+            proposer,
+            String::from_str(&env, "CS Scholarship"),
+            String::from_str(&env, "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
+            3600,
+            10,
+        );
+    });
 }
 
 #[test]
 #[should_panic(expected = "InvalidVotingPeriod: voting period out of bounds")]
 fn test_create_proposal_rejects_short_voting_period() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, contract, proposer, _, _) = setup();
 
-    Governance::create_proposal(
-        env.clone(),
-        proposer,
+    env.as_contract(&contract, || {
+        Governance::create_proposal(
+            env.clone(),
+            proposer,
         String::from_str(&env, "CS Scholarship"),
         String::from_str(&env, "Fund CS students"),
         299,
         10,
     );
+    });
 }
 
 #[test]
 #[should_panic(expected = "InvalidVotingPeriod: voting period out of bounds")]
 fn test_create_proposal_rejects_long_voting_period() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, contract, proposer, _, _) = setup();
 
-    Governance::create_proposal(
-        env.clone(),
-        proposer,
+    env.as_contract(&contract, || {
+        Governance::create_proposal(
+            env.clone(),
+            proposer,
         String::from_str(&env, "CS Scholarship"),
         String::from_str(&env, "Fund CS students"),
         30 * 24 * 60 * 60 + 1,
         10,
     );
+    });
 }
 
 #[test]
 #[should_panic(expected = "DuplicateProposal: proposer submitted same title within cooldown")]
 fn test_create_proposal_rejects_duplicate_title_within_cooldown() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, contract, proposer, _, _) = setup();
 
-    create_valid_proposal(&env, proposer.clone(), "CS Scholarship");
-    create_valid_proposal(&env, proposer, "CS Scholarship");
+    // Separate frames so each require_auth is its own top-level invocation.
+    env.as_contract(&contract, || {
+        create_valid_proposal(&env, proposer.clone(), "CS Scholarship");
+    });
+    env.as_contract(&contract, || {
+        create_valid_proposal(&env, proposer, "CS Scholarship");
+    });
 }
 
 #[test]
 fn test_create_proposal_allows_duplicate_title_after_cooldown() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
+    let (env, contract, proposer, _, _) = setup();
 
-    let first = create_valid_proposal(&env, proposer.clone(), "CS Scholarship");
+    let first = env.as_contract(&contract, || {
+        create_valid_proposal(&env, proposer.clone(), "CS Scholarship")
+    });
     advance(&env, 24 * 60 * 60);
-    let second = create_valid_proposal(&env, proposer, "CS Scholarship");
+    let second = env.as_contract(&contract, || {
+        create_valid_proposal(&env, proposer, "CS Scholarship")
+    });
 
     assert_eq!(first, 1);
     assert_eq!(second, 2);
@@ -177,99 +197,118 @@ fn test_create_proposal_allows_duplicate_title_after_cooldown() {
 /// 1. Create a scholarship proposal and verify it is stored correctly.
 #[test]
 fn test_create_scholarship_proposal() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, _) = setup(&env);
-    fund_treasury(&env, 2000);
+    let (env, contract, proposer, _, _) = setup();
 
-    let pid = Governance::create_scholarship_proposal(
-        env.clone(),
-        proposer,
-        String::from_str(&env, "CS Scholarship"),
-        String::from_str(&env, "Fund CS students"),
-        /* voting_period */ 3600,
-        /* quorum */ 10,
-        /* total_amount */ 1000,
-        /* per_recipient */ 250,
-        /* max_recipients */ 4,
-        eligibility(&env),
-        /* application_window */ 86400,
-    );
+    env.as_contract(&contract, || {
+        fund_treasury(&env, 2000);
 
-    assert_eq!(pid, 1);
-    let s: ScholarshipProposal = Governance::get_scholarship(&env, pid);
-    assert_eq!(s.total_amount, 1000);
-    assert_eq!(s.per_recipient, 250);
-    assert_eq!(s.max_recipients, 4);
-    assert_eq!(s.disbursed_count, 0);
-    // Treasury reduced by reserved amount
-    let tb: i128 = env
-        .storage()
-        .instance()
-        .get(&GovernanceDataKey::TreasuryBalance)
-        .unwrap_or(0);
-    assert_eq!(tb, 1000); // 2000 - 1000
+        let pid = Governance::create_scholarship_proposal(
+            env.clone(),
+            proposer,
+            String::from_str(&env, "CS Scholarship"),
+            String::from_str(&env, "Fund CS students"),
+            /* voting_period */ 3600,
+            /* quorum */ 10,
+            /* total_amount */ 1000,
+            /* per_recipient */ 250,
+            /* max_recipients */ 4,
+            eligibility(&env),
+            /* application_window */ 86400,
+        );
+
+        assert_eq!(pid, 1);
+        let s: ScholarshipProposal = Governance::get_scholarship(&env, pid);
+        assert_eq!(s.total_amount, 1000);
+        assert_eq!(s.per_recipient, 250);
+        assert_eq!(s.max_recipients, 4);
+        assert_eq!(s.disbursed_count, 0);
+        // Treasury reduced by reserved amount
+        let tb: i128 = env
+            .storage()
+            .instance()
+            .get(&GovernanceDataKey::TreasuryBalance)
+            .unwrap_or(0);
+        assert_eq!(tb, 1000); // 2000 - 1000
+    });
 }
 
 /// 2. Full happy path: vote → execute → apply → disburse.
 #[test]
 fn test_scholarship_full_flow() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, student_a, _) = setup(&env);
-    fund_treasury(&env, 2000);
+    let (env, contract, proposer, student_a, _) = setup();
 
-    let pid = Governance::create_scholarship_proposal(
-        env.clone(),
-        proposer,
-        String::from_str(&env, "CS Scholarship"),
-        String::from_str(&env, "Fund CS students"),
-        3600,
-        10,
-        1000,
-        250,
-        4,
-        eligibility(&env),
-        86400,
-    );
+    // Each require_auth call gets its own as_contract frame.
+    env.as_contract(&contract, || {
+        fund_treasury(&env, 2000);
+    });
+
+    let pid = env.as_contract(&contract, || {
+        Governance::create_scholarship_proposal(
+            env.clone(),
+            proposer,
+            String::from_str(&env, "CS Scholarship"),
+            String::from_str(&env, "Fund CS students"),
+            3600,
+            10,
+            1000,
+            250,
+            4,
+            eligibility(&env),
+            86400,
+        )
+    });
 
     // Vote for the proposal
-    Governance::cast_vote(env.clone(), student_a.clone(), pid, 1, 20);
+    env.as_contract(&contract, || {
+        Governance::cast_vote(env.clone(), student_a.clone(), pid, 1, 20);
+    });
 
     // Advance past voting period
     advance(&env, 3601);
 
     // First call: moves Active → Queued
-    Governance::execute_proposal(env.clone(), pid, 86400);
+    env.as_contract(&contract, || {
+        Governance::execute_proposal(env.clone(), pid, 86400);
+    });
     let p: crate::governance::Proposal = env
-        .storage()
-        .instance()
-        .get(&GovernanceDataKey::Proposal(pid))
-        .unwrap();
+        .as_contract(&contract, || {
+            env.storage()
+                .instance()
+                .get(&GovernanceDataKey::Proposal(pid))
+                .unwrap()
+        });
     assert_eq!(p.status, ProposalStatus::Queued);
 
     // Advance past timelock (default 1 day)
     advance(&env, 86401);
 
     // Second call: moves Queued → Executed, opens application window
-    Governance::execute_proposal(env.clone(), pid, 86400);
+    env.as_contract(&contract, || {
+        Governance::execute_proposal(env.clone(), pid, 86400);
+    });
     let p2: crate::governance::Proposal = env
-        .storage()
-        .instance()
-        .get(&GovernanceDataKey::Proposal(pid))
-        .unwrap();
+        .as_contract(&contract, || {
+            env.storage()
+                .instance()
+                .get(&GovernanceDataKey::Proposal(pid))
+                .unwrap()
+        });
     assert_eq!(p2.status, ProposalStatus::Executed);
 
     // Give student_a 3 credentials (meets min_credentials = 3)
-    Governance::set_student_credentials(env.clone(), student_a.clone(), 3);
+    env.as_contract(&contract, || {
+        Governance::set_student_credentials(env.clone(), student_a.clone(), 3);
+    });
 
     // Eligible student applies
-    Governance::apply_for_scholarship(env.clone(), student_a.clone(), pid);
+    env.as_contract(&contract, || {
+        Governance::apply_for_scholarship(env.clone(), student_a.clone(), pid);
+    });
 
-    let s = Governance::get_scholarship(&env, pid);
+    let s = env.as_contract(&contract, || Governance::get_scholarship(&env, pid));
     assert_eq!(s.disbursed_count, 1);
 
-    let record = Governance::get_scholarship_record(&env, pid, 0);
+    let record = env.as_contract(&contract, || Governance::get_scholarship_record(&env, pid, 0));
     assert_eq!(record.recipient, student_a);
     assert_eq!(record.amount, 250);
 }
@@ -278,130 +317,169 @@ fn test_scholarship_full_flow() {
 #[test]
 #[should_panic(expected = "Insufficient credentials")]
 fn test_ineligible_student_rejected() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, _, student_b) = setup(&env);
-    fund_treasury(&env, 2000);
+    let (env, contract, proposer, _, student_b) = setup();
 
-    let pid = Governance::create_scholarship_proposal(
-        env.clone(),
-        proposer,
-        String::from_str(&env, "CS Scholarship"),
-        String::from_str(&env, "Fund CS students"),
-        3600,
-        10,
-        1000,
-        250,
-        4,
-        eligibility(&env),
-        86400,
-    );
+    env.as_contract(&contract, || {
+        fund_treasury(&env, 2000);
+    });
 
-    Governance::cast_vote(env.clone(), student_b.clone(), pid, 1, 20);
+    let pid = env.as_contract(&contract, || {
+        Governance::create_scholarship_proposal(
+            env.clone(),
+            proposer,
+            String::from_str(&env, "CS Scholarship"),
+            String::from_str(&env, "Fund CS students"),
+            3600,
+            10,
+            1000,
+            250,
+            4,
+            eligibility(&env),
+            86400,
+        )
+    });
+
+    env.as_contract(&contract, || {
+        Governance::cast_vote(env.clone(), student_b.clone(), pid, 1, 20);
+    });
     advance(&env, 3601);
-    Governance::execute_proposal(env.clone(), pid, 86400);
+    env.as_contract(&contract, || {
+        Governance::execute_proposal(env.clone(), pid, 86400);
+    });
     advance(&env, 86401);
-    Governance::execute_proposal(env.clone(), pid, 86400);
+    env.as_contract(&contract, || {
+        Governance::execute_proposal(env.clone(), pid, 86400);
+    });
 
     // student_b has only 1 credential — below threshold
-    Governance::set_student_credentials(env.clone(), student_b.clone(), 1);
-    Governance::apply_for_scholarship(env.clone(), student_b.clone(), pid);
+    env.as_contract(&contract, || {
+        Governance::set_student_credentials(env.clone(), student_b.clone(), 1);
+    });
+    env.as_contract(&contract, || {
+        Governance::apply_for_scholarship(env.clone(), student_b.clone(), pid);
+    });
 }
 
 /// 4. Unclaimed funds are returned to treasury after application window closes.
 #[test]
 fn test_unclaimed_funds_returned_to_treasury() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, student_a, _) = setup(&env);
-    fund_treasury(&env, 2000);
+    let (env, contract, proposer, student_a, _) = setup();
 
-    let pid = Governance::create_scholarship_proposal(
-        env.clone(),
-        proposer,
-        String::from_str(&env, "CS Scholarship"),
-        String::from_str(&env, "Fund CS students"),
-        3600,
-        10,
-        1000,
-        250,
-        4,
-        eligibility(&env),
-        86400,
-    );
+    env.as_contract(&contract, || {
+        fund_treasury(&env, 2000);
+    });
 
-    Governance::cast_vote(env.clone(), student_a.clone(), pid, 1, 20);
+    let pid = env.as_contract(&contract, || {
+        Governance::create_scholarship_proposal(
+            env.clone(),
+            proposer,
+            String::from_str(&env, "CS Scholarship"),
+            String::from_str(&env, "Fund CS students"),
+            3600,
+            10,
+            1000,
+            250,
+            4,
+            eligibility(&env),
+            86400,
+        )
+    });
+
+    env.as_contract(&contract, || {
+        Governance::cast_vote(env.clone(), student_a.clone(), pid, 1, 20);
+    });
     advance(&env, 3601);
-    Governance::execute_proposal(env.clone(), pid, 86400);
+    env.as_contract(&contract, || {
+        Governance::execute_proposal(env.clone(), pid, 86400);
+    });
     advance(&env, 86401);
-    Governance::execute_proposal(env.clone(), pid, 86400);
+    env.as_contract(&contract, || {
+        Governance::execute_proposal(env.clone(), pid, 86400);
+    });
 
     // Only 1 of 4 slots filled
-    Governance::set_student_credentials(env.clone(), student_a.clone(), 3);
-    Governance::apply_for_scholarship(env.clone(), student_a.clone(), pid);
+    env.as_contract(&contract, || {
+        Governance::set_student_credentials(env.clone(), student_a.clone(), 3);
+    });
+    env.as_contract(&contract, || {
+        Governance::apply_for_scholarship(env.clone(), student_a.clone(), pid);
+    });
 
-    let tb_before: i128 = env
-        .storage()
-        .instance()
-        .get(&GovernanceDataKey::TreasuryBalance)
-        .unwrap_or(0);
+    let tb_before: i128 = env.as_contract(&contract, || {
+        env.storage()
+            .instance()
+            .get(&GovernanceDataKey::TreasuryBalance)
+            .unwrap_or(0)
+    });
 
     // Advance past application deadline
     advance(&env, 86401);
-    Governance::return_unclaimed_scholarship_funds(env.clone(), pid);
+    env.as_contract(&contract, || {
+        Governance::return_unclaimed_scholarship_funds(env.clone(), pid);
+    });
 
-    let tb_after: i128 = env
-        .storage()
-        .instance()
-        .get(&GovernanceDataKey::TreasuryBalance)
-        .unwrap_or(0);
+    let tb_after: i128 = env.as_contract(&contract, || {
+        env.storage()
+            .instance()
+            .get(&GovernanceDataKey::TreasuryBalance)
+            .unwrap_or(0)
+    });
 
     // 3 unused slots × 250 = 750 returned
     assert_eq!(tb_after - tb_before, 750);
 
-    let s = Governance::get_scholarship(&env, pid);
+    let s = env.as_contract(&contract, || Governance::get_scholarship(&env, pid));
     assert!(s.returned_to_treasury);
 }
 
 /// 5. Defeated proposal returns its reserved funds immediately.
 #[test]
 fn test_defeated_proposal_returns_funds() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (proposer, student_a, _) = setup(&env);
-    fund_treasury(&env, 2000);
+    let (env, contract, proposer, student_a, _) = setup();
 
-    let pid = Governance::create_scholarship_proposal(
-        env.clone(),
-        proposer,
-        String::from_str(&env, "CS Scholarship"),
-        String::from_str(&env, "Fund CS students"),
-        3600,
-        100, // high quorum — will not be met
-        1000,
-        250,
-        4,
-        eligibility(&env),
-        86400,
-    );
+    env.as_contract(&contract, || {
+        fund_treasury(&env, 2000);
+    });
+
+    let pid = env.as_contract(&contract, || {
+        Governance::create_scholarship_proposal(
+            env.clone(),
+            proposer,
+            String::from_str(&env, "CS Scholarship"),
+            String::from_str(&env, "Fund CS students"),
+            3600,
+            100, // high quorum — will not be met
+            1000,
+            250,
+            4,
+            eligibility(&env),
+            86400,
+        )
+    });
 
     // Vote with power below quorum
-    Governance::cast_vote(env.clone(), student_a.clone(), pid, 1, 5);
+    env.as_contract(&contract, || {
+        Governance::cast_vote(env.clone(), student_a.clone(), pid, 1, 5);
+    });
     advance(&env, 3601);
 
-    let tb_before: i128 = env
-        .storage()
-        .instance()
-        .get(&GovernanceDataKey::TreasuryBalance)
-        .unwrap_or(0);
+    let tb_before: i128 = env.as_contract(&contract, || {
+        env.storage()
+            .instance()
+            .get(&GovernanceDataKey::TreasuryBalance)
+            .unwrap_or(0)
+    });
 
-    Governance::execute_proposal(env.clone(), pid, 86400);
+    env.as_contract(&contract, || {
+        Governance::execute_proposal(env.clone(), pid, 86400);
+    });
 
-    let tb_after: i128 = env
-        .storage()
-        .instance()
-        .get(&GovernanceDataKey::TreasuryBalance)
-        .unwrap_or(0);
+    let tb_after: i128 = env.as_contract(&contract, || {
+        env.storage()
+            .instance()
+            .get(&GovernanceDataKey::TreasuryBalance)
+            .unwrap_or(0)
+    });
 
     assert_eq!(tb_after - tb_before, 1000); // full amount returned
 }
@@ -410,32 +488,330 @@ fn test_defeated_proposal_returns_funds() {
 #[test]
 #[should_panic(expected = "Already applied")]
 fn test_duplicate_application_rejected() {
+    let (env, contract, proposer, student_a, _) = setup();
+
+    env.as_contract(&contract, || {
+        fund_treasury(&env, 2000);
+    });
+
+    let pid = env.as_contract(&contract, || {
+        Governance::create_scholarship_proposal(
+            env.clone(),
+            proposer,
+            String::from_str(&env, "CS Scholarship"),
+            String::from_str(&env, "Fund CS students"),
+            3600,
+            10,
+            1000,
+            250,
+            4,
+            eligibility(&env),
+            86400,
+        )
+    });
+
+    env.as_contract(&contract, || {
+        Governance::cast_vote(env.clone(), student_a.clone(), pid, 1, 20);
+    });
+    advance(&env, 3601);
+    env.as_contract(&contract, || {
+        Governance::execute_proposal(env.clone(), pid, 86400);
+    });
+    advance(&env, 86401);
+    env.as_contract(&contract, || {
+        Governance::execute_proposal(env.clone(), pid, 86400);
+    });
+
+    env.as_contract(&contract, || {
+        Governance::set_student_credentials(env.clone(), student_a.clone(), 3);
+    });
+    env.as_contract(&contract, || {
+        Governance::apply_for_scholarship(env.clone(), student_a.clone(), pid);
+    });
+    env.as_contract(&contract, || {
+        Governance::apply_for_scholarship(env.clone(), student_a.clone(), pid); // should panic
+    });
+}
+
+// ── Role-Based Access Control (RBAC) tests ─────────────────────────────────
+
+/// Run `f` inside a contract execution context bound to `contract`.
+fn with_contract_role<F, R>(env: &Env, contract: &Address, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    env.as_contract(contract, f)
+}
+
+fn role_setup() -> (Env, Address, Address, Address, Address) {
     let env = Env::default();
     env.mock_all_auths();
-    let (proposer, student_a, _) = setup(&env);
-    fund_treasury(&env, 2000);
 
-    let pid = Governance::create_scholarship_proposal(
-        env.clone(),
-        proposer,
-        String::from_str(&env, "CS Scholarship"),
-        String::from_str(&env, "Fund CS students"),
-        3600,
-        10,
-        1000,
-        250,
-        4,
-        eligibility(&env),
-        86400,
-    );
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let verifier = Address::generate(&env);
+    let contract = env.register_contract(None, StarkEdContract);
 
-    Governance::cast_vote(env.clone(), student_a.clone(), pid, 1, 20);
-    advance(&env, 3601);
-    Governance::execute_proposal(env.clone(), pid, 86400);
-    advance(&env, 86401);
-    Governance::execute_proposal(env.clone(), pid, 86400);
+    // Grant Admin role to the admin via direct storage to bootstrap.
+    with_contract_role(&env, &contract, || {
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMember(Role::Admin, admin.clone()),
+            &true,
+        );
+        env.storage().instance().set(
+            &GovernanceDataKey::RoleMemberCount(Role::Admin),
+            &1u32,
+        );
+    });
 
-    Governance::set_student_credentials(env.clone(), student_a.clone(), 3);
-    Governance::apply_for_scholarship(env.clone(), student_a.clone(), pid);
-    Governance::apply_for_scholarship(env.clone(), student_a.clone(), pid); // should panic
+    (env, admin, issuer, verifier, contract)
+}
+
+// ── Role Granting ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_grant_role() {
+    let (env, admin, issuer, verifier, contract) = role_setup();
+
+    // Admin grants Issuer role
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+    });
+    with_contract_role(&env, &contract, || {
+        assert!(Governance::has_role(&env, &issuer, Role::Issuer));
+        assert!(!Governance::has_role(&env, &issuer, Role::Admin));
+        assert!(!Governance::has_role(&env, &issuer, Role::Verifier));
+    });
+
+    // Admin grants Verifier role
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Verifier, verifier.clone());
+    });
+    with_contract_role(&env, &contract, || {
+        assert!(Governance::has_role(&env, &verifier, Role::Verifier));
+
+        // Role member counts
+        assert_eq!(Governance::get_role_member_count(&env, Role::Admin), 1);
+        assert_eq!(Governance::get_role_member_count(&env, Role::Issuer), 1);
+        assert_eq!(Governance::get_role_member_count(&env, Role::Verifier), 1);
+    });
+}
+
+#[test]
+#[should_panic(expected = "RoleAlreadyGranted")]
+fn test_grant_role_duplicate_should_panic() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    // First grant in one context
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+    });
+    // Second grant (duplicate) in a fresh context — should panic
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+    });
+}
+
+#[test]
+#[should_panic(expected = "UnauthorizedRole")]
+fn test_grant_role_non_admin_should_panic() {
+    let (env, _admin, issuer, verifier, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        // issuer does not hold Admin — should panic
+        Governance::grant_role(&env, issuer, Role::Verifier, verifier);
+    });
+}
+
+// ── Role Revocation ────────────────────────────────────────────────────────
+
+#[test]
+fn test_revoke_role() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+        assert!(Governance::has_role(&env, &issuer, Role::Issuer));
+    });
+
+    with_contract_role(&env, &contract, || {
+        // Revoke the Issuer role
+        Governance::revoke_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+        assert!(!Governance::has_role(&env, &issuer, Role::Issuer));
+        assert_eq!(Governance::get_role_member_count(&env, Role::Issuer), 0);
+    });
+}
+
+#[test]
+#[should_panic(expected = "RoleNotFound")]
+fn test_revoke_role_not_granted_should_panic() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        // issuer has no role yet
+        Governance::revoke_role(&env, admin, Role::Issuer, issuer);
+    });
+}
+
+#[test]
+#[should_panic(expected = "CannotRevokeLastAdmin")]
+fn test_revoke_last_admin_should_panic() {
+    let (env, admin, _, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        // admin is the only Admin — revoking must panic
+        Governance::revoke_role(&env, admin.clone(), Role::Admin, admin);
+    });
+}
+
+#[test]
+fn test_revoke_last_admin_succeeds_when_another_admin_exists() {
+    let (env, admin, _, verifier, contract) = role_setup();
+
+    // Grant Admin to verifier so we have two admins
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Admin, verifier.clone());
+        assert_eq!(Governance::get_role_member_count(&env, Role::Admin), 2);
+    });
+
+    // Now revoking the original admin should succeed (within separate contract context)
+    with_contract_role(&env, &contract, || {
+        Governance::revoke_role(&env, admin.clone(), Role::Admin, admin);
+    });
+    with_contract_role(&env, &contract, || {
+        assert!(Governance::has_role(&env, &verifier, Role::Admin));
+        assert_eq!(Governance::get_role_member_count(&env, Role::Admin), 1);
+    });
+}
+
+#[test]
+#[should_panic(expected = "UnauthorizedRole")]
+fn test_revoke_role_non_admin_should_panic() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+        // issuer tries to revoke admin — should panic
+        Governance::revoke_role(&env, issuer, Role::Admin, admin);
+    });
+}
+
+// ── Role Enforcement ───────────────────────────────────────────────────────
+
+#[test]
+fn test_require_role_passes_for_holder() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin, Role::Issuer, issuer.clone());
+        // Should not panic — issuer holds Issuer role
+        Governance::require_role(&env, &issuer, Role::Issuer);
+    });
+}
+
+#[test]
+#[should_panic(expected = "UnauthorizedRole")]
+fn test_require_role_panics_for_non_holder() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin, Role::Issuer, issuer.clone());
+        // issuer does not hold Admin role — should panic
+        Governance::require_role(&env, &issuer, Role::Admin);
+    });
+}
+
+#[test]
+fn test_require_any_role_passes_for_holder() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin, Role::Issuer, issuer.clone());
+        // issuer holds Issuer, which is one of {Issuer, Verifier}
+        Governance::require_any_role(&env, &issuer, &[Role::Issuer, Role::Verifier]);
+    });
+}
+
+#[test]
+#[should_panic(expected = "UnauthorizedRole")]
+fn test_require_any_role_panics_for_non_holder() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin, Role::Issuer, issuer.clone());
+        // issuer does not hold Admin or Verifier
+        Governance::require_any_role(&env, &issuer, &[Role::Admin, Role::Verifier]);
+    });
+}
+
+// ── Event Emission ─────────────────────────────────────────────────────────
+
+#[test]
+fn test_grant_role_emits_event() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin, Role::Issuer, issuer.clone());
+    });
+
+    // Verify event: (governance, role_granted) with data (1, issuer)
+    let events = env.events().all();
+    let mut found = false;
+    for (_contract, topics, _data) in events.iter() {
+        if topics.len() >= 2 {
+            let t0 = Symbol::try_from_val(&env, &topics.get(0).unwrap());
+            let t1 = Symbol::try_from_val(&env, &topics.get(1).unwrap());
+            if t0 == Ok(Symbol::new(&env, "governance"))
+                && t1 == Ok(Symbol::new(&env, "role_granted"))
+            {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "grant_role must emit (governance, role_granted) event");
+}
+
+#[test]
+fn test_revoke_role_emits_event() {
+    let (env, admin, issuer, _, contract) = role_setup();
+
+    // Grant and revoke in separate contexts to avoid double require_auth
+    with_contract_role(&env, &contract, || {
+        Governance::grant_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+    });
+    with_contract_role(&env, &contract, || {
+        Governance::revoke_role(&env, admin.clone(), Role::Issuer, issuer.clone());
+    });
+
+    // Verify event: (governance, role_revoked) with data (1, issuer)
+    let events = env.events().all();
+    let mut found = false;
+    for (_contract, topics, _data) in events.iter() {
+        if topics.len() >= 2 {
+            let t0 = Symbol::try_from_val(&env, &topics.get(0).unwrap());
+            let t1 = Symbol::try_from_val(&env, &topics.get(1).unwrap());
+            if t0 == Ok(Symbol::new(&env, "governance"))
+                && t1 == Ok(Symbol::new(&env, "role_revoked"))
+            {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "revoke_role must emit (governance, role_revoked) event");
+}
+
+// ── Role::from_u32 / to_u32 roundtrip ──────────────────────────────────────
+
+#[test]
+fn test_role_discriminant_roundtrip() {
+    assert_eq!(Role::from_u32(Role::Admin.to_u32()), Role::Admin);
+    assert_eq!(Role::from_u32(Role::Issuer.to_u32()), Role::Issuer);
+    assert_eq!(Role::from_u32(Role::Verifier.to_u32()), Role::Verifier);
+}
+
+#[test]
+fn test_role_unknown_discriminant_defaults_to_verifier() {
+    assert_eq!(Role::from_u32(99), Role::Verifier);
 }

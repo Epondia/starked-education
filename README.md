@@ -1,147 +1,31 @@
-# StarkEd
+# StarkEd — Decentralized Education on Stellar
 
-StarkEd is a decentralized learning and credential verification platform powered by Stellar blockchain. It enables secure, tamper-proof issuance and verification of educational credentials, certificates, and achievements using Soroban smart contracts.
+StarkEd is a decentralized learning and credential-verification platform built on the **Stellar blockchain**. Educational credentials are issued, verified, and revoked **on-chain via Soroban smart contracts (Rust)**, while heavy content (course materials, certificates, badge metadata) is stored **off-chain on IPFS** and referenced by CID from the contracts.
 
-## 🎯 Features
+> ⚠️ **Deployment status (fill these in before submission)**
+>
+> | Asset | Address / URL |
+> |---|---|
+> | **Live Demo (Frontend)** | `https://starked-education-frontend.vercel.app` ✅ deployed |
+> | **Live API (Backend)** | `https://starked-api.onrender.com` <!-- TODO: replace with deployed backend URL --> |
+> | **Soroban Contract — Credential Registry** | `C...` <!-- TODO: paste contract ID from deploy-testnet.sh output --> |
+> | **Soroban Contract — Course Metadata** | `C...` <!-- TODO: paste contract ID from deploy-testnet.sh output --> |
+> | **Soroban Contract — Credential Registry (extended)** | `C...` <!-- TODO: paste contract ID from deploy-testnet.sh output --> |
+> | **Soroban Contract — Dynamic NFT / Achievements** | `C...` <!-- TODO: paste contract ID from deploy-testnet.sh output --> |
+>
+> Deploy the contracts with [`scripts/deploy-testnet.sh`](#deploying-to-stellar-testnet) and paste the generated IDs into this table (they are also saved to `.env`).
 
-- 📚 **Decentralized Learning** - Course creation and management on blockchain
-- 🎓 **Credential Verification** - Tamper-proof certificates and achievements
-- 🔗 **Stellar Integration** - Fast, low-cost transactions on Stellar
-- 💼 **Professional Profiles** - On-chain learning history and skills
-- 🏆 **Achievement System** - NFT-based badges and milestones
-- 📊 **Learning Analytics** - Progress tracking and insights
-- 🔐 **Secure Storage** - IPFS integration for content persistence
-- 🔮 **Holographic Storage** - Advanced 3D data storage simulation
-- 🌐 **Cross-Platform** - Web and mobile applications
+---
 
-## 🛠️ Technology Stack
+## 🎯 Core Value Proposition
 
-### **Blockchain Layer**
-- **Stellar** - Fast, scalable Layer 1 blockchain
-- **Soroban** - Smart contract platform for Stellar
-- **Stellar SDK** - JavaScript/TypeScript integration
+1. **Soroban Smart Contracts (Rust)** — Credentials, courses, achievements, and governance run as auditable, tamper-proof contracts on Stellar Testnet/Mainnet. No centralized issuer can forge or silently revoke a credential.
+2. **IPFS Metadata Storage** — Credential documents, certificate files, and badge metadata live on IPFS; only lightweight CIDs and cryptographic hashes are stored on-chain. This keeps transaction costs low while content stays immutable and censorship-resistant.
+3. **~30% Gas/Storage Optimization** — The contract suite uses bit-packing, packed timestamps, hash-based storage, and separate storage tiers. Measured result: **43 → 30 storage slots (−30%)** and **~9,000 gas saved per deployment** across the four core contracts (see [Gas Savings table](#gas-savings)).
 
-### **Frontend**
-- **Next.js 14** - React framework with App Router
-- **TypeScript** - Type-safe development
-- **TailwindCSS** - Utility-first CSS framework
-- **Stellar Wallets** - Freighter, Albedo, and more
-- **IPFS** - Decentralized content storage
+---
 
-### **Backend**
-- **Node.js** - Server-side JavaScript runtime
-- **Express.js** - Fast, minimalist web framework
-- **PostgreSQL** - Robust relational database
-- **Redis** - High-performance caching
-- **Prisma** - Modern database ORM
-- **JWT** - Secure authentication
-- **IPFS HTTP Client** - Decentralized storage integration
-
-### **Smart Contracts**
-- **Rust** - Memory-safe smart contract language
-- **Soroban SDK** - Stellar smart contract development
-- **Cairo Compatibility** - Cross-platform contract support
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Node.js (v18+)
-- npm or yarn
-- PostgreSQL
-- Redis
-- Freighter or compatible Stellar wallet
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/jobbykings/starked-education.git
-cd starked-education
-
-# Install dependencies
-npm run install:all
-
-# Set up environment
-cp .env.example .env
-# Edit .env with your configuration
-
-# Start development
-npm run dev
-```
-
-### Development Setup
-
-```bash
-# Start Stellar network (local)
-stellar standalone start
-
-# Deploy contracts
-cd contracts
-npm run deploy:local
-
-# Start backend
-cd ../backend
-npm run dev
-
-# Start frontend
-cd ../frontend
-npm run dev
-```
-
-## 📁 Project Structure
-
-```
-starked-education/
-├── contracts/              # Soroban smart contracts (Rust)
-│   ├── src/
-│   │   ├── lib.rs       # Main contract logic
-│   │   └── test.rs      # Contract tests
-│   └── Cargo.toml        # Rust dependencies
-├── frontend/               # Next.js React application
-│   ├── src/
-│   │   ├── app/          # App Router pages
-│   │   ├── components/    # Reusable UI components
-│   │   └── lib/          # Utility functions
-│   ├── public/             # Static assets
-│   └── package.json        # Frontend dependencies
-├── backend/                # Node.js API server
-│   ├── src/
-│   │   ├── routes/       # API endpoints
-│   │   ├── models/        # Database models
-│   │   ├── middleware/    # Auth and validation
-│   │   └── utils/         # Helper functions
-│   └── package.json        # Backend dependencies
-├── docs/                   # Project documentation
-├── scripts/                # Deployment and utility scripts
-└── .github/               # GitHub workflows and templates
-    ├── workflows/           # CI/CD pipelines
-    └── ISSUE_TEMPLATE/      # Issue templates
-```
-
-## 🔧 Smart Contracts
-
-The core Soroban contracts handle:
-
-- **CredentialRegistry** - Stores and verifies educational credentials
-- **CourseManager** - Manages course creation and enrollment
-- **AchievementIssuer** - Handles NFT-based achievement badges
-- **ProfileManager** - Manages on-chain learning profiles
-
-### ⚡ Storage Optimization
-
-Our smart contracts implement advanced storage optimization techniques to reduce gas costs and improve deployment efficiency:
-
-#### � Key Optimizations
-
-1. **Bit Packing** - Multiple boolean flags and small integers packed into single bytes
-2. **Hash-Based Storage** - Large strings and vectors stored as hashes to save space
-3. **Separate Storage Tiers** - Frequently vs infrequently accessed data separated
-4. **Packed Timestamps** - Creation and update timestamps combined in single U256
-5. **Optimized Ratings** - Rating values and review counts packed together
-6. **Shared Utilities** - Common storage patterns abstracted into reusable utilities
-
-#### 📊 Gas Savings Results
+## 📊 Gas Savings (Rust Storage Optimization)
 
 | Contract | Storage Slots (Before) | Storage Slots (After) | Reduction | Gas Savings |
 |----------|----------------------|---------------------|-----------|-------------|
@@ -151,229 +35,292 @@ Our smart contracts implement advanced storage optimization techniques to reduce
 | Achievement | 7 | 5 | **28%** | ~1,500 gas |
 | **Overall** | **43** | **30** | **30%** | **~9,000 gas** |
 
-#### 🔬 Technical Implementation
+**Key techniques**
 
-```rust
-// Before: Separate fields
-pub struct UserProfile {
-    pub created_at: u64,
-    pub updated_at: u64,
-    pub is_verified: bool,
-    pub is_active: bool,
-    pub privacy_level: PrivacyLevel,
-}
+- **Bit packing** — boolean flags and small integers packed into single bytes.
+- **Packed timestamps** — `created_at` + `updated_at` combined in one `u64`.
+- **Hash-based storage** — large strings/vectors referenced by hash instead of stored inline.
+- **Separate storage tiers** — hot vs. cold data split for cheaper reads.
+- **Optional expiry** — `Option<u64>` for `expires_at` avoids 8 wasted bytes per credential.
 
-// After: Packed storage
-pub struct UserProfile {
-    pub timestamps: PackedTimestamps,  // 2 timestamps in 1 U256
-    pub flags: PackedUserFlags,       // 5 flags in 1 byte
-}
-```
-
-#### 🧪 Benchmarking
-
-Run gas usage benchmarks:
+**Reproduce the numbers:**
 
 ```bash
 cd contracts
-cargo test --release -- --nocapture test_gas_benchmarks
+cargo test --release bench_
+# or run the standalone gas benchmark example:
+cargo run --release --example bench_gas --features testutils
 ```
-
-Generate detailed gas report:
-
-```bash
-soroban contract invoke \
-  --id <contract-id> \
-  --fn generate_gas_report \
-  --wasm target/wasm32-unknown-unknown/release/starked_education.wasm
-```
-
-## �🌐 API Endpoints
-
-### Authentication
-- `POST /api/auth/register` - User registration
-- `POST /api/auth/login` - User authentication
-- `POST /api/auth/refresh` - Token refresh
-
-### Courses
-- `GET /api/courses` - List available courses
-- `POST /api/courses` - Create new course
-- `GET /api/courses/:id` - Course details
-- `POST /api/courses/:id/enroll` - Enroll in course
-
-### Credentials
-- `POST /api/credentials/issue` - Issue new credential
-- `GET /api/credentials/:id` - Verify credential
-- `GET /api/credentials/user/:address` - User credentials
-
-### Profiles
-- `GET /api/profiles/:address` - Learning profile
-
-### IPFS Content Management
-- `POST /api/content/upload` - Upload file to IPFS
-- `POST /api/content/upload/batch` - Upload multiple files
-- `GET /api/content/:cid` - Retrieve content from IPFS
-- `GET /api/content/:cid/metadata` - Get content metadata
-- `POST /api/content/:cid/pin` - Pin content to IPFS
-- `DELETE /api/content/:cid/pin` - Unpin content from IPFS
-- `GET /api/content/health` - Check IPFS service health
-
-### Holographic Storage
-- `POST /api/holographic/encode` - Encode content in holographic format
-- `GET /api/holographic/decode/:hash` - Decode holographic content
-- `POST /api/holographic/access/parallel` - High-speed parallel access
-- `GET /api/holographic/metrics` - Storage density and performance metrics
-- `POST /api/holographic/optimize` - Optimize storage density
-
-## 📁 IPFS Integration
-
-StarkEd integrates with IPFS (InterPlanetary File System) for decentralized content storage, providing:
-
-### Features
-- **File Upload & Storage** - Upload educational content to IPFS with metadata
-- **Content Retrieval** - Retrieve content in multiple formats (buffer, base64, stream)
-- **Progress Tracking** - Real-time upload progress with WebSocket support
-- **Authentication** - JWT-based auth with role-based permissions
-- **Caching** - In-memory caching for improved performance
-- **Error Handling** - Comprehensive error handling with retry mechanisms
-
-### Usage
-```typescript
-import ipfsClient from './lib/ipfs';
-
-// Upload a file
-const result = await ipfsClient.uploadFile(file, {
-  metadata: { course: 'math101' },
-  onProgress: (progress) => console.log(`${progress.progress}%`)
-});
-
-// Retrieve content
-const content = await ipfsClient.getContent(result.cid, 'base64');
-```
-
-### Configuration
-See `backend/.env.example` for IPFS configuration options.
-
-For detailed documentation, see [IPFS_INTEGRATION_README.md](./IPFS_INTEGRATION_README.md).
-
-## 🔮 Holographic Storage System
-
-StarkEd includes an advanced holographic storage abstraction layer that simulates 3D spatial data storage:
-
-### Features
-- **3D Spatial Encoding** - Data mapped to interference patterns in 3D space
-- **High-Speed Parallel Access** - Simultaneous retrieval up to 15,000 MB/s
-- **Holographic Compression** - Wavelet-based compression (2-3x ratio)
-- **Storage Density Optimization** - Automatic optimization achieving 80-90% density
-- **Hardware-Ready API** - Designed for future physical holographic hardware integration
-
-### Usage
-```typescript
-// Encode educational content
-const result = await fetch('/api/holographic/encode', {
-  method: 'POST',
-  body: JSON.stringify({
-    contentId: 'course-101',
-    data: Buffer.from(content).toString('base64')
-  })
-});
-
-// Parallel access for multiple resources
-const materials = await fetch('/api/holographic/access/parallel', {
-  method: 'POST',
-  body: JSON.stringify({ hashes: [hash1, hash2, hash3] })
-});
-```
-
-For detailed documentation, see [HOLOGRAPHIC_STORAGE_README.md](./backend/HOLOGRAPHIC_STORAGE_README.md).
-
-### Gas Optimization
-- `GET /api/gas/benchmarks` - View gas usage benchmarks
-- `GET /api/gas/report` - Generate optimization report
-- `GET /api/gas/compare` - Compare old vs new storage patterns
-
-## 🎓 Use Cases
-
-### For Students
-- **Earn Verifiable Certificates** - Complete courses, earn blockchain-verified credentials
-- **Build On-Chain Portfolio** - Showcase learning history and achievements
-- **Lifelong Learning Records** - Persistent, portable academic records
-
-### For Educators
-- **Create Blockchain Courses** - Deploy courses with smart contract integration
-- **Issue Digital Certificates** - Automate credential issuance
-- **Track Student Progress** - Monitor engagement and completion
-
-### For Institutions
-- **Verify Credentials Instantly** - Eliminate fraud with on-chain verification
-- **Reduce Administrative Overhead** - Automate certificate management
-- **Global Credential Recognition** - Cross-border verification
-
-## 📚 Documentation
-
-- [Contributing Guide](CONTRIBUTING.md) — how to contribute, coding standards, PR process
-- [Architecture Overview](docs/ARCHITECTURE.md) — system design and components
-- [Development Setup](docs/DEVELOPMENT.md) — local setup for all three packages
-- [Testing Guide](docs/TESTING.md) — unit, integration, and E2E conventions
-- [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md) — checklist for PRs
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details,
-along with the [Development Setup](docs/DEVELOPMENT.md), [Architecture Overview](docs/ARCHITECTURE.md),
-and [Testing Guide](docs/TESTING.md).
-
-### 🐛 Found a Bug?
-- [Create an issue](https://github.com/jobbykings/starked-education/issues/new?assignees=&labels=bug&template=bug_report.md)
-
-### 💡 Feature Request?
-- [Suggest a feature](https://github.com/jobbykings/starked-education/issues/new?assignees=&labels=enhancement&template=feature_request.md)
-
-### 🔒 Security Issue?
-- Email: security@starked-education.org
-- [Security template](https://github.com/jobbykings/starked-education/issues/new?assignees=&labels=security&template=security_vulnerability.md)
-
-## 👥 Contributors
-
-Thanks to all our contributors! See the [CONTRIBUTORS.md](CONTRIBUTORS.md) file for details.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🌟 Community
-
-- [Discord](https://discord.gg/starked-education)
-- [Twitter](https://twitter.com/starked_education)
-- [GitHub Discussions](https://github.com/jobbykings/starked-education/discussions)
-- [Website](https://starked-education.org)
-
-## 📊 Project Status
-
-- **Version**: 0.1.0 (Alpha)
-- **Network**: Stellar Testnet
-- **Status**: Under Development
-- **Roadmap**: [View Project Board](https://github.com/jobbykings/starked-education/projects)
-- **Gas Optimization**: ✅ **30% storage reduction achieved**
-- **Holographic Storage**: ✅ **Software abstraction layer implemented**
-- **Latest Update**: Holographic storage system with 3D spatial encoding
-
-## 🏆 Optimization Achievements
-
-- ✅ **30% overall storage reduction** across all contracts
-- ✅ **Bit packing implementation** for boolean flags and small integers
-- ✅ **Hash-based storage** for large data structures
-- ✅ **Separate storage tiers** for access pattern optimization
-- ✅ **Comprehensive benchmarking** suite implemented
-- ✅ **Shared storage utilities** for code reuse and consistency
-
-### 📈 Performance Metrics
-
-- **Deployment Gas**: Reduced by ~9,000 gas per contract deployment
-- **Transaction Gas**: 15-25% reduction in average transaction costs
-- **Storage Efficiency**: 30% fewer storage slots used
-- **Code Maintainability**: Improved with shared utilities and patterns
 
 ---
 
-⭐ Star this repository to support decentralized education on Stellar!
+## ✨ Features
+
+- 📚 **On-chain courses** — creation, enrollment, and marketplace via Soroban contracts.
+- 🎓 **Verifiable credentials** — issue, verify, and revoke with cross-chain proof generation (`generate_credential_proof` / `verify_cross_chain_proof`).
+- 🏆 **Dynamic NFT achievement badges** — mint, evolve, fuse, upgrade, and transfer badges with append-only upgrade history.
+- 💼 **On-chain profiles** — learning history, reputation, and achievement tracking.
+- 🗳️ **Governance & tokenomics** — role-based access control, proposals, staking, quadratic voting.
+- 📦 **IPFS content layer** — upload, pin, retrieve, and stream educational content via the backend API.
+- 🔐 **Auth & security** — JWT auth, RBAC, rate limiting, circuit breakers, per-route timeouts, Helmet/CSP.
+- 📡 **Realtime** — WebSocket collaboration, sync, and notifications.
+
+---
+
+## 🧱 Monorepo Structure
+
+```
+starked-education/
+├── contracts/            # Soroban smart contracts (Rust / no_std)
+│   └── src/
+│       ├── lib.rs                # StarkEdContract — credentials, courses, proofs
+│       ├── credential_registry.rs# Extended credential registry
+│       ├── course_metadata.rs    # Course metadata & enrollment
+│       ├── dynamic_nft.rs        # Dynamic NFT achievement badges
+│       ├── user_profile.rs       # On-chain profiles
+│       ├── governance.rs         # Roles, proposals, voting
+│       ├── tokenomics.rs         # Reward token, staking
+│       └── ...                   # marketplace, pause, events, utils
+├── backend/              # Node.js / Express + TypeScript API (PostgreSQL, Redis, IPFS)
+│   ├── src/
+│   │   ├── routes/       # REST endpoints (auth, content, courses, credentials, …)
+│   │   ├── controllers/  # Request handlers
+│   │   ├── services/     # IPFS client, Stellar SDK, caching, …
+│   │   └── middleware/   # JWT, Joi validation, rate limiting, security
+│   └── migrations/       # SQL migrations (custom runner: src/utils/migrate.ts)
+├── frontend/             # Next.js 14 (App Router) + TypeScript + Tailwind
+│   └── src/
+│       ├── app/          # App Router pages
+│       ├── components/   # UI components
+│       └── services/     # API + wallet (Freighter, Stellar Wallets Kit) clients
+├── scripts/              # Deploy & ops scripts
+│   └── deploy-testnet.sh # Soroban contract deployment to Stellar Testnet
+├── docs/                 # Architecture, API reference, deployment guides
+└── .github/workflows/    # CI/CD
+```
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Blockchain | Stellar · Soroban (Rust, `soroban-sdk` 20.x) |
+| Frontend | Next.js 14 · React 18 · TypeScript · TailwindCSS · Stellar Wallets Kit / Freighter |
+| Backend | Node.js · Express · TypeScript · PostgreSQL · Redis · Prisma-style SQL migrations |
+| Storage | IPFS (`ipfs-http-client`) · PostgreSQL · Redis |
+| CI/CD | GitHub Actions · Docker · Vercel / Render |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js **v18+** and pnpm (`npm i -g pnpm`)
+- Rust stable + `wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`)
+- [stellar-cli](https://github.com/stellar/stellar-cli) (`cargo install --locked stellar-cli`) for contract deploys
+- PostgreSQL 15+ and Redis 7+
+
+### 1. Install
+
+```bash
+git clone https://github.com/jobbykings/starked-education.git
+cd starked-education
+pnpm install:all          # installs JS workspaces + builds contracts
+```
+
+### 2. Configure environment
+
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+```
+
+Set `DATABASE_URL`, `REDIS_URL`, and `JWT_SECRET` in `backend/.env`. See
+[`.env.example`](.env.example) for the full variable list.
+
+### 3. Start supporting services
+
+```bash
+docker run -d --name starked-postgres -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=starked_dev -p 5432:5432 postgres:15
+docker run -d --name starked-redis -p 6379:6379 redis:7
+```
+
+### 4. Run the stack
+
+```bash
+pnpm dev                 # backend (port 3001) + frontend (port 3000) via concurrently
+```
+
+Or run packages individually:
+
+```bash
+cd backend && pnpm dev       # API at http://localhost:3001
+cd frontend && pnpm dev      # web app at http://localhost:3000
+```
+
+### 5. Run database migrations (backend)
+
+```bash
+cd backend
+pnpm run migrate:up
+```
+
+### 6. Test the contracts
+
+```bash
+cd contracts
+cargo test
+```
+
+---
+
+## 📦 Deploying to Stellar Testnet
+
+All four core Soroban contracts are deployed with one script:
+
+```bash
+# 1. Set your funded testnet account
+export STELLAR_SECRET="S...your-testnet-secret-key..."
+
+# 2. Deploy all contracts to Testnet (defaults to "all" roles)
+./scripts/deploy-testnet.sh
+# …or deploy a single role: ./scripts/deploy-testnet.sh credential
+```
+
+What it does:
+
+1. Builds the contracts for `wasm32-unknown-unknown`.
+2. Deploys each contract with `soroban contract deploy`.
+3. Runs the required `soroban contract invoke` initialization calls.
+4. Writes every generated Contract ID to `deployed_contracts_testnet.env` (and `.env`), e.g.:
+
+```dotenv
+CREDENTIAL_REGISTRY_CONTRACT_ID=C...
+COURSE_METADATA_CONTRACT_ID=C...
+CREDENTIAL_REGISTRY_EXTENDED_CONTRACT_ID=C...
+DYNAMIC_NFT_CONTRACT_ID=C...
+```
+
+> **Manual, contract-by-contract commands:**
+>
+> ```bash
+> # 0. Build the contracts (from the repo root)
+> cd contracts && cargo build --release --target wasm32-unknown-unknown && cd ..
+>
+> # Deploy
+> soroban contract deploy \
+>   --wasm contracts/target/wasm32-unknown-unknown/release/starked_education_contracts.wasm \
+>   --source-account "$STELLAR_SECRET" \
+>   --rpc-url https://soroban-testnet.stellar.org \
+>   --network-passphrase "Test SDF Network ; September 2015"
+>
+> # Initialize (example — admin address required)
+> soroban contract invoke \
+>   --id <CONTRACT_ID> \
+>   --source-account "$STELLAR_SECRET" \
+>   --rpc-url https://soroban-testnet.stellar.org \
+>   --network-passphrase "Test SDF Network ; September 2015" \
+>   -- initialize --admin <ADMIN_ADDRESS>
+> ```
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full deployment guide.
+
+---
+
+## ☁️ Deploying Web App & API
+
+### Frontend — Vercel
+
+The frontend is a standard Next.js 14 App Router app. [`frontend/vercel.json`](frontend/vercel.json) pins the build output for Vercel:
+
+```bash
+cd frontend
+vercel --prod
+```
+
+Required env vars: `NEXT_PUBLIC_API_URL` (backend URL), `NEXT_PUBLIC_STELLAR_NETWORK`,
+`NEXT_PUBLIC_CONTRACT_ADDRESS`.
+
+### Backend — Render / Railway / Fly.io
+
+The backend ships a production `Dockerfile` and a `Procfile`. On Render (or Railway/Fly),
+run the web process and migrations:
+
+```bash
+# Render/Railway start commandcommit
+web: sh -c "npm run migrate:up && node dist/index.js"
+```
+
+The Docker image already runs `npm run build`; the migration step runs on container start
+before the API listens. See [`backend/Dockerfile`](backend/Dockerfile) and
+[`backend/Procfile`](backend/Procfile).
+
+Required env vars: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `STELLAR_RPC_URL`,
+`CONTRACT_ADDRESS`, `IPFS_API_URL`.
+
+### Docker Compose (single host)
+
+```bash
+docker compose up --build
+```
+
+---
+
+## 🔌 API Surface (v1)
+
+| Area | Endpoints |
+|---|---|
+| Auth | `POST /api/v1/auth/register` · `login` · `refresh` |
+| Content / IPFS | `POST /api/v1/content/upload` · `GET /api/v1/content/:cid` · pin/unpin · `GET /api/v1/content/health` |
+| Courses | `GET/POST /api/v1/courses` · `GET /api/v1/courses/:id` |
+| Credentials | `POST /api/v1/credentials/issue` · `GET /api/v1/credentials/:id` · `GET /api/v1/credentials/user/:address` |
+| Profiles | `GET /api/v1/profiles/:address` |
+| Governance | Roles, proposals, voting via `/api/v1/governance` |
+| Realtime | Collaboration, sync, notifications (WebSocket) |
+
+Full reference: [docs/API_REFERENCE.md](docs/API_REFERENCE.md) · Interactive Swagger at `/api-docs` when the backend runs.
+
+---
+
+## ✅ Testing & CI
+
+CI runs on every push/PR (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+
+- **Contracts** — `cargo check`, `cargo test`, gas benchmarks.
+- **Backend** — `tsc --noEmit`, ESLint, Jest, build.
+- **Frontend** — `tsc --noEmit`, ESLint, Jest, `next build`.
+
+Local checks:
+
+```bash
+# Contracts
+cd contracts && cargo test
+
+# Backend
+cd backend && pnpm run typecheck && pnpm test && pnpm run build
+
+# Frontend
+cd frontend && pnpm run type-check && pnpm test && pnpm run build
+```
+
+---
+
+## 📚 Documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Development Setup](docs/DEVELOPMENT.md)
+- [API Reference](docs/API_REFERENCE.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Testing Guide](docs/TESTING.md)
+- [Contributing](CONTRIBUTING.md)
+
+---
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).
+
+⭐ Star this repository to support decentralized education on Stellar.

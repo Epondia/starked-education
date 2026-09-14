@@ -47,7 +47,9 @@ export class VRFService {
         host: redisHost,
         port: redisPort,
         password: process.env.REDIS_PASSWORD || undefined,
+        maxRetriesPerRequest: null,
       });
+      this.redis.on('error', (err) => console.warn('Redis connection error:', err.message));
       
       // Initialize default beacon if none exists
       this.initializeDefaultBeacon();

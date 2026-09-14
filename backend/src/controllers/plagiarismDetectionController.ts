@@ -110,15 +110,18 @@ export class PlagiarismDetectionController {
         return;
       }
 
-      // This would typically fetch from database
-      // For now, return a placeholder response
+      const report = await this.plagiarismService.getReport(reportId);
+
+      if (!report) {
+        res.status(404).json({
+          error: 'Report not found'
+        });
+        return;
+      }
+
       res.json({
         success: true,
-        data: {
-          id: reportId,
-          status: 'completed',
-          message: 'Report retrieval not yet implemented'
-        }
+        data: report
       });
 
     } catch (error) {

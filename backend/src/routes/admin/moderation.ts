@@ -9,6 +9,15 @@ import { moderationService } from '../../services/moderationService';
 import { ModerationStatus, ContentType, FlagSource } from '../../models/ModerationFlag';
 import { UserRole } from '../../models/User';
 import { requireRole } from '../../middleware/auth';
+import { validateRequestSchema } from '../../middleware/validateRequestSchema';
+import {
+  moderateFlagSchema,
+  batchModerateSchema,
+  reportContentSchema,
+  upsertAutoFlagRuleSchema,
+  moderationQueueQuerySchema,
+  moderationAuditQuerySchema,
+} from '../../middleware/validation';
 
 const router = Router();
 
@@ -21,7 +30,7 @@ const requireModerator = requireRole([UserRole.MODERATOR, UserRole.ADMIN]);
  * GET /api/admin/moderation/queue
  * Get the moderation queue with filtering and pagination.
  */
-router.get('/queue', requireModerator, async (req: Request, res: Response) => {
+router.get('/queue', requireModerator, validateRequestSchema(moderationQueueQuerySchema), async (req: Request, res: Response) => {
   try {
     const {
       status,
@@ -98,7 +107,7 @@ router.get('/flags/:id', requireModerator, async (req: Request, res: Response) =
  * POST /api/admin/moderation/flags/:id/moderate
  * Apply a moderation action to a single flag.
  */
-router.post('/flags/:id/moderate', requireModerator, async (req: Request, res: Response) => {
+router.post('/flags/:id/moderate', requireModerator, validateRequestSchema(moderateFlagSchema), async (req: Request, res: Response) => {
   try {
     const { action, reason, note } = req.body;
     const moderatorId = (req as any).user?.id;
@@ -129,7 +138,7 @@ router.post('/flags/:id/moderate', requireModerator, async (req: Request, res: R
  * POST /api/admin/moderation/batch
  * Batch moderate multiple flags.
  */
-router.post('/batch', requireModerator, async (req: Request, res: Response) => {
+router.post('/batch', requireModerator, validateRequestSchema(batchModerateSchema), async (req: Request, res: Response) => {
   try {
     const { action, flagIds, reason, note } = req.body;
     const moderatorId = (req as any).user?.id;
@@ -163,7 +172,7 @@ router.post('/batch', requireModerator, async (req: Request, res: Response) => {
  * POST /api/admin/moderation/report
  * Report content for moderation (any authenticated user).
  */
-router.post('/report', async (req: Request, res: Response) => {
+router.post('/report', validateRequestSchema(reportContentSchema), async (req: Request, res: Response) => {
   try {
     const { contentType, contentId, reason, authorId, courseId } = req.body;
     const userId = (req as any).user?.id || 'anonymous';
@@ -197,7 +206,7 @@ router.post('/report', async (req: Request, res: Response) => {
  * GET /api/admin/moderation/audit
  * Get moderation audit log.
  */
-router.get('/audit', requireModerator, async (req: Request, res: Response) => {
+router.get('/audit', requireModerator, validateRequestSchema(moderationAuditQuerySchema), async (req: Request, res: Response) => {
   try {
     const { flagId, moderatorId, limit } = req.query;
 
@@ -234,7 +243,7 @@ router.get('/auto-flag-rules', requireModerator, async (_req: Request, res: Resp
  * POST /api/admin/moderation/auto-flag-rules
  * Create or update an auto-flag rule.
  */
-router.post('/auto-flag-rules', requireModerator, async (req: Request, res: Response) => {
+router.post('/auto-flag-rules', requireModerator, validateRequestSchema(upsertAutoFlagRuleSchema), async (req: Request, res: Response) => {
   try {
     const rule = moderationService.upsertAutoFlagRule(req.body);
     res.status(201).json({ success: true, data: rule });

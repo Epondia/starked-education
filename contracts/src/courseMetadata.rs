@@ -4,6 +4,8 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Env, Map, String, Symbol, Vec, U256,
 };
 
+const MAX_BATCH_SIZE: u32 = 100;
+
 /// Optimized course status using bit packing
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -101,6 +103,7 @@ pub enum CourseMetadataKey {
     InstructorBio(Address),       // Separate string storage
     InstructorExpertise(Address), // Separate vector storage
     Admin,
+    CourseEnrollment(String, Address),
 }
 
 #[contract]
@@ -386,6 +389,91 @@ impl CourseMetadataContract {
             .instance()
             .get(&CourseMetadataKey::Instructor(instructor))
             .unwrap_or_else(|| panic!("Instructor profile not found"))
+    }
+
+    /// Batch enroll multiple students in a single transaction.
+    pub fn batch_enroll(
+        env: Env,
+        course_id: String,
+        caller: Address,
+        students: Vec<Address>,
+    ) -> u32 {
+        if students.is_empty() {
+            panic!("EmptyBatch");
+        }
+
+        if students.len() > MAX_BATCH_SIZE {
+            panic!("BatchTooLarge");
+        }
+
+        caller.require_auth();
+
+        let course_metadata: CourseMetadata = env
+            .storage()
+            .instance()
+            .get(&CourseMetadataKey::Course(course_id.clone()))
+            .unwrap_or_else(|| panic!("Course not found"));
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&CourseMetadataKey::Admin)
+            .unwrap_or_else(|| panic!("Admin not initialized"));
+
+        if caller != course_metadata.instructor && caller != admin {
+            panic!("UnauthorizedCaller");
+        }
+
+        let current_enrollments = course_metadata.current_enrollments as u64;
+        let max_students = course_metadata.max_students as u64;
+        let mut pending_students = Vec::new(&env);
+        let mut pending_count = 0u32;
+
+        for student in students.iter() {
+            let is_enrolled = env.storage().instance().has(&CourseMetadataKey::CourseEnrollment(
+                course_id.clone(),
+                student.clone(),
+            ));
+            if is_enrolled {
+                env.events().publish(
+                    (Symbol::new(&env, "already_enrolled"), course_id.clone()),
+                    (student.clone(),),
+                );
+            } else {
+                pending_students.push_back(student.clone());
+                pending_count += 1;
+            }
+        }
+
+        if pending_count as u64 > max_students.saturating_sub(current_enrollments) {
+            panic!("CapacityExceeded");
+        }
+
+        for student in pending_students.iter() {
+            env.storage().instance().set(
+                &CourseMetadataKey::CourseEnrollment(course_id.clone(), student.clone()),
+                &true,
+            );
+            env.events().publish(
+                (Symbol::new(&env, "enrollment_created"), course_id.clone()),
+                (student.clone(),),
+            );
+        }
+
+        let mut updated_course = course_metadata;
+        updated_course.current_enrollments += pending_count;
+        env.storage()
+            .instance()
+            .set(&CourseMetadataKey::Course(course_id.clone()), &updated_course);
+
+        let mut instructor_profile = Self::get_instructor_profile(env.clone(), updated_course.instructor.clone());
+        instructor_profile.total_students += pending_count;
+        env.storage().instance().set(
+            &CourseMetadataKey::Instructor(updated_course.instructor),
+            &instructor_profile,
+        );
+
+        pending_count
     }
 
     /// Create instructor profile with optimized storage

@@ -70,7 +70,7 @@ describe('createMetadata', () => {
       expect(meta.openGraph?.title).toBe('Courses - StarkEd Education');
       expect(meta.openGraph?.description).toBeTruthy();
       expect(meta.openGraph?.siteName).toBe('StarkEd Education');
-      expect(meta.openGraph?.type).toBe('website');
+      expect((meta.openGraph as { type?: string } | undefined)?.type).toBe('website');
     });
 
     it('includes Open Graph image', () => {
@@ -92,7 +92,7 @@ describe('createMetadata', () => {
       });
 
       if (meta.openGraph?.images && Array.isArray(meta.openGraph.images)) {
-        expect(meta.openGraph.images[0].url).toBe(
+        expect((meta.openGraph.images[0] as { url: string }).url).toBe(
           'https://example.com/custom-image.png'
         );
       }
@@ -101,7 +101,7 @@ describe('createMetadata', () => {
     it('handles custom OG type', () => {
       const meta = createMetadata({ title: 'Test', ogType: 'article' });
 
-      expect(meta.openGraph?.type).toBe('article');
+      expect((meta.openGraph as { type?: string } | undefined)?.type).toBe('article');
     });
   });
 
@@ -112,7 +112,7 @@ describe('createMetadata', () => {
       const meta = createMetadata({ title: 'Test' });
 
       expect(meta.twitter).toBeDefined();
-      expect(meta.twitter?.card).toBe('summary_large_image');
+      expect((meta.twitter as { card?: string } | undefined)?.card).toBe('summary_large_image');
       expect(meta.twitter?.title).toBe('Test - StarkEd Education');
       expect(meta.twitter?.description).toBeTruthy();
     });
@@ -123,7 +123,7 @@ describe('createMetadata', () => {
         twitterCard: 'summary',
       });
 
-      expect(meta.twitter?.card).toBe('summary');
+      expect((meta.twitter as { card?: string } | undefined)?.card).toBe('summary');
     });
   });
 
@@ -205,7 +205,7 @@ describe('generateCourseJsonLd', () => {
     });
 
     expect(result.provider).toBeDefined();
-    expect(result.provider['@type']).toBe('Organization');
+    expect((result.provider as { '@type'?: string })['@type']).toBe('Organization');
   });
 
   it('uses custom provider when provided', () => {
@@ -216,8 +216,8 @@ describe('generateCourseJsonLd', () => {
       providerUrl: 'https://custom.example.com',
     });
 
-    expect(result.provider.name).toBe('Custom Provider');
-    expect(result.provider.sameAs).toBe('https://custom.example.com');
+    expect((result.provider as { name?: string }).name).toBe('Custom Provider');
+    expect((result.provider as { sameAs?: string }).sameAs).toBe('https://custom.example.com');
   });
 
   it('includes optional fields when provided', () => {
@@ -268,8 +268,8 @@ describe('generateCredentialJsonLd', () => {
       issuerUrl: 'https://issuer.example.com',
     });
 
-    expect(result.recognizedBy.name).toBe('Custom Issuer');
-    expect(result.recognizedBy.sameAs).toBe('https://issuer.example.com');
+    expect((result.recognizedBy as { name?: string }).name).toBe('Custom Issuer');
+    expect((result.recognizedBy as { sameAs?: string }).sameAs).toBe('https://issuer.example.com');
   });
 
   it('includes dates when provided', () => {

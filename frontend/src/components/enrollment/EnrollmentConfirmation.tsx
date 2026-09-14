@@ -5,6 +5,7 @@
 
 'use client';
 
+import Image from 'next/image';
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,8 @@ import {
   Printer,
   Loader2
 } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 
 interface Enrollment {
   id: string;
@@ -266,10 +269,12 @@ export function EnrollmentConfirmation({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex gap-4">
-              <img 
-                src={course.thumbnail} 
+              <Image
+                src={course.thumbnail}
                 alt={course.title}
-                className="w-20 h-20 object-cover rounded-lg"
+                width={80}
+                height={80}
+                className="w-20 h-20 object-cover rounded-lg shrink-0"
               />
               <div className="flex-1">
                 <h3 className="font-semibold">{course.title}</h3>

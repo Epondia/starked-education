@@ -9,14 +9,14 @@ export type LayoutType = 'grid' | 'list' | 'cards' | 'timeline' | 'mindmap' | 'f
 export type DensityLevel = 'compact' | 'comfortable' | 'spacious';
 export type ContentPriority = 'visual' | 'text' | 'interactive' | 'balanced';
 
-interface LayoutConfiguration {
+export interface LayoutConfiguration {
   type: LayoutType;
   density: DensityLevel;
   contentPriority: ContentPriority;
   columns: number;
   sidebarPosition: 'left' | 'right' | 'none' | 'both';
   headerSize: 'small' | 'medium' | 'large';
-  navigationStyle: 'tabs' | 'sidebar' | 'topbar' | 'floating';
+  navigationStyle: 'tabs' | 'sidebar' | 'topbar' | 'floating' | 'minimal';
   animationSpeed: 'fast' | 'normal' | 'slow';
   colorScheme: 'light' | 'dark' | 'auto' | 'high-contrast';
 }
@@ -152,6 +152,8 @@ const DEFAULT_LAYOUT: LayoutConfiguration = {
   animationSpeed: 'normal',
   colorScheme: 'auto'
 };
+
+const layouterTransition = (duration: number): { duration: number } => ({ duration });
 
 export function DynamicLayoutAdapter({
   userId,
@@ -503,7 +505,7 @@ export function DynamicLayoutAdapter({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: currentLayout.animationSpeed === 'fast' ? 0.2 : currentLayout.animationSpeed === 'slow' ? 0.5 : 0.3 }}
+          transition={layouterTransition(currentLayout.animationSpeed === 'fast' ? 0.2 : currentLayout.animationSpeed === 'slow' ? 0.5 : 0.3)}
         >
           {children}
         </motion.div>

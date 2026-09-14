@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, BookOpen, MessageSquare, Settings, Trophy, X, Clock } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Trophy, X, Clock } from 'lucide-react';
 import { Notification, NotificationCategory } from '../../hooks/useNotifications';
 
 interface NotificationItemProps {
@@ -76,7 +76,22 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
         }
       `}
       onClick={handleClick}
+      aria-label={`${notification.isRead ? 'Read' : 'Unread'} notification: ${notification.title}. ${notification.message}`}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
     >
+      {/* Screen reader announcement for new notifications */}
+      {!notification.isRead && (
+        <div aria-live="polite" className="sr-only">
+          New notification: {notification.title}
+        </div>
+      )}
       {/* Remove button */}
       <button
         onClick={handleRemove}

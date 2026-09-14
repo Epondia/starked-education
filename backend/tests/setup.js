@@ -50,42 +50,79 @@ jest.mock('redis', () => {
   const store = new Map();
   const lists = new Map();
   const hashes = new Map();
+  const ttls = new Map();
 
-  const mockMulti = (client) => ({
-    incr: jest.fn(function(key) {
-      this._key = key;
-      return this;
-    }),
-    incrBy: jest.fn(function(key, val) {
-      this._key = key;
-      this._val = val;
-      return this;
-    }),
-    expire: jest.fn(function() {
-      return this;
-    }),
-    lPush: jest.fn(function(key, val) {
-      this._key = key;
-      this._val = val;
-      return this;
-    }),
-    zAdd: jest.fn(function() {
-      return this;
-    }),
-    zRem: jest.fn(function() {
-      return this;
-    }),
-    exec: jest.fn(async function() {
-      const key = this._key;
-      if (key) {
-        const increment = this._val !== undefined ? this._val : 1;
-        const current = parseInt(store.get(key) || '0') + increment;
-        store.set(key, current.toString());
-        return [current, 1];
-      }
-      return [1, 1];
-    })
-  });
+  // Mirrors node-redis v4: multi.exec() returns one raw reply per queued
+  // command (e.g. ['OK', <count>, <ttl>]). Used by the rate limiter's
+  // RedisStore (SET ... NX, INCRBY, TTL) and the transaction queue pipeline.
+  const mockMulti = () => {
+    const commands = [];
+    return {
+      set: jest.fn(function(key, val, opts) {
+        commands.push({ cmd: 'set', key, val, opts });
+        return this;
+      }),
+      incrBy: jest.fn(function(key, val) {
+        commands.push({ cmd: 'incrBy', key, val });
+        return this;
+      }),
+      ttl: jest.fn(function(key) {
+        commands.push({ cmd: 'ttl', key });
+        return this;
+      }),
+      incr: jest.fn(function(key) {
+        commands.push({ cmd: 'incr', key });
+        return this;
+      }),
+      expire: jest.fn(function(key, secs) {
+        commands.push({ cmd: 'expire', key, secs });
+        return this;
+      }),
+      lPush: jest.fn(function(key, val) {
+        commands.push({ cmd: 'lPush', key, val });
+        return this;
+      }),
+      zAdd: jest.fn(function() {
+        return this;
+      }),
+      zRem: jest.fn(function() {
+        return this;
+      }),
+      exec: jest.fn(async function() {
+        const results = [];
+        for (const c of commands) {
+          if (c.cmd === 'set') {
+            // SET with NX: only anchor the key (and its TTL) on first creation.
+            if (!store.has(c.key)) {
+              store.set(c.key, String(c.val));
+              if (c.opts && c.opts.EX) ttls.set(c.key, c.opts.EX);
+            }
+            results.push('OK');
+          } else if (c.cmd === 'incrBy') {
+            const current = parseInt(store.get(c.key) || '0') + c.val;
+            store.set(c.key, current.toString());
+            results.push(current);
+          } else if (c.cmd === 'incr') {
+            const current = parseInt(store.get(c.key) || '0') + 1;
+            store.set(c.key, current.toString());
+            results.push(current);
+          } else if (c.cmd === 'expire') {
+            ttls.set(c.key, c.secs);
+            results.push(1);
+          } else if (c.cmd === 'ttl') {
+            results.push(ttls.get(c.key) || 60);
+          } else if (c.cmd === 'lPush') {
+            if (!lists.has(c.key)) lists.set(c.key, []);
+            lists.get(c.key).unshift(c.val);
+            results.push(lists.get(c.key).length);
+          } else {
+            results.push('OK');
+          }
+        }
+        return results;
+      })
+    };
+  };
 
   const mockClient = {
     on: jest.fn(),
@@ -101,6 +138,7 @@ jest.mock('redis', () => {
         store.delete(k);
         lists.delete(k);
         hashes.delete(k);
+        ttls.delete(k);
       });
       return keysArray.length;
     }),
@@ -161,7 +199,7 @@ jest.mock('redis', () => {
       const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
       return Array.from(store.keys()).filter(k => regex.test(k));
     }),
-    multi: jest.fn(function() { return mockMulti(this); }),
+    multi: jest.fn(function() { return mockMulti(); }),
     v4: {
       get: jest.fn(async (key) => store.get(key) || null),
       set: jest.fn(async (key, val) => { store.set(key, val); return 'OK'; }),

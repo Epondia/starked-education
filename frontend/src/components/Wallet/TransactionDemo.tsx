@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { useStellarWallet } from '../../context/WalletContext';
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { WalletNetwork } from '@creit.tech/stellar-wallets-kit';
-import { TESTNET_DETAILS, MAINNET_DETAILS } from '../../lib/stellar/wallets';
+import { WalletNetwork, TESTNET_DETAILS, MAINNET_DETAILS } from '../../lib/stellar/wallets';
 import { Send, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { SecurityWarning } from './SecurityWarning';

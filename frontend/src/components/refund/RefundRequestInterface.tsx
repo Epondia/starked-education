@@ -502,7 +502,7 @@ export function RefundRequestInterface({
                   <Label htmlFor="enrollment">Select Enrollment</Label>
                   <Select value={selectedEnrollment} onValueChange={setSelectedEnrollment}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Choose an enrollment to refund" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {/* This would be populated with user's enrollments */}
@@ -529,7 +529,7 @@ export function RefundRequestInterface({
                   <Label htmlFor="category">Refund Category</Label>
                   <Select value={refundCategory} onValueChange={setRefundCategory}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a category" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="change_of_mind">Change of Mind</SelectItem>

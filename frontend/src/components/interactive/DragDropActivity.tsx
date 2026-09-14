@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -76,7 +77,7 @@ const DragDropLearningActivity: React.FC<DragDropActivityProps> = ({
     setDroppedItems(initialDropped);
   }, [targets]);
 
-  const handleDragStart = (e: React.DragEvent, item: DragDropItem) => {
+  const handleDragStart = (e: PointerEvent | MouseEvent | TouchEvent, item: DragDropItem) => {
     setDraggedItem(item);
     setItemStartTimes(prev => new Map(prev.set(item.id, Date.now())));
     
@@ -280,7 +281,7 @@ const DragDropLearningActivity: React.FC<DragDropActivityProps> = ({
       }}
     >
       {item.image && (
-        <img src={item.image} alt={item.content} className="w-16 h-16 mx-auto mb-2 rounded" />
+        <Image src={item.image} alt={item.content} width={64} height={64} className="w-16 h-16 mx-auto mb-2 rounded object-cover" />
       )}
       <p className="text-center font-medium text-gray-800">{item.content}</p>
     </motion.div>

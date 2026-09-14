@@ -13,7 +13,11 @@ import express from 'express';
 import Joi from 'joi';
 import * as smartWalletController from '../controllers/smartWalletController';
 import { authenticateToken } from '../middleware/auth';
-import { validateRequestSchema, ValidationSchema } from '../middleware/validateRequestSchema';
+// validateRequestSchema is a dependency-free factory (no imports beyond
+// express types), so calling it at module-load time is safe under babel-jest's
+// CommonJS evaluation order. See middleware/validateRequestSchema.ts.
+import { validateRequestSchema } from '../middleware/validateRequestSchema';
+import type { ValidationSchema } from '../middleware/validateRequestSchema';
 
 const router = express.Router();
 

@@ -48,7 +48,9 @@ const mockCanvasContext = {
   setLineDash: jest.fn(),
 };
 
-HTMLCanvasElement.prototype.getContext = jest.fn(() => mockCanvasContext);
+HTMLCanvasElement.prototype.getContext = jest.fn(
+  () => mockCanvasContext
+) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 
 describe('Interactive Learning Components', () => {
   describe('VirtualLabSimulation', () => {

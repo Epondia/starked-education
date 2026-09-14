@@ -84,7 +84,6 @@ const swaggerDefinition = {
     { name: 'Events', description: 'Event logging and audit trail' },
     { name: 'RBAC', description: 'Role-based access control management' },
     { name: 'Collaboration', description: 'Collaboration room management' },
-    { name: 'Holographic', description: 'Holographic storage abstraction layer' },
     { name: 'ACO', description: 'Ant Colony Optimization for learning paths and resources' },
     { name: 'Federated Learning', description: 'Federated learning session and model management' },
     { name: 'Swarm Learning', description: 'Swarm intelligence-based learning coordination' },
@@ -4685,39 +4684,6 @@ const swaggerDefinition = {
           { name: 'agentId', in: 'path', required: true, schema: { type: 'string' } },
         ],
         responses: { '200': { description: 'Agent deleted' } },
-      },
-    },
-
-    // ════════════════════════════════════════════════
-    // Holographic Storage Endpoints
-    // ════════════════════════════════════════════════
-    '/api/v1/holographic/store': {
-      post: {
-        tags: ['Holographic'],
-        summary: 'Store data in holographic storage',
-        operationId: 'holographicStore',
-        security: [{ BearerAuth: [] }],
-        responses: { '201': { description: 'Data stored' } },
-      },
-    },
-    '/api/v1/holographic/retrieve/{id}': {
-      get: {
-        tags: ['Holographic'],
-        summary: 'Retrieve data from holographic storage',
-        operationId: 'holographicRetrieve',
-        security: [{ BearerAuth: [] }],
-        parameters: [
-          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
-        ],
-        responses: { '200': { description: 'Data retrieved' } },
-      },
-    },
-    '/api/v1/holographic/health': {
-      get: {
-        tags: ['Holographic'],
-        summary: 'Holographic storage health check',
-        operationId: 'holographicHealth',
-        responses: { '200': { description: 'Health status' } },
       },
     },
 

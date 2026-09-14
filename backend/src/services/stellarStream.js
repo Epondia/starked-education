@@ -4,15 +4,16 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
+const HORIZON_URL = process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/starked',
 });
 
-// Stellar Testnet server
-const server = new Server('https://horizon-testnet.stellar.org');
+const server = new Server(HORIZON_URL);
 
 const startStellarStream = () => {
-  console.log('Monitoring Stellar blockchain for new activities...');
+  console.log(`Monitoring Stellar blockchain on ${HORIZON_URL}...`);
 
   // Stream operations to detect credential issuances, course creations, etc.
   // In a real scenario, we'd filters by account or contract ID.

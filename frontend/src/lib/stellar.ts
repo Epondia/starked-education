@@ -5,7 +5,6 @@ import {
   Asset, 
   Keypair,
   Memo,
-  MemoText,
   Operation
 } from '@stellar/stellar-sdk';
 import { PaymentDetails, TransactionReceipt, WalletInfo } from '@/types/enrollment';
@@ -57,7 +56,7 @@ export class StellarTransactionService {
             amount: amount as any,
           })
         )
-        .addMemo(memo ? new MemoText(memo) : Memo.none())
+        .addMemo(memo ? Memo.text(memo) : Memo.none())
         .setTimeout(30)
         .build();
 

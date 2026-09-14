@@ -7,7 +7,18 @@ import express, { Router } from "express";
 import { paymentController } from "../controllers/PaymentController";
 import { authenticateToken, requireRole } from "../middleware/auth";
 import { UserRole } from "../models/User";
-import { validatePayment } from "../middleware/validation";
+import { validateRequestSchema } from "../middleware/validateRequestSchema";
+import {
+  validatePayment,
+  createStellarPaymentSchema,
+  submitStellarPaymentSchema,
+  processRefundSchema,
+  updatePaymentSettingsSchema,
+  validatePaymentParametersSchema,
+  convertCurrencySchema,
+  stellarWebhookSchema,
+  paymentGatewayWebhookSchema,
+} from "../middleware/validation";
 import { rateLimit } from "express-rate-limit";
 import { paymentLimiter } from "../middleware/rateLimiter";
 
@@ -46,6 +57,7 @@ router.post(
   "/stellar/create",
   authenticateToken,
   paymentLimiter,
+  validateRequestSchema(createStellarPaymentSchema),
   (req, res, next) => paymentController.createStellarPayment(req, res),
 );
 
@@ -58,6 +70,7 @@ router.post(
   "/stellar/submit",
   authenticateToken,
   paymentLimiter,
+  validateRequestSchema(submitStellarPaymentSchema),
   (req, res, next) => paymentController.submitStellarPayment(req, res),
 );
 
@@ -100,6 +113,7 @@ router.post(
   authenticateToken,
   requireRole([UserRole.ADMIN]),
   refundLimiter,
+  validateRequestSchema(processRefundSchema),
   (req, res, next) => paymentController.processRefund(req, res),
 );
 
@@ -130,6 +144,7 @@ router.put(
   "/settings",
   authenticateToken,
   requireRole([UserRole.ADMIN]),
+  validateRequestSchema(updatePaymentSettingsSchema),
   (req, res, next) => paymentController.updatePaymentSettings(req, res),
 );
 
@@ -148,6 +163,7 @@ router.get("/methods", (req, res, next) => paymentController.getSupportedPayment
 router.post(
   "/validate",
   authenticateToken,
+  validateRequestSchema(validatePaymentParametersSchema),
   (req, res, next) => paymentController.validatePaymentParameters(req, res),
 );
 
@@ -175,7 +191,12 @@ router.get("/exchange-rates", (req, res, next) => paymentController.getExchangeR
  * @desc Convert currency amount
  * @access Private
  */
-router.post("/convert", authenticateToken, (req, res, next) => paymentController.convertCurrency(req, res));
+router.post(
+  "/convert",
+  authenticateToken,
+  validateRequestSchema(convertCurrencySchema),
+  (req, res, next) => paymentController.convertCurrency(req, res),
+);
 
 /**
  * @route GET /api/payments/stellar/balance/:address
@@ -204,7 +225,11 @@ router.get(
  * @desc Handle Stellar webhook
  * @access Public
  */
-router.post("/webhook/stellar", (req, res, next) => paymentController.handleStellarWebhook(req, res));
+router.post(
+  "/webhook/stellar",
+  validateRequestSchema(stellarWebhookSchema),
+  (req, res, next) => paymentController.handleStellarWebhook(req, res),
+);
 
 /**
  * @route POST /api/payments/webhook/payment-gateway
@@ -213,6 +238,7 @@ router.post("/webhook/stellar", (req, res, next) => paymentController.handleStel
  */
 router.post(
   "/webhook/payment-gateway",
+  validateRequestSchema(paymentGatewayWebhookSchema),
   (req, res, next) => paymentController.handlePaymentGatewayWebhook(req, res),
 );
 

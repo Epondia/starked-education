@@ -62,7 +62,7 @@ class PerformanceReportingService {
 
     Object.entries(this.PERFORMANCE_SCORE_WEIGHTS).forEach(([metric, weight]) => {
       const value = metrics[metric as keyof PerformanceMetrics];
-      if (value !== undefined) {
+      if (typeof value === 'number') {
         const score = this.getMetricScore(metric as keyof PerformanceMetrics, value);
         totalScore += score * weight;
         totalWeight += weight;
@@ -73,7 +73,7 @@ class PerformanceReportingService {
   }
 
   private getMetricScore(metric: keyof PerformanceMetrics, value: number): number {
-    const thresholds = this.PERFORMANCE_THRESHOLDS[metric];
+    const thresholds = this.PERFORMANCE_THRESHOLDS[metric as keyof typeof this.PERFORMANCE_THRESHOLDS];
     
     if (value <= thresholds.excellent) return 100;
     if (value <= thresholds.good) return 80;

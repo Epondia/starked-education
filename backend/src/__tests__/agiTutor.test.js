@@ -1,6 +1,7 @@
 const request = require('supertest');
-const app = require('../src/index');
-const { AGITutorController } = require('../src/controllers/agiTutorController');
+const app = require('../index');
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const { AGITutorController } = require('../controllers/agiTutorController');
 
 describe('AGI Tutor API Tests', () => {
   let agiTutorController;
@@ -209,7 +210,7 @@ describe('AGI Tutor Service Integration Tests', () => {
   describe('Universal Knowledge Service', () => {
     it('should provide comprehensive knowledge graphs', async () => {
       // Test knowledge graph generation
-      const knowledgeService = require('../src/services/universalKnowledgeService');
+      const knowledgeService = require('../services/universalKnowledgeService');
       const service = new knowledgeService.UniversalKnowledgeService();
       
       const subjectKnowledge = await service.getSubjectKnowledge('mathematics', 'calculus');
@@ -219,7 +220,7 @@ describe('AGI Tutor Service Integration Tests', () => {
     });
 
     it('should find cross-domain connections', async () => {
-      const knowledgeService = require('../src/services/universalKnowledgeService');
+      const knowledgeService = require('../services/universalKnowledgeService');
       const service = new knowledgeService.UniversalKnowledgeService();
       
       const connections = await service.findConnections('mathematics', 'calculus');
@@ -229,7 +230,7 @@ describe('AGI Tutor Service Integration Tests', () => {
 
   describe('Student Adaptation Service', () => {
     it('should analyze student profiles and provide adaptations', async () => {
-      const adaptationService = require('../src/services/studentAdaptationService');
+      const adaptationService = require('../services/studentAdaptationService');
       const service = new adaptationService.StudentAdaptationService();
       
       const studentProfile = await service.analyzeStudent('test_student', {
@@ -245,7 +246,7 @@ describe('AGI Tutor Service Integration Tests', () => {
 
   describe('Emotional Intelligence Service', () => {
     it('should analyze emotional states and provide support', async () => {
-      const emotionalService = require('../src/services/emotionalIntelligenceService');
+      const emotionalService = require('../services/emotionalIntelligenceService');
       const service = new emotionalService.EmotionalIntelligenceService();
       
       const emotionalProfile = await service.analyzeEmotionalState('frustrated');
@@ -256,7 +257,7 @@ describe('AGI Tutor Service Integration Tests', () => {
 
   describe('Cross-Domain Integration Service', () => {
     it('should integrate knowledge across domains', async () => {
-      const integrationService = require('../src/services/crossDomainIntegrationService');
+      const integrationService = require('../services/crossDomainIntegrationService');
       const service = new integrationService.CrossDomainIntegrationService();
       
       const connections = await service.findConnections('mathematics', 'calculus');

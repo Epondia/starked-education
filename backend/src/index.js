@@ -1,7 +1,6 @@
-const { createServer } = require('http');
 const express = require('express');
-const cors = require('cors');
 const helmet = require('helmet');
+const { createServer } = require('http');
 const dotenv = require('dotenv');
 
 const { connectRedis } = require('./utils/redis');
@@ -14,10 +13,18 @@ const SecureRealtimeCommunication = require('./services/secureRealtimeCommunicat
 // Import circuit breaker registry
 const { circuitBreakerRegistry } = require('./utils/circuitBreaker');
 
-const transactionQueue = require('./services/transactionQueue');
+// Import timeout and circuit-breaker middleware (Issue #307)
+const { routeTimeout } = require('./middleware/timeout');
+const { circuitBreakerMiddleware, circuitBreakerStatusHandler } = require('./middleware/circuitBreakerMiddleware');
+
+const { transactionQueue } = require('./services/transactionQueue');
 const transactionProcessor = require('./workers/transactionProcessor');
 const transactionEvents = require('./events/transactionEvents');
 const emailWorker = require('./workers/emailWorker');
+
+// Event Indexer – polls Soroban for on-chain events and syncs them to PostgreSQL
+let eventIndexerInstance = null;
+const EVENT_INDEXER_ENABLED = process.env.EVENT_INDEXER_ENABLED === 'true';
 
 // Import security middleware
 const {
@@ -30,12 +37,22 @@ const {
 } = require('./middleware/security');
 const { globalLimiter } = require('./middleware/rateLimiter');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  contentSecurityPolicy,
+  cspViolationReporter
+} = require('./middleware/contentSecurityPolicy');
 
 // Import compression middleware
-const { compressionMiddleware } = require('./middleware/compression');
+const { compressionMiddleware, getCompressionStats } = require('./middleware/compression');
 
 // Import versioning middleware
 const { versionExtractor, createVersionedRouter, SUPPORTED_VERSIONS, DEFAULT_VERSION } = require('./middleware/versioning');
+
+// Import error handling middleware and response helpers
+const { errorHandler } = require('./middleware/errorHandler');
+const { createVersionedResponse } = require('./utils/schemas');
+const { ValidationError } = require('./utils/errors');
 
 // Load environment variables
 dotenv.config();
@@ -69,10 +86,10 @@ const courseRoutes = require('./routes/courses');
 const searchRoutes = require('./routes/search');
 const transactionRoutes = require('./routes/transactions');
 const notificationRoutes = resolveRoute(require('./routes/notificationRoutes'));
+const webhookRoutes = resolveRoute(require('./routes/webhookRoutes'));
 
 // Your branch routes
 const collaborationRoutes = resolveRoute(require('./routes/collaborationRoutes'));
-const holographicRoutes = resolveRoute(require('./routes/holographicRoutes'));
 let secureCommRoutes;
 try {
   secureCommRoutes = resolveRoute(require('./routes/secureCommRoutes'));
@@ -94,9 +111,8 @@ const agiTutorRoutes = resolveRoute(require('./routes/agiTutorRoutes'));
 // Analytics routes
 const analyticsRoutes = require('./routes/analytics');
 
-// Initialize Swagger UI
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./config/swagger');
+// Swagger documentation
+const { setupSwagger } = require('./docs/swagger');
 
 // Initialize Express app
 const app = express();
@@ -108,7 +124,17 @@ const collaborationService = initCollaborationService(server);
 const redis = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
   port: parseInt(process.env.REDIS_PORT || '6379'),
-  password: process.env.REDIS_PASSWORD
+  password: process.env.REDIS_PASSWORD,
+  // Queue commands until Redis reconnects instead of crashing the process
+  // after maxRetriesPerRequest (default 20) — the default throws an
+  // unhandled MaxRetriesPerRequestError on the first outage.
+  maxRetriesPerRequest: null
+});
+// Without this listener, a Redis outage emits an unhandled 'error' event and
+// takes down the whole API. Services that depend on Redis degrade gracefully
+// instead (they log and retry) — see backend/docs/RATE_LIMITING.md.
+redis.on('error', (err) => {
+  console.error('⚠️  Redis connection error:', err.message);
 });
 const secureCommService = new SecureRealtimeCommunication(websocketService.io, redis);
 
@@ -118,87 +144,99 @@ setSyncWebsocketEmitter((userId, event, data) => {
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(contentSecurityPolicy());
 
-// Response compression - early in pipeline to compress all outgoing responses
-app.use(compressionMiddleware());
-
+// CORS (issue #384): disabled unless ENABLE_CORS === 'true'; when enabled,
+// restricted to the CORS_ORIGINS allowlist with credentials.
+const { buildCorsMiddleware } = require('./middleware/cors');
+const corsMiddleware = buildCorsMiddleware();
+if (corsMiddleware) {
+  app.use(corsMiddleware);
+}
+app.post(
+  '/api/v1/security/csp-report',
+  express.json({
+    limit: '16kb',
+    type: ['application/csp-report', 'application/reports+json', 'application/json']
+  }),
+  cspViolationReporter
+);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Structured request/response logging middleware
 const requestLogger = require('./middleware/requestLogger');
+const auditLogger = require('./middleware/auditLogger');
 app.use(requestLogger);
-
-// Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  explorer: true,
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'StarkEd API Documentation',
-  swaggerOptions: {
-    persistAuthorization: true,
-    displayRequestDuration: true,
-    filter: true,
-  },
-}));
-
-// Serve raw OpenAPI spec as JSON
-app.get('/api-docs.json', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerSpec);
-});
+app.use(auditLogger);
 
 // Health check routes - mounted before auth middleware so load balancers can access without credentials
-const healthRoutes = require('./routes/health').default || require('./routes/health');
+const healthModule = require('./routes/health');
+const healthRoutes = healthModule.default || healthModule;
 app.use('/health', healthRoutes);
+
+// Prometheus metrics endpoint - internal-only (loopback or shared token), exposed
+// at the conventional /metrics path. Handler lives in routes/health.ts.
+app.use('/metrics', healthModule.metricsRouter);
 
 // Issue #17: Apply the global rate limit baseline AFTER /health so probes
 // bypass the limiter entirely (no Redis traffic from liveness/readiness checks).
 // Endpoint-specific limiters (loginLimiter, registerLimiter, paymentLimiter,
 // adminTierLimiter, etc.) take precedence over the global baseline.
+//
+// The app-level registration below covers every /api/v1 route (and /api/v2),
+// so the router-level registration was removed to avoid double-counting each
+// request against the same limiter (which halved the effective limit and
+// doubled Redis traffic).
 app.use(globalLimiter);
 
 // Apply API version extraction middleware globally
 app.use(versionExtractor);
 
+// ── Per-route timeouts & circuit breakers (Issue #307) ──────────
+// Timeout defaults (ms) – different endpoint classes get different limits.
+const TIMEOUTS = {
+  auth: parseInt(process.env.TIMEOUT_AUTH_MS) || 15000,       // auth should be fast
+  read: parseInt(process.env.TIMEOUT_READ_MS) || 30000,       // standard read
+  write: parseInt(process.env.TIMEOUT_WRITE_MS) || 30000,     // standard write
+  upload: parseInt(process.env.TIMEOUT_UPLOAD_MS) || 120000,  // file uploads
+  search: parseInt(process.env.TIMEOUT_SEARCH_MS) || 15000,   // search queries
+  realtime: parseInt(process.env.TIMEOUT_REALTIME_MS) || 10000, // collaborative/realtime
+  external: parseInt(process.env.TIMEOUT_EXTERNAL_MS) || 30000, // external service calls
+};
+
 // Create versioned routers
 const v1Router = createVersionedRouter('v1');
 
-// Apply baseline global rate limiting to ALL v1 API routes
-// This ensures every endpoint has at least baseline protection
-// Routes with more specific limiters (auth, transactions, etc.) will have both applied
-// See docs/RATE_LIMITING.md for complete rate limit tiers and configuration
-v1Router.use(globalLimiter);
-
 // ── v1 API Routes ──────────────────────────────────────────────
 // All existing routes are mounted under /api/v1/
-v1Router.use('/quizzes', quizRoutes);
-v1Router.use('/events', eventLoggerRoutes);
-v1Router.use('/sync', syncRoutes);
-v1Router.use('/auth', authRoutes);
-v1Router.use('/content', contentRoutes);
-v1Router.use('/courses', courseRoutes);
-v1Router.use('/search', searchRoutes);
-v1Router.use('/rbac', rbacRoutes);
-v1Router.use('/transactions', transactionRoutes);
-v1Router.use('/notifications', notificationRoutes);
-v1Router.use('/collaboration', collaborationRoutes);
-v1Router.use('/holographic', holographicRoutes);
-v1Router.use('/aco', acoRoutes);
-v1Router.use('/federated-learning', federatedLearningRoutes);
-v1Router.use('/swarm-learning', swarmLearningRoutes);
-v1Router.use('/smart-wallet', smartWalletRoutes);
-v1Router.use('/secure-comm', secureCommRoutes);
-v1Router.use('/agi-tutor', agiTutorRoutes);
-v1Router.use('/analytics', analyticsRoutes);
+v1Router.use('/quizzes', routeTimeout(TIMEOUTS.read, { label: 'quizzes' }), quizRoutes);
+v1Router.use('/events', routeTimeout(TIMEOUTS.write, { label: 'events' }), eventLoggerRoutes);
+v1Router.use('/sync', routeTimeout(TIMEOUTS.write, { label: 'sync' }), circuitBreakerMiddleware('redis', { failureThreshold: 3, timeoutWindow: 30000, halfOpenMaxRequests: 2 }), syncRoutes);
+v1Router.use('/auth', routeTimeout(TIMEOUTS.auth, { label: 'auth' }), authRoutes);
+v1Router.use('/content', routeTimeout(TIMEOUTS.write, { label: 'content' }), contentRoutes);
+v1Router.use('/courses', routeTimeout(TIMEOUTS.read, { label: 'courses' }), courseRoutes);
+v1Router.use('/search', routeTimeout(TIMEOUTS.search, { label: 'search' }), searchRoutes());
+v1Router.use('/rbac', routeTimeout(TIMEOUTS.read, { label: 'rbac' }), rbacRoutes);
+v1Router.use('/transactions', routeTimeout(TIMEOUTS.write, { label: 'transactions' }), circuitBreakerMiddleware('stellar', { failureThreshold: 3, timeoutWindow: 30000, halfOpenMaxRequests: 2 }), transactionRoutes);
+v1Router.use('/notifications', routeTimeout(TIMEOUTS.read, { label: 'notifications' }), notificationRoutes);
+v1Router.use('/webhooks', routeTimeout(TIMEOUTS.write, { label: 'webhooks' }), webhookRoutes);
+v1Router.use('/collaboration', routeTimeout(TIMEOUTS.realtime, { label: 'collaboration' }), collaborationRoutes);
+v1Router.use('/aco', routeTimeout(TIMEOUTS.external, { label: 'aco' }), acoRoutes);
+v1Router.use('/federated-learning', routeTimeout(TIMEOUTS.external, { label: 'federated-learning' }), federatedLearningRoutes);
+v1Router.use('/swarm-learning', routeTimeout(TIMEOUTS.external, { label: 'swarm-learning' }), swarmLearningRoutes);
+v1Router.use('/smart-wallet', routeTimeout(TIMEOUTS.write, { label: 'smart-wallet' }), circuitBreakerMiddleware('stellar', { failureThreshold: 3, timeoutWindow: 30000, halfOpenMaxRequests: 2 }), smartWalletRoutes);
+v1Router.use('/secure-comm', routeTimeout(TIMEOUTS.realtime, { label: 'secure-comm' }), secureCommRoutes);
+v1Router.use('/agi-tutor', routeTimeout(TIMEOUTS.read, { label: 'agi-tutor' }), agiTutorRoutes);
+v1Router.use('/analytics', routeTimeout(TIMEOUTS.read, { label: 'analytics' }), analyticsRoutes);
 
 // Autonomous Agents routes
 const autonomousAgentsRoutes = require('./routes/autonomousAgents');
-v1Router.use('/autonomous-agents', autonomousAgentsRoutes);
+v1Router.use('/autonomous-agents', routeTimeout(TIMEOUTS.external, { label: 'autonomous-agents' }), autonomousAgentsRoutes);
 
 // Gamification routes
 const gamificationRoutes = require('./routes/gamification');
-v1Router.use('/gamification', gamificationRoutes);
+v1Router.use('/gamification', routeTimeout(TIMEOUTS.read, { label: 'gamification' }), gamificationRoutes);
 
 // Bridge routes — module not yet implemented, use empty router
 console.warn('Warning: Bridge routes module not found, using empty router');
@@ -207,27 +245,66 @@ v1Router.use('/bridge', bridgeRoutes);
 
 // Time-Locked Credential routes
 const timeLockCredentialsRoutes = resolveRoute(require('./routes/timeLockCredentials'));
-v1Router.use('/time-lock', timeLockCredentialsRoutes);
+v1Router.use('/time-lock', routeTimeout(TIMEOUTS.write, { label: 'time-lock' }), timeLockCredentialsRoutes);
 
 // VRF (Verifiable Random Function) routes
 const vrfRoutes = resolveRoute(require('./routes/vrf'));
-v1Router.use('/vrf', vrfRoutes);
+v1Router.use('/vrf', routeTimeout(TIMEOUTS.write, { label: 'vrf' }), vrfRoutes);
 
 // Real-time Translation routes
 const translationRoutes = resolveRoute(require('./routes/translation'));
-v1Router.use('/translate', translationRoutes);
+v1Router.use('/translate', routeTimeout(TIMEOUTS.read, { label: 'translate' }), translationRoutes);
 
 // Cross-Protocol Bridge routes
 const crossProtocolBridgeRoutes = resolveRoute(require('./routes/crossProtocolBridge'));
-v1Router.use('/cross-protocol-bridge', crossProtocolBridgeRoutes);
+v1Router.use('/cross-protocol-bridge', routeTimeout(TIMEOUTS.external, { label: 'cross-protocol-bridge' }), crossProtocolBridgeRoutes);
 
 // Admin dashboard routes
 const adminRoutes = require('./routes/admin');
-v1Router.use('/admin', adminRoutes);
+v1Router.use('/admin', routeTimeout(TIMEOUTS.write, { label: 'admin' }), adminRoutes);
 
-// Admin jobs monitoring dashboard (email queue + worker stats for #178)
-const adminJobsRoutes = resolveRoute(require('./routes/admin/jobs'));
-v1Router.use('/admin/jobs', adminJobsRoutes);
+// Event Indexer admin routes (start / stop / status)
+// Circuit breaker status endpoint (admin-only, registered before indexer routes)
+v1Router.get('/circuit-breakers', require('./middleware/auth').requireAdmin, circuitBreakerStatusHandler);
+
+const indexerAdminRouter = require('express').Router();
+
+indexerAdminRouter.get('/status', (req, res) => {
+  try {
+    const { getIndexerStatus } = require('./services/eventIndexer');
+    res.json({ eventIndexer: getIndexerStatus() });
+  } catch (err) {
+    res.json({ eventIndexer: { status: 'stopped', error: err.message } });
+  }
+});
+
+indexerAdminRouter.post('/start', async (req, res) => {
+  try {
+    if (!eventIndexerInstance) {
+      return res.status(400).json({ error: 'Indexer not initialized' });
+    }
+    await eventIndexerInstance.start();
+    const { getIndexerStatus } = require('./services/eventIndexer');
+    res.json({ message: 'Indexer started', status: getIndexerStatus() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+indexerAdminRouter.post('/stop', async (req, res) => {
+  try {
+    if (!eventIndexerInstance) {
+      return res.status(400).json({ error: 'Indexer not initialized' });
+    }
+    await eventIndexerInstance.stop();
+    const { getIndexerStatus } = require('./services/eventIndexer');
+    res.json({ message: 'Indexer stopped', status: getIndexerStatus() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+v1Router.use('/indexer', require('./middleware/auth').requireAdmin, indexerAdminRouter);
 
 // Mount v1 router at /api/v1
 app.use('/api/v1', v1Router);
@@ -235,12 +312,6 @@ app.use('/api/v1', v1Router);
 // Mount v2 router (empty — ready for future endpoints)
 const v2Router = createVersionedRouter('v2');
 app.use('/api/v2', v2Router);
-
-// Schemas helper for versioned responses
-const { createVersionedResponse } = require('./utils/schemas');
-const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
-const { ValidationError } = require('./utils/errors');
-const { getCompressionStats } = require('./middleware/compression');
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -251,6 +322,9 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Swagger API documentation
+setupSwagger(app, DEFAULT_VERSION);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -272,10 +346,6 @@ app.use('/api/v:version*', (req, res, next) => {
     next();
   }
 });
-
-// Global error handler
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', { error: err.message, stack: err.stack, requestId: req.requestId });
 
 // Global error handler - must be last
 app.use(errorHandler);
@@ -308,6 +378,27 @@ async function startServer() {
     await transactionEvents.startListening();
     emailWorker.getEmailWorker().start();
 
+    // Start the event indexer if enabled
+    if (EVENT_INDEXER_ENABLED) {
+      try {
+        const { Pool } = require('pg');
+        const { getEventIndexer } = require('./services/eventIndexer');
+        const indexerPool = new Pool({
+          connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/starked',
+          max: 5, // dedicated small pool for the indexer
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 5000,
+        });
+        eventIndexerInstance = getEventIndexer(indexerPool);
+        await eventIndexerInstance.start();
+        console.log('🔗 Event Indexer started – polling Soroban for on-chain events');
+      } catch (indexerErr) {
+        console.error('⚠️  Event Indexer failed to start (non-fatal):', indexerErr.message);
+      }
+    } else {
+      console.log('ℹ️  Event Indexer disabled. Set EVENT_INDEXER_ENABLED=true to enable.');
+    }
+
     server.listen(PORT, () => {
       console.log(`🚀 StarkEd Education Backend running on port ${PORT}`);
       console.log(`📚 Quiz Management API available at /api/v1/quizzes`);
@@ -316,11 +407,12 @@ async function startServer() {
       console.log(`📁 Content Management API available at /api/v1/content`);
       console.log(`💰 Transaction Queue API available at /api/v1/transactions`);
       console.log(`🤝 Collaboration API available at /api/v1/collaboration`);
-      console.log(`🔮 Holographic Storage API available at /api/v1/holographic`);
       console.log(`🧠 ACO API available at /api/v1/aco`);
       console.log(`🌐 Federated Learning API available at /api/v1/federated-learning`);
       console.log(`🧠 AGI Tutor API available at /api/v1/agi-tutor`);
+      console.log(`🔗 Webhook API available at /api/v1/webhooks`);
       console.log(`🔐 Quantum-Resistant Secure Communication API available at /api/v1/secure-comm`);
+      console.log(`🔗 Event Indexer API    available at /api/v1/indexer (admin-only)`);
       console.log(`🏥 Health check available at /api/health`);
       console.log(`✅ Transaction Queue System initialized successfully`);
     });
@@ -332,7 +424,14 @@ async function startServer() {
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
-  emailWorker.getEmailWorker().stop();
+  if (eventIndexerInstance) {
+    try {
+      await eventIndexerInstance.stop();
+      console.log('Event Indexer stopped cleanly.');
+    } catch (err) {
+      console.error('Error stopping event indexer:', err.message);
+    }
+  }
   await transactionQueue.stopProcessing();
   await transactionProcessor.stop();
   await transactionEvents.stopListening();

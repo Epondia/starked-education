@@ -60,6 +60,11 @@ export interface ClassroomState {
     screenSharingEnabled: boolean;
     recordingEnabled: boolean;
     liveStreamingEnabled: boolean;
+    mediaServer: {
+      transport: string;
+      provider: string;
+      region: string;
+    };
   };
   participants: CollaborationParticipant[];
   messages: ClassroomMessage[];
@@ -470,7 +475,14 @@ export function useCollaborationSession() {
   const syncDocument = useCallback(async (payload: { documentId: string; title: string; userId: string; version: number; content: Record<string, unknown>; strategy?: string }) => {
     if (!workspace?.id) return;
 
-    const document = await requestJson(`/api/collaboration/workspaces/${workspace.id}/documents/${payload.documentId}/sync`, {
+    const document = await requestJson<{
+      id: string;
+      title: string;
+      version: number;
+      updatedAt: string;
+      updatedBy: string;
+      content: Record<string, unknown>;
+    }>(`/api/collaboration/workspaces/${workspace.id}/documents/${payload.documentId}/sync`, {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload)
@@ -493,7 +505,7 @@ export function useCollaborationSession() {
   const addWorkspaceNote = useCallback(async (payload: { userId: string; userName: string; body: string }) => {
     if (!workspace?.id) return;
 
-    const note = await requestJson(`/api/collaboration/workspaces/${workspace.id}/notes`, {
+    const note = await requestJson<{ id: string; userId: string; userName: string; body: string; createdAt: string }>(`/api/collaboration/workspaces/${workspace.id}/notes`, {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload)
@@ -505,7 +517,7 @@ export function useCollaborationSession() {
   const addDiscussionPost = useCallback(async (payload: { userId: string; authorName: string; body: string }) => {
     if (!workspace?.id) return;
 
-    const post = await requestJson(`/api/collaboration/workspaces/${workspace.id}/discussions`, {
+    const post = await requestJson<{ id: string; userId: string; authorName: string; body: string; createdAt: string }>(`/api/collaboration/workspaces/${workspace.id}/discussions`, {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(payload)

@@ -8,6 +8,7 @@ import {
   Bar,
   PieChart,
   Pie,
+  PieLabelRenderProps,
   Cell,
   XAxis,
   YAxis,
@@ -47,6 +48,7 @@ import {
 
 interface AnalyticsData {
   timeframe: string;
+  analytics: any;
   metrics: any;
   insights: any[];
   recommendations: any[];
@@ -77,6 +79,12 @@ interface RevenueMetrics {
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
+
+// Module-level helper to avoid recharts v3 PieLabelRenderProps Formatter overload ambiguity
+const renderPiePercentLabel = ({ name, percent }: PieLabelRenderProps) => {
+  const pct = percent ?? 0;
+  return `${name ? name + ' ' : ''}${(pct * 100).toFixed(0)}%`;
+};
 
 export default function PerformanceAnalyticsDashboard() {
   const [selectedTimeframe, setSelectedTimeframe] = useState('month');
@@ -350,7 +358,7 @@ export default function PerformanceAnalyticsDashboard() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={renderPiePercentLabel}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
@@ -469,7 +477,7 @@ export default function PerformanceAnalyticsDashboard() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={renderPiePercentLabel}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"

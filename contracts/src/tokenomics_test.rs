@@ -1,6 +1,11 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
+extern crate std;
+
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env, String,
+};
 
 use crate::tokenomics::{TokenomicsContract, TokenomicsContractClient};
 use crate::user_profile::{UserProfileContract, UserProfileContractClient};
@@ -27,9 +32,9 @@ fn setup_with_achievements<'a>(
     profile.initialize();
 
     let username = String::from_str(env, "staker");
-    tokenomics.initialize(&admin, &profile_id);
-
     env.mock_all_auths();
+
+    tokenomics.initialize(&admin, &profile_id);
 
     profile.create_or_update_profile(
         &staker,
@@ -50,13 +55,14 @@ fn setup_with_achievements<'a>(
 }
 
 fn verify_achievements(
-    env: &Env,
+    _env: &Env,
     profile: &UserProfileContractClient,
     admin: &Address,
     user: &Address,
 ) {
     let user_achievements = profile.get_user_achievements(user);
-    for achievement in user_achievements.iter() {
+    let achievements: std::vec::Vec<_> = user_achievements.iter().collect();
+    for achievement in achievements {
         if (achievement.timestamp & 1u64) == 0 {
             profile.verify_achievement(admin, &achievement.id);
         }
@@ -136,10 +142,10 @@ fn test_staking_with_no_profile_multiplier() {
     let staker = Address::generate(&env);
 
     profile.initialize();
+    env.mock_all_auths();
     tokenomics.initialize(&admin, &profile_id);
 
     // Mint some tokens for the staker first
-    env.mock_all_auths();
     tokenomics.mint_reward(&staker, &1000);
 
     // Stake without any profile - should still work with base multiplier
@@ -163,8 +169,8 @@ fn test_mint_reward() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    tokenomics.initialize(&admin, &profile_id);
     env.mock_all_auths();
+    tokenomics.initialize(&admin, &profile_id);
 
     tokenomics.mint_reward(&user, &1000);
     assert_eq!(tokenomics.balance_of(&user, &0), 1000);
@@ -176,15 +182,18 @@ fn test_mint_reward() {
 fn test_stake_tokens_insufficient_balance() {
     let env = Env::default();
     let tokenomics_id = env.register_contract(None, TokenomicsContract);
-    let tokenomics = TokenomicsContractClient::new(&env, &tokenomics_id);
     let profile_id = env.register_contract(None, UserProfileContract);
     let admin = Address::generate(&env);
     let staker = Address::generate(&env);
 
-    tokenomics.initialize(&admin, &profile_id);
     env.mock_all_auths();
-
-    tokenomics.stake_tokens(&staker, &1000, &604800);
+    // Call the contract functions directly (like the governance tests) — panics
+    // raised through the client (invoke_contract) abort the test process on this
+    // soroban-sdk 20.x host, while direct calls unwind and are catchable.
+    env.as_contract(&tokenomics_id, || {
+        TokenomicsContract::initialize(env.clone(), admin, profile_id);
+        TokenomicsContract::stake_tokens(env.clone(), staker, 1000, 604800);
+    });
 }
 
 #[test]
@@ -197,16 +206,22 @@ fn test_unstake_and_claim_early_panic() {
     let admin = Address::generate(&env);
     let staker = Address::generate(&env);
 
-    let profile = UserProfileContractClient::new(&env, &profile_id);
-    profile.initialize();
+    env.as_contract(&profile_id, || {
+        UserProfileContract::initialize(env.clone());
+    });
 
-    tokenomics.initialize(&admin, &profile_id);
     env.mock_all_auths();
-
+    tokenomics.initialize(&admin, &profile_id);
     tokenomics.mint_reward(&staker, &1000);
+    // Setup via the client (each call is its own invocation/auth frame). Only the
+    // panicking call is made directly: panics raised through the client abort the
+    // test process on this soroban-sdk 20.x host, while direct calls unwind and
+    // are catchable by should_panic.
     tokenomics.stake_tokens(&staker, &500, &604800);
 
-    tokenomics.unstake_and_claim(&staker);
+    env.as_contract(&tokenomics_id, || {
+        TokenomicsContract::unstake_and_claim(env.clone(), staker);
+    });
 }
 
 #[test]
@@ -221,8 +236,8 @@ fn test_stake_zero_amount() {
     let profile = UserProfileContractClient::new(&env, &profile_id);
     profile.initialize();
 
-    tokenomics.initialize(&admin, &profile_id);
     env.mock_all_auths();
+    tokenomics.initialize(&admin, &profile_id);
 
     tokenomics.mint_reward(&staker, &1000);
     tokenomics.stake_tokens(&staker, &0, &604800);
@@ -244,8 +259,8 @@ fn test_proposals_and_voting() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    tokenomics.initialize(&admin, &profile_id);
     env.mock_all_auths();
+    tokenomics.initialize(&admin, &profile_id);
 
     let proposal_id = tokenomics.create_proposal(
         &user,
@@ -273,8 +288,8 @@ fn test_vote_insufficient_gov() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    tokenomics.initialize(&admin, &profile_id);
     env.mock_all_auths();
+    tokenomics.initialize(&admin, &profile_id);
 
     let proposal_id = tokenomics.create_proposal(
         &user,
@@ -286,7 +301,12 @@ fn test_vote_insufficient_gov() {
     tokenomics.mint_gov_for_test(&user, &10); // user has 10
 
     // cost = 5^2 = 25, user only has 10
-    tokenomics.vote_on_proposal(&user, &proposal_id, &5, &true);
+    // Setup via the client (each call is its own invocation/auth frame); the
+    // panicking call is made directly because client-raised panics abort the test
+    // process on this soroban-sdk 20.x host while direct calls unwind cleanly.
+    env.as_contract(&tokenomics_id, || {
+        TokenomicsContract::vote_on_proposal(env.clone(), user, proposal_id, 5, true);
+    });
 }
 
 #[test]
@@ -298,8 +318,8 @@ fn test_scholarship_functions() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    tokenomics.initialize(&admin, &profile_id);
     env.mock_all_auths();
+    tokenomics.initialize(&admin, &profile_id);
 
     tokenomics.disburse_scholarship(&user, &5000);
     assert_eq!(tokenomics.balance_of(&user, &0), 5000);
@@ -314,14 +334,17 @@ fn test_scholarship_functions() {
 fn test_return_scholarship_funds_panic() {
     let env = Env::default();
     let tokenomics_id = env.register_contract(None, TokenomicsContract);
-    let tokenomics = TokenomicsContractClient::new(&env, &tokenomics_id);
     let profile_id = env.register_contract(None, UserProfileContract);
     let admin = Address::generate(&env);
 
-    tokenomics.initialize(&admin, &profile_id);
     env.mock_all_auths();
-
-    tokenomics.return_scholarship_funds(&1000);
+    // Call the contract functions directly (like the governance tests) — panics
+    // raised through the client (invoke_contract) abort the test process on this
+    // soroban-sdk 20.x host, while direct calls unwind and are catchable.
+    env.as_contract(&tokenomics_id, || {
+        TokenomicsContract::initialize(env.clone(), admin, profile_id);
+        TokenomicsContract::return_scholarship_funds(env.clone(), 1000);
+    });
 }
 
 #[test]
@@ -336,8 +359,8 @@ fn test_multi_cycle_reward_distribution() {
     let staker = Address::generate(&env);
 
     profile.initialize();
-    tokenomics.initialize(&admin, &profile_id);
     env.mock_all_auths();
+    tokenomics.initialize(&admin, &profile_id);
 
     // Cycle 1: mint and stake
     tokenomics.mint_reward(&staker, &10000);

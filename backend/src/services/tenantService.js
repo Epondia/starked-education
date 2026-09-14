@@ -429,6 +429,93 @@ class TenantService {
       throw new Error(`Failed to delete tenant: ${error.message}`);
     }
   }
+
+  /**
+   * Scoping helper: Adds tenantId filter to a query object
+   * Ensures queries are always scoped to a specific tenant
+   */
+  scopeQueryToTenant(query, tenantId) {
+    if (!tenantId) {
+      console.warn('[TenantService] scopeQueryToTenant called without tenantId');
+      return query;
+    }
+    return { ...query, tenantId };
+  }
+
+  /**
+   * Scoping helper: Validates that a resource belongs to the specified tenant
+   * Throws an error if the resource belongs to a different tenant
+   */
+  async validateResourceOwnership(resourceId, tenantId, Model) {
+    const resource = await Model.findById(resourceId);
+    if (!resource) {
+      throw new Error('Resource not found');
+    }
+    if (resource.tenantId && resource.tenantId.toString() !== tenantId.toString()) {
+      throw new Error('Resource does not belong to this tenant');
+    }
+    return resource;
+  }
+
+  /**
+   * Scoping helper: Creates a tenant-scoped aggregation pipeline
+   * Automatically adds tenant match stage to the beginning of the pipeline
+   */
+  scopeAggregationToTenant(pipeline, tenantId) {
+    if (!tenantId) {
+      return pipeline;
+    }
+    // Check if first stage is already a $match with tenantId
+    if (pipeline.length > 0 && pipeline[0].$match && pipeline[0].$match.tenantId) {
+      return pipeline;
+    }
+    // Prepend tenant match stage
+    return [{ $match: { tenantId } }, ...pipeline];
+  }
+
+  /**
+   * Scoping helper: Ensures a tenantId is valid and active
+   * Used to validate tenant context before operations
+   */
+  async validateTenantContext(tenantId) {
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      throw new Error('Tenant not found');
+    }
+    if (!tenant.isActive) {
+      throw new Error('Tenant is not active');
+    }
+    return tenant;
+  }
+
+  /**
+   * Scoping helper: Filters an array of resources by tenantId
+   * Useful for in-memory filtering after database queries
+   */
+  filterByTenant(resources, tenantId) {
+    if (!tenantId) {
+      return resources;
+    }
+    return resources.filter(resource => 
+      resource.tenantId && resource.tenantId.toString() === tenantId.toString()
+    );
+  }
+
+  /**
+   * Scoping helper: Checks if a user can access a resource across tenants
+   * Returns true only if user has super_admin role and explicit override
+   */
+  canUserAccessCrossTenant(user, resourceTenantId, userTenantId) {
+    // Same tenant access is always allowed
+    if (resourceTenantId.toString() === userTenantId.toString()) {
+      return true;
+    }
+    // Cross-tenant access only for super_admin with explicit override
+    if (user.roles && user.roles.includes('super_admin')) {
+      return true;
+    }
+    return false;
+  }
 }
 
 module.exports = new TenantService();

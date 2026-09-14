@@ -152,8 +152,8 @@ export interface DiscoveryFilters {
   languages: string[];
   tags: string[];
   minRating: number;
-  maxPrice: number;
-  maxDuration: number;
+  maxPrice?: number;
+  maxDuration?: number;
   freeOnly: boolean;
   sortBy: SortOption;
   view: ViewMode;

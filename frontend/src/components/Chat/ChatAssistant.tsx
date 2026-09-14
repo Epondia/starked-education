@@ -7,6 +7,7 @@ import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { TypingIndicator } from './TypingIndicator';
 import { ChatSettings } from './ChatSettings';
+import { CourseMediaPlayer } from './CourseMediaPlayer';
 import { useChatStore } from '@/store/chatStore';
 import { useCourseStore } from '@/store/courseStore';
 
@@ -70,6 +71,10 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
     getChatHistory,
     clearHistory 
   } = useChatStore();
+
+  // Surface the course's first video lesson in the chat panel so playback
+  // resumes where the learner left off.
+  const courseMedia = currentCourse?.materials?.find((material) => material.type === 'video');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -254,6 +259,18 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
         />
       )}
 
+      {/* Course Media Player */}
+      {courseMedia && (
+        <div className="p-4 pb-0">
+          <CourseMediaPlayer
+            src={courseMedia.url}
+            title={courseMedia.title}
+            contentId={courseMedia.url}
+            courseId={courseId || currentCourse?.id}
+          />
+        </div>
+      )}
+
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
@@ -290,7 +307,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
           value={inputValue}
           onChange={setInputValue}
           onSend={handleSendMessage}
-          onKeyPress={handleKeyPress}
+          onKeyDown={handleKeyPress}
           disabled={!isConnected || isTyping}
           placeholder={
             isListening 

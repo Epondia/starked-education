@@ -5,6 +5,7 @@
 
 'use client';
 
+import Image from 'next/image';
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -285,11 +286,15 @@ export function ProgressDashboard({
               <Card key={enrollment.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-4 sm:p-6">
                   <div className="flex flex-col sm:flex-row gap-4">
-                    <img
-                      src={enrollment.course.thumbnail}
-                      alt={enrollment.course.title}
-                      className="w-full sm:w-20 h-32 sm:h-20 object-cover rounded-lg"
-                    />
+                    <div className="relative w-full sm:w-20 h-32 sm:h-20 overflow-hidden rounded-lg">
+                      <Image
+                        src={enrollment.course.thumbnail}
+                        alt={enrollment.course.title}
+                        fill
+                        sizes="(min-width: 640px) 80px, 100vw"
+                        className="object-cover"
+                      />
+                    </div>
                     
                     <div className="flex-1 space-y-4">
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">

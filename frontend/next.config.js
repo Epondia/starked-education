@@ -194,9 +194,7 @@ const withPWA = require('@ducanh2912/next-pwa').default({
 });
 
 const nextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  output: 'standalone',
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -206,7 +204,7 @@ const nextConfig = {
   },
   i18n: {
     ...i18n,
-    localeDetection: true,
+    localeDetection: false,
   },
   async rewrites() {
     return [
@@ -216,23 +214,70 @@ const nextConfig = {
       },
     ];
   },
-  // Performance monitoring configuration
+  // Performance monitoring and code splitting configuration
   webpack: (config, { isServer }) => {
-  // Performance optimizations
     // Stub native-only modules that can't run in browser/build
     config.resolve.alias = {
       ...config.resolve.alias,
       brainflow: false,
     };
 
+    // Code splitting optimization for heavy libraries
+    if (!isServer) {
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          ...config.optimization.splitChunks,
+          chunks: 'all',
+          maxInitialRequests: 25,
+          minSize: 20000,
+          cacheGroups: {
+            ...config.optimization?.splitChunks?.cacheGroups,
+            three: {
+              test: /[\\/]node_modules[\\/](three|@react-three)[\\/]/,
+              name: 'three-vendor',
+              priority: 30,
+              reuseExistingChunk: true,
+            },
+            stellar: {
+              test: /[\\/]node_modules[\\/](@stellar|@creit.tech|ethers|viem|wagmi|connectkit)[\\/]/,
+              name: 'crypto-vendor',
+              priority: 25,
+              reuseExistingChunk: true,
+            },
+            charts: {
+              test: /[\\/]node_modules[\\/](recharts|d3)[\\/]/,
+              name: 'charts-vendor',
+              priority: 20,
+              reuseExistingChunk: true,
+            },
+            editor: {
+              test: /[\\/]node_modules[\\/](@monaco-editor|yjs|y-monaco|y-websocket)[\\/]/,
+              name: 'editor-vendor',
+              priority: 20,
+              reuseExistingChunk: true,
+            },
+          },
+        },
+      };
+    }
+
     return config;
   },
   // Enable compression
   compress: true,
-  // Enable image optimization
   images: {
-    domains: ['localhost'],
     formats: ['image/webp', 'image/avif'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+      {
+        protocol: 'http',
+        hostname: '**',
+      },
+    ],
   },
   // Performance headers
   async headers() {

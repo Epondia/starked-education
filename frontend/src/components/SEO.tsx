@@ -3,6 +3,11 @@
 import React from 'react';
 import { generateCourseJsonLd, generateCredentialJsonLd, type CourseJsonLdInput, type CredentialJsonLdInput } from '@/lib/seo';
 
+function serializeJsonLd(value: Record<string, unknown>): string {
+  // Prevent user-controlled schema fields from closing the script element.
+  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+}
+
 /**
  * Renders a JSON-LD structured data script tag for a Course.
  *
@@ -20,7 +25,7 @@ export function CourseJsonLd({ data }: { data: CourseJsonLdInput }) {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
     />
   );
 }
@@ -42,7 +47,7 @@ export function CredentialJsonLd({ data }: { data: CredentialJsonLdInput }) {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
     />
   );
 }
@@ -66,7 +71,7 @@ export function OrganizationJsonLd() {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
     />
   );
 }

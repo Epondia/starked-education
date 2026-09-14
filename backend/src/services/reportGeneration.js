@@ -1,752 +1,253 @@
-const _ = require('lodash');
-const moment = require('moment');
-const fs = require('fs').promises;
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+/**
+ * Report Generation Service for Plagiarism Detection
+ * Generates structured plagiarism reports in various formats (JSON, CSV, HTML)
+ */
 
-class ReportGenerationService {
-  constructor() {
-    this.reportTemplates = {
-      studentProgress: 'student_progress_template',
-      instructorPerformance: 'instructor_performance_template',
-      platformAnalytics: 'platform_analytics_template',
-      customAnalytics: 'custom_analytics_template'
-    };
+const crypto = require('crypto');
 
-    this.exportFormats = {
-      pdf: 'application/pdf',
-      excel: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      csv: 'text/csv',
-      json: 'application/json',
-      html: 'text/html'
-    };
+const ReportFormat = {
+  JSON: 'json',
+  CSV: 'csv',
+  HTML: 'html',
+};
 
-    this.reportCache = new Map();
-    this.cacheTimeout = 30 * 60 * 1000; // 30 minutes
-  }
-
-  async generateReport(reportType, data, options = {}) {
-    try {
-      const {
-        format = 'pdf',
-        template = null,
-        filters = {},
-        customFields = [],
-        includeCharts = true,
-        includeRawData = false,
-        schedule = null
-      } = options;
-
-      // Validate input
-      if (!this.reportTemplates[reportType] && !template) {
-        throw new Error('Invalid report type or template not provided');
-      }
-
-      // Generate report content
-      const reportContent = await this.generateReportContent(reportType, data, {
-        filters,
-        customFields,
-        includeCharts,
-        includeRawData
-      });
-
-      // Apply template
-      const formattedReport = await this.applyTemplate(reportContent, template || this.reportTemplates[reportType]);
-
-      // Export to requested format
-      const exportedReport = await this.exportReport(formattedReport, format, {
-        includeCharts,
-        filename: this.generateFilename(reportType, format)
-      });
-
-      // Cache the report
-      const reportId = this.cacheReport(exportedReport, reportType, data, options);
-
-      return {
-        success: true,
-        reportId,
-        reportType,
-        format,
-        downloadUrl: exportedReport.downloadUrl,
-        filename: exportedReport.filename,
-        size: exportedReport.size,
-        generatedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + this.cacheTimeout).toISOString()
-      };
-
-    } catch (error) {
-      console.error('Error generating report:', error);
-      throw new Error(`Failed to generate report: ${error.message}`);
+function generateReport(reportId, cache, format = ReportFormat.JSON) {
+  let cacheEntry = null;
+  for (const entry of cache.values()) {
+    if ((entry.result && entry.result.reportId === reportId) || entry.key === reportId) {
+      cacheEntry = entry;
+      break;
     }
   }
 
-  async generateReportContent(reportType, data, options = {}) {
-    const { filters, customFields, includeCharts, includeRawData } = options;
-
-    const content = {
-      metadata: {
-        reportType,
-        generatedAt: new Date().toISOString(),
-        dataRange: this.determineDataRange(data),
-        filters,
-        version: '1.0'
-      },
-      summary: this.generateSummary(data, reportType),
-      sections: [],
-      charts: includeCharts ? await this.generateCharts(data, reportType) : [],
-      rawData: includeRawData ? this.sanitizeRawData(data) : null
-    };
-
-    // Generate sections based on report type
-    switch (reportType) {
-      case 'studentProgress':
-        content.sections = this.generateStudentProgressSections(data);
-        break;
-      case 'instructorPerformance':
-        content.sections = this.generateInstructorPerformanceSections(data);
-        break;
-      case 'platformAnalytics':
-        content.sections = this.generatePlatformAnalyticsSections(data);
-        break;
-      case 'customAnalytics':
-        content.sections = this.generateCustomAnalyticsSections(data, customFields);
-        break;
-      default:
-        content.sections = this.generateGenericSections(data);
-    }
-
-    // Add custom fields
-    if (customFields.length > 0) {
-      content.sections.push(this.generateCustomFieldsSection(customFields, data));
-    }
-
-    return content;
+  if (!cacheEntry) {
+    throw new Error(`Report with ID ${reportId} not found`);
   }
 
-  generateSummary(data, reportType) {
-    const summary = {
-      title: this.getReportTitle(reportType),
-      overview: {},
-      keyMetrics: [],
-      insights: [],
-      recommendations: []
-    };
+  const result = cacheEntry.result;
 
-    switch (reportType) {
-      case 'studentProgress':
-        summary.overview = this.generateStudentProgressSummary(data);
-        summary.keyMetrics = this.getStudentProgressKeyMetrics(data);
-        break;
-      case 'instructorPerformance':
-        summary.overview = this.generateInstructorPerformanceSummary(data);
-        summary.keyMetrics = this.getInstructorPerformanceKeyMetrics(data);
-        break;
-      case 'platformAnalytics':
-        summary.overview = this.generatePlatformAnalyticsSummary(data);
-        summary.keyMetrics = this.getPlatformAnalyticsKeyMetrics(data);
-        break;
-      default:
-        summary.overview = this.generateGenericSummary(data);
-        summary.keyMetrics = this.getGenericKeyMetrics(data);
-    }
-
-    // Generate insights and recommendations
-    summary.insights = this.generateInsights(data, reportType);
-    summary.recommendations = this.generateRecommendations(data, reportType);
-
-    return summary;
+  switch (format) {
+    case ReportFormat.JSON:
+      return generateJsonReport(result);
+    case ReportFormat.CSV:
+      return generateCsvReport(result);
+    case ReportFormat.HTML:
+      return generateHtmlReport(result);
+    default:
+      throw new Error(`Unsupported report format: ${format}`);
   }
-
-  generateStudentProgressSections(data) {
-    const sections = [];
-
-    // Progress Overview
-    sections.push({
-      title: 'Progress Overview',
-      type: 'overview',
-      content: {
-        overallProgress: data.overview?.overallProgress || 0,
-        completedCourses: data.overview?.completedCourses || 0,
-        inProgressCourses: data.overview?.inProgressCourses || 0,
-        averageGrade: data.overview?.averageGrade || 0,
-        studyStreak: data.overview?.studyStreak || 0
-      },
-      charts: ['progressTrend', 'gradeDistribution']
-    });
-
-    // Performance Analysis
-    sections.push({
-      title: 'Performance Analysis',
-      type: 'performance',
-      content: {
-        overall: data.performance?.overall || {},
-        byCourse: data.performance?.byCourse || {},
-        trends: data.performance?.trends || {}
-      },
-      charts: ['performanceByCourse', 'performanceTrend']
-    });
-
-    // Engagement Metrics
-    sections.push({
-      title: 'Engagement Metrics',
-      type: 'engagement',
-      content: {
-        overall: data.engagement?.overall || {},
-        metrics: data.engagement?.metrics || {},
-        trends: data.engagement?.trends || {}
-      },
-      charts: ['engagementBreakdown', 'engagementTrend']
-    });
-
-    // Time Analysis
-    sections.push({
-      title: 'Time Analysis',
-      type: 'time',
-      content: {
-        total: data.timeSpent?.total || 0,
-        byCourse: data.timeSpent?.byCourse || {},
-        analysis: data.timeSpent?.analysis || {}
-      },
-      charts: ['timeDistribution', 'timeEfficiency']
-    });
-
-    // Skills Development
-    sections.push({
-      title: 'Skills Development',
-      type: 'skills',
-      content: {
-        currentSkills: data.skills?.currentSkills || [],
-        skillProgress: data.skills?.skillProgress || {},
-        recommendations: data.skills?.recommendations || {}
-      },
-      charts: ['skillMap', 'skillProgress']
-    });
-
-    return sections;
-  }
-
-  generateInstructorPerformanceSections(data) {
-    const sections = [];
-
-    // Teaching Overview
-    sections.push({
-      title: 'Teaching Overview',
-      type: 'overview',
-      content: {
-        totalCourses: data.overview?.totalCourses || 0,
-        totalStudents: data.overview?.totalStudents || 0,
-        averageClassSize: data.overview?.averageClassSize || 0,
-        overallSatisfaction: data.overview?.overallSatisfaction || 0
-      },
-      charts: ['courseDistribution', 'satisfactionTrend']
-    });
-
-    // Course Performance
-    sections.push({
-      title: 'Course Performance',
-      type: 'courses',
-      content: {
-        courses: data.courses?.courses || [],
-        comparisons: data.courses?.comparisons || {},
-        summary: data.courses?.summary || {}
-      },
-      charts: ['coursePerformance', 'courseComparison']
-    });
-
-    // Student Performance
-    sections.push({
-      title: 'Student Performance Analysis',
-      type: 'studentPerformance',
-      content: {
-        overall: data.studentPerformance?.overall || {},
-        metrics: data.studentPerformance?.metrics || {},
-        riskAnalysis: data.studentPerformance?.riskAnalysis || {}
-      },
-      charts: ['gradeDistribution', 'performanceTrends']
-    });
-
-    // Engagement Analysis
-    sections.push({
-      title: 'Student Engagement',
-      type: 'engagement',
-      content: {
-        overall: data.engagement?.overall || {},
-        analysis: data.engagement?.analysis || {},
-        patterns: data.engagement?.patterns || {}
-      },
-      charts: ['engagementMetrics', 'engagementPatterns']
-    });
-
-    return sections;
-  }
-
-  generatePlatformAnalyticsSections(data) {
-    const sections = [];
-
-    // Platform Overview
-    sections.push({
-      title: 'Platform Overview',
-      type: 'overview',
-      content: {
-        totalUsers: data.overview?.totalUsers || 0,
-        activeUsers: data.overview?.activeUsers || 0,
-        totalCourses: data.overview?.totalCourses || 0,
-        totalRevenue: data.overview?.totalRevenue || 0
-      },
-      charts: ['userGrowth', 'revenueGrowth']
-    });
-
-    // User Engagement
-    sections.push({
-      title: 'User Engagement Analytics',
-      type: 'engagement',
-      content: {
-        overview: data.userEngagement?.overview || {},
-        metrics: data.userEngagement?.metrics || {},
-        analysis: data.userEngagement?.analysis || {}
-      },
-      charts: ['engagementMetrics', 'userActivity']
-    });
-
-    // Course Analytics
-    sections.push({
-      title: 'Course Analytics',
-      type: 'courses',
-      content: {
-        overview: data.courseAnalytics?.overview || {},
-        performance: data.courseAnalytics?.performance || {},
-        popularity: data.courseAnalytics?.popularity || {}
-      },
-      charts: ['coursePopularity', 'coursePerformance']
-    });
-
-    // Financial Analytics
-    sections.push({
-      title: 'Financial Performance',
-      type: 'financial',
-      content: {
-        overview: data.financialAnalytics?.overview || {},
-        metrics: data.financialAnalytics?.metrics || {},
-        analysis: data.financialAnalytics?.analysis || {}
-      },
-      charts: ['revenueBreakdown', 'financialTrends']
-    });
-
-    // Growth Metrics
-    sections.push({
-      title: 'Growth & Retention',
-      type: 'growth',
-      content: {
-        overview: data.growthMetrics?.overview || {},
-        retention: data.retentionAnalytics?.overview || {}
-      },
-      charts: ['growthMetrics', 'retentionAnalysis']
-    });
-
-    return sections;
-  }
-
-  async generateCharts(data, reportType) {
-    const charts = [];
-
-    // Import data visualization service
-    const DataVisualizationService = require('./dataVisualization');
-    const visualizationService = new DataVisualizationService();
-
-    switch (reportType) {
-      case 'studentProgress':
-        charts.push(
-          visualizationService.generateChart({
-            labels: this.generateTimeLabels(30),
-            datasets: [{
-              label: 'Progress %',
-              data: this.generateMockData(30, 60, 95),
-              borderColor: '#007bff',
-              backgroundColor: '#007bff20'
-            }]
-          }, 'line', { title: 'Progress Over Time' })
-        );
-
-        charts.push(
-          visualizationService.generateChart({
-            labels: ['Excellent', 'Good', 'Average', 'Poor'],
-            values: [25, 45, 20, 10],
-            colors: ['#28a745', '#17a2b8', '#ffc107', '#dc3545']
-          }, 'pie', { title: 'Grade Distribution' })
-        );
-        break;
-
-      case 'instructorPerformance':
-        charts.push(
-          visualizationService.generateChart({
-            labels: ['Course 1', 'Course 2', 'Course 3', 'Course 4'],
-            datasets: [{
-              label: 'Average Grade',
-              data: [85, 78, 92, 88],
-              backgroundColor: '#28a745'
-            }]
-          }, 'bar', { title: 'Course Performance' })
-        );
-        break;
-
-      case 'platformAnalytics':
-        charts.push(
-          visualizationService.generateChart({
-            labels: this.generateTimeLabels(90),
-            datasets: [{
-              label: 'Total Users',
-              data: this.generateMockData(90, 8000, 12000),
-              borderColor: '#007bff',
-              backgroundColor: '#007bff20'
-            }]
-          }, 'line', { title: 'User Growth' })
-        );
-        break;
-    }
-
-    return charts;
-  }
-
-  async applyTemplate(content, templateName) {
-    // This would typically use a templating engine like Handlebars or Pug
-    // For now, return the content as-is with basic formatting
-    return {
-      ...content,
-      template: templateName,
-      formatted: true
-    };
-  }
-
-  async exportReport(reportContent, format, options = {}) {
-    const { filename, includeCharts } = options;
-
-    switch (format) {
-      case 'pdf':
-        return await this.exportToPDF(reportContent, filename, includeCharts);
-      case 'excel':
-        return await this.exportToExcel(reportContent, filename);
-      case 'csv':
-        return await this.exportToCSV(reportContent, filename);
-      case 'json':
-        return await this.exportToJSON(reportContent, filename);
-      case 'html':
-        return await this.exportToHTML(reportContent, filename, includeCharts);
-      default:
-        throw new Error(`Unsupported export format: ${format}`);
-    }
-  }
-
-  async exportToPDF(reportContent, filename, includeCharts) {
-    // This would typically use a PDF generation library like PDFKit or Puppeteer
-    const pdfContent = this.generatePDFContent(reportContent, includeCharts);
-    const filePath = path.join(__dirname, '../../exports', filename);
-    
-    await fs.writeFile(filePath, pdfContent);
-    
-    return {
-      downloadUrl: `/api/exports/download/${filename}`,
-      filename,
-      size: Buffer.byteLength(pdfContent),
-      format: 'pdf'
-    };
-  }
-
-  async exportToExcel(reportContent, filename) {
-    // This would typically use a library like ExcelJS
-    const excelContent = this.generateExcelContent(reportContent);
-    const filePath = path.join(__dirname, '../../exports', filename);
-    
-    await fs.writeFile(filePath, excelContent);
-    
-    return {
-      downloadUrl: `/api/exports/download/${filename}`,
-      filename,
-      size: Buffer.byteLength(excelContent),
-      format: 'excel'
-    };
-  }
-
-  async exportToCSV(reportContent, filename) {
-    const csvContent = this.generateCSVContent(reportContent);
-    const filePath = path.join(__dirname, '../../exports', filename);
-    
-    await fs.writeFile(filePath, csvContent);
-    
-    return {
-      downloadUrl: `/api/exports/download/${filename}`,
-      filename,
-      size: Buffer.byteLength(csvContent),
-      format: 'csv'
-    };
-  }
-
-  async exportToJSON(reportContent, filename) {
-    const jsonContent = JSON.stringify(reportContent, null, 2);
-    const filePath = path.join(__dirname, '../../exports', filename);
-    
-    await fs.writeFile(filePath, jsonContent);
-    
-    return {
-      downloadUrl: `/api/exports/download/${filename}`,
-      filename,
-      size: Buffer.byteLength(jsonContent),
-      format: 'json'
-    };
-  }
-
-  async exportToHTML(reportContent, filename, includeCharts) {
-    const htmlContent = this.generateHTMLContent(reportContent, includeCharts);
-    const filePath = path.join(__dirname, '../../exports', filename);
-    
-    await fs.writeFile(filePath, htmlContent);
-    
-    return {
-      downloadUrl: `/api/exports/download/${filename}`,
-      filename,
-      size: Buffer.byteLength(htmlContent),
-      format: 'html'
-    };
-  }
-
-  generatePDFContent(reportContent, includeCharts) {
-    // Simplified PDF content generation
-    return `
-    PDF Report: ${reportContent.metadata.reportType}
-    Generated: ${reportContent.metadata.generatedAt}
-    
-    ${reportContent.summary.title}
-    
-    ${reportContent.sections.map(section => `
-    ${section.title}
-    ${JSON.stringify(section.content, null, 2)}
-    `).join('\n')}
-    `;
-  }
-
-  generateExcelContent(reportContent) {
-    // Simplified Excel content generation
-    const csvRows = [];
-    
-    // Add headers
-    csvRows.push('Section,Metric,Value');
-    
-    // Add summary data
-    csvRows.push('Summary,Report Type,' + reportContent.metadata.reportType);
-    csvRows.push('Summary,Generated At,' + reportContent.metadata.generatedAt);
-    
-    // Add section data
-    reportContent.sections.forEach(section => {
-      Object.keys(section.content).forEach(key => {
-        csvRows.push(`${section.title},${key},${JSON.stringify(section.content[key])}`);
-      });
-    });
-    
-    return csvRows.join('\n');
-  }
-
-  generateCSVContent(reportContent) {
-    return this.generateExcelContent(reportContent); // Same format for simplicity
-  }
-
-  generateHTMLContent(reportContent, includeCharts) {
-    const chartsHTML = includeCharts ? `
-      <div class="charts">
-        ${reportContent.charts.map(chart => `
-          <div class="chart">
-            <h3>${chart.chart.options.title}</h3>
-            <div class="chart-container" data-config='${JSON.stringify(chart.chart)}'></div>
-          </div>
-        `).join('')}
-      </div>
-    ` : '';
-
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>${reportContent.summary.title}</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .header { border-bottom: 2px solid #007bff; padding-bottom: 10px; }
-        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
-        .chart { margin: 20px 0; }
-        .chart-container { height: 300px; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h1>${reportContent.summary.title}</h1>
-        <p>Generated: ${reportContent.metadata.generatedAt}</p>
-      </div>
-      
-      <div class="summary">
-        <h2>Executive Summary</h2>
-        <p>${JSON.stringify(reportContent.summary.overview, null, 2)}</p>
-      </div>
-      
-      ${chartsHTML}
-      
-      ${reportContent.sections.map(section => `
-        <div class="section">
-          <h2>${section.title}</h2>
-          <pre>${JSON.stringify(section.content, null, 2)}</pre>
-        </div>
-      `).join('')}
-    </body>
-    </html>
-    `;
-  }
-
-  cacheReport(exportedReport, reportType, data, options) {
-    const reportId = uuidv4();
-    
-    this.reportCache.set(reportId, {
-      reportId,
-      reportType,
-      data,
-      options,
-      exportedReport,
-      cachedAt: Date.now()
-    });
-
-    // Clean up expired cache entries
-    this.cleanupCache();
-
-    return reportId;
-  }
-
-  cleanupCache() {
-    const now = Date.now();
-    
-    for (const [reportId, report] of this.reportCache.entries()) {
-      if (now - report.cachedAt > this.cacheTimeout) {
-        this.reportCache.delete(reportId);
-      }
-    }
-  }
-
-  async getReport(reportId) {
-    const cachedReport = this.reportCache.get(reportId);
-    
-    if (!cachedReport) {
-      throw new Error('Report not found or expired');
-    }
-
-    // Check if report is still valid
-    if (Date.now() - cachedReport.cachedAt > this.cacheTimeout) {
-      this.reportCache.delete(reportId);
-      throw new Error('Report has expired');
-    }
-
-    return cachedReport;
-  }
-
-  async scheduleReport(reportType, schedule, data, options = {}) {
-    const scheduledReport = {
-      id: uuidv4(),
-      reportType,
-      schedule,
-      data,
-      options,
-      createdAt: new Date().toISOString(),
-      nextRun: this.calculateNextRun(schedule),
-      active: true
-    };
-
-    // This would typically be stored in a database and processed by a job scheduler
-    console.log('Report scheduled:', scheduledReport);
-
-    return {
-      success: true,
-      scheduledReport
-    };
-  }
-
-  calculateNextRun(schedule) {
-    const now = moment();
-    
-    switch (schedule.frequency) {
-      case 'daily':
-        return now.clone().add(1, 'day').startOf('day').toISOString();
-      case 'weekly':
-        return now.clone().add(1, 'week').startOf('week').toISOString();
-      case 'monthly':
-        return now.clone().add(1, 'month').startOf('month').toISOString();
-      case 'quarterly':
-        return now.clone().add(3, 'months').startOf('month').toISOString();
-      default:
-        return now.clone().add(1, 'day').toISOString();
-    }
-  }
-
-  // Helper methods
-  getReportTitle(reportType) {
-    const titles = {
-      studentProgress: 'Student Progress Report',
-      instructorPerformance: 'Instructor Performance Report',
-      platformAnalytics: 'Platform Analytics Report',
-      customAnalytics: 'Custom Analytics Report'
-    };
-    
-    return titles[reportType] || 'Analytics Report';
-  }
-
-  determineDataRange(data) {
-    // This would analyze the data to determine the actual date range
-    return {
-      start: moment().subtract(30, 'days').toISOString(),
-      end: moment().toISOString()
-    };
-  }
-
-  sanitizeRawData(data) {
-    // Remove sensitive information and limit data size
-    return JSON.parse(JSON.stringify(data, (key, value) => {
-      if (key.includes('password') || key.includes('token') || key.includes('secret')) {
-        return '[REDACTED]';
-      }
-      return value;
-    }));
-  }
-
-  generateTimeLabels(days) {
-    const labels = [];
-    const now = moment();
-    
-    for (let i = days - 1; i >= 0; i--) {
-      labels.push(now.clone().subtract(i, 'days').format('MMM DD'));
-    }
-    
-    return labels;
-  }
-
-  generateMockData(count, min, max) {
-    const data = [];
-    for (let i = 0; i < count; i++) {
-      data.push(Math.floor(Math.random() * (max - min + 1)) + min);
-    }
-    return data;
-  }
-
-  generateFilename(reportType, format) {
-    const timestamp = moment().format('YYYY-MM-DD_HH-mm-ss');
-    return `${reportType}_report_${timestamp}.${format}`;
-  }
-
-  // Placeholder methods for section generation
-  generateStudentProgressSummary(data) { return { overallProgress: 75 }; }
-  getStudentProgressKeyMetrics(data) { return ['Progress: 75%', 'Grade: 85%']; }
-  generateInstructorPerformanceSummary(data) { return { totalStudents: 150 }; }
-  getInstructorPerformanceKeyMetrics(data) { return ['Students: 150', 'Satisfaction: 4.2']; }
-  generatePlatformAnalyticsSummary(data) { return { totalUsers: 10000 }; }
-  getPlatformAnalyticsKeyMetrics(data) { return ['Users: 10K', 'Revenue: $100K']; }
-  generateGenericSummary(data) { return {}; }
-  getGenericKeyMetrics(data) { return []; }
-  generateInsights(data, reportType) { return ['Insight 1', 'Insight 2']; }
-  generateRecommendations(data, reportType) { return ['Recommendation 1', 'Recommendation 2']; }
-  generateCustomAnalyticsSections(data, customFields) { return []; }
-  generateGenericSections(data) { return []; }
-  generateCustomFieldsSection(customFields, data) { return { title: 'Custom Fields', content: {} }; }
 }
 
-module.exports = ReportGenerationService;
+function generateJsonReport(result) {
+  const report = {
+    reportId: result.reportId,
+    status: result.status,
+    overallSimilarity: result.overallSimilarity,
+    originalityScore: result.originalityScore,
+    processingTime: result.processingTime,
+    needsReview: result.needsReview,
+    generatedAt: new Date().toISOString(),
+    summary: {
+      totalMatches: result.matches.length,
+      highestSimilarity: result.matches.length > 0
+        ? Math.max(...result.matches.map(m => m.similarityPercentage))
+        : 0,
+      averageSimilarity: result.matches.length > 0
+        ? result.matches.reduce((sum, m) => sum + m.similarityPercentage, 0) / result.matches.length
+        : 0,
+      detectionMethodsUsed: [...new Set(result.matches.map(m => m.detectionMethod))],
+    },
+    matches: result.matches.map(m => ({
+      id: m.id,
+      source: {
+        id: m.source.id,
+        type: m.source.type,
+        title: m.source.title,
+        url: m.source.url,
+        author: m.source.author,
+        confidence: m.source.confidence,
+        similarityScore: m.source.similarityScore,
+      },
+      detectionMethod: m.detectionMethod,
+      similarityPercentage: m.similarityPercentage,
+      matchedWords: m.matchedWords,
+      totalWords: m.totalWords,
+      isParaphrased: m.isParaphrased,
+      isTranslated: m.isTranslated,
+      originalText: m.originalText,
+      matchedText: m.matchedText,
+    })),
+  };
+
+  return JSON.stringify(report, null, 2);
+}
+
+function generateCsvReport(result) {
+  const lines = [];
+  lines.push('Report ID,Status,Overall Similarity,Originality Score,Processing Time,Needs Review,Match ID,Source ID,Source Type,Source Title,Source URL,Detection Method,Similarity %,Matched Words,Total Words,Is Paraphrased,Is Translated');
+
+  if (result.matches.length === 0) {
+    lines.push(`${result.reportId},${result.status},${result.overallSimilarity},${result.originalityScore},${result.processingTime},${result.needsReview},,,,,,,,,,,,`);
+  }
+
+  for (const m of result.matches) {
+    lines.push([
+      `"${result.reportId}"`,
+      `"${result.status}"`,
+      result.overallSimilarity,
+      result.originalityScore,
+      result.processingTime,
+      result.needsReview,
+      `"${m.id}"`,
+      `"${m.source.id}"`,
+      `"${m.source.type}"`,
+      `"${m.source.title}"`,
+      `"${m.source.url || ''}"`,
+      `"${m.detectionMethod}"`,
+      m.similarityPercentage,
+      m.matchedWords,
+      m.totalWords,
+      m.isParaphrased,
+      m.isTranslated,
+    ].join(','));
+  }
+
+  return lines.join('\n');
+}
+
+function generateHtmlReport(result) {
+  const safeText = (s) => (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const safeHtml = (s) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  let html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Plagiarism Report - ${safeText(result.reportId)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+    .header { background: #f4f4f4; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+    .summary { display: flex; gap: 20px; margin-bottom: 20px; }
+    .summary-card { flex: 1; background: #f9f9f9; padding: 15px; border-radius: 8px; text-align: center; }
+    .score-high { color: #d32f2f; }
+    .score-medium { color: #ff9800; }
+    .score-low { color: #4caf50; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #3f51b5; color: white; }
+    .match { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+    .matched-text { background: #fff3e0; padding: 10px; margin-top: 10px; border-left: 4px solid #ff9800; font-family: monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Plagiarism Detection Report</h1>
+    <p><strong>Report ID:</strong> ${safeText(result.reportId)}</p>
+    <p><strong>Status:</strong> ${safeText(result.status)}</p>
+    <p><strong>Generated:</strong> ${new Date().toISOString()}</p>
+  </div>
+  <div class="summary">
+    <div class="summary-card">
+      <h3>Overall Similarity</h3>
+      <div class="score-${result.overallSimilarity > 60 ? 'high' : result.overallSimilarity > 30 ? 'medium' : 'low'}">
+        ${result.overallSimilarity.toFixed(2)}%
+      </div>
+    </div>
+    <div class="summary-card">
+      <h3>Originality Score</h3>
+      <div class="score-${result.originalityScore < 40 ? 'high' : result.originalityScore < 70 ? 'medium' : 'low'}">
+        ${result.originalityScore.toFixed(2)}%
+      </div>
+    </div>
+    <div class="summary-card">
+      <h3>Processing Time</h3>
+      <div>${result.processingTime.toFixed(2)}s</div>
+    </div>
+    <div class="summary-card">
+      <h3>Needs Review</h3>
+      <div>${result.needsReview ? 'Yes' : 'No'}</div>
+    </div>
+  </div>`;
+
+  if (result.matches.length > 0) {
+    html += `
+  <h2>Matches Found (${result.matches.length})</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Source Title</th>
+        <th>Source Type</th>
+        <th>URL</th>
+        <th>Similarity</th>
+        <th>Detection Method</th>
+        <th>Paraphrased</th>
+        <th>Translated</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+    result.matches.forEach((m, idx) => {
+      html += `
+      <tr>
+        <td>${idx + 1}</td>
+        <td>${safeHtml(m.source.title)}</td>
+        <td>${safeHtml(m.source.type)}</td>
+        <td>${m.source.url ? `<a href="${safeHtml(m.source.url)}">Link</a>` : 'N/A'}</td>
+        <td>${m.similarityPercentage.toFixed(2)}%</td>
+        <td>${safeHtml(m.detectionMethod)}</td>
+        <td>${m.isParaphrased ? 'Yes' : 'No'}</td>
+        <td>${m.isTranslated ? 'Yes' : 'No'}</td>
+      </tr>`;
+    });
+
+    html += `
+    </tbody>
+  </table>
+
+  <h2>Detailed Matches</h2>`;
+
+    result.matches.forEach((m, idx) => {
+      html += `
+  <div class="match">
+    <h3>Match #${idx + 1}: ${safeHtml(m.source.title)}</h3>
+    <p><strong>Source ID:</strong> ${safeHtml(m.source.id)}</p>
+    <p><strong>Source Type:</strong> ${safeHtml(m.source.type)}</p>
+    ${m.source.url ? `<p><strong>URL:</strong> <a href="${safeHtml(m.source.url)}">${safeHtml(m.source.url)}</a></p>` : ''}
+    ${m.source.author ? `<p><strong>Author:</strong> ${safeHtml(m.source.author)}</p>` : ''}
+    <p><strong>Detection Method:</strong> ${safeHtml(m.detectionMethod)}</p>
+    <p><strong>Similarity:</strong> ${m.similarityPercentage.toFixed(2)}% (${m.matchedWords}/${m.totalWords} words matched)</p>
+    <p><strong>Paraphrased:</strong> ${m.isParaphrased ? 'Yes' : 'No'} | <strong>Translated:</strong> ${m.isTranslated ? 'Yes' : 'No'}</p>
+    <div class="matched-text">
+      <strong>Matched Text:</strong><br>
+      ${safeHtml(m.matchedText)}
+    </div>
+  </div>`;
+    });
+  } else {
+    html += `
+  <div class="match">
+    <h3>No matches found</h3>
+    <p>No plagiarism detected. This submission appears to be original.</p>
+  </div>`;
+  }
+
+  html += `
+</body>
+</html>`;
+
+  return html;
+}
+
+function generateUUID() {
+  return crypto.randomUUID();
+}
+
+module.exports = {
+  generateReport,
+  ReportFormat,
+  generateJsonReport,
+  generateCsvReport,
+  generateHtmlReport,
+  generateUUID,
+};

@@ -3,7 +3,6 @@
  * Handles media file processing, optimization, and IPFS integration
  */
 
-import { create } from 'ipfs-http-client';
 import { MediaFile, MediaFormat } from '../models/Content';
 import logger from '../utils/logger';
 
@@ -39,6 +38,10 @@ export class MediaService {
   constructor() {
     // Initialize IPFS client
     try {
+      // Lazily require ipfs-http-client so a missing/incompatible (ESM-only)
+      // package cannot crash the server at module-load time. IPFS is an
+      // optional external dependency, so degrade gracefully on failure.
+      const { create } = require('ipfs-http-client');
       this.ipfsClient = create({
         host: process.env.IPFS_HOST || 'localhost',
         port: parseInt(process.env.IPFS_PORT || '5001'),

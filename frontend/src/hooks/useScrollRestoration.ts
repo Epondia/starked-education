@@ -86,6 +86,7 @@ export function useScrollRestoration({
   }, [disabled, storageKey]);
 
   const clearPosition = useCallback(() => {
+    if (disabled) return;
     if (typeof window === 'undefined') return;
     try {
       const positions = readPositions();
@@ -94,7 +95,7 @@ export function useScrollRestoration({
     } catch {
       //
     }
-  }, [storageKey]);
+  }, [disabled, storageKey]);
 
   const handleScroll = useCallback(() => {
     savePosition();

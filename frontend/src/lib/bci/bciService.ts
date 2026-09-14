@@ -169,10 +169,11 @@ export class BCIService {
 
   private startDataCollection(): void {
     if (!this.board || !this.isConnected) return;
+    const board = this.board; // narrowed reference usable inside the interval callback
 
     this.updateInterval = setInterval(async () => {
       try {
-        const data = await this.board.get_current_board_data(256);
+        const data = await board.get_current_board_data(256);
         if (data && data.length > 0) {
           this.processBrainData(data);
         }
@@ -328,7 +329,7 @@ export class BCIService {
       return 'focus';
     } else if (avgAttention < 0.3 && avgEngagement < 0.4) {
       return 'rest';
-    } else if (avgCognitiveLoad > 0.7) {
+    } else if (this.avgCognitiveLoad > 0.7) {
       return 'pause';
     }
 

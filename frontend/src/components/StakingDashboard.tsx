@@ -8,7 +8,7 @@ const StakingDashboard = () => {
      { id: 1, amount: 500, lock: '1y', apy: '32%', earned: 42, status: 'locked' }
   ]);
   
-  const apyOptions = {
+  const apyOptions: Record<string, string> = {
      '1m': '5%',
      '3m': '12%',
      '6m': '18%',

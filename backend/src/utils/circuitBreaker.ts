@@ -245,6 +245,24 @@ export class CircuitBreaker {
     this.transitionState();
     return this.state !== CircuitState.OPEN;
   }
+
+  /**
+   * Record a failure synchronously (without wrapping an async function).
+   * Useful for middleware that observes a failed response and needs to
+   * update circuit state immediately.
+   */
+  recordFailure(): void {
+    this.transitionState();
+    this.onFailure();
+  }
+
+  /**
+   * Record a success synchronously (without wrapping an async function).
+   */
+  recordSuccess(): void {
+    this.transitionState();
+    this.onSuccess();
+  }
 }
 
 /**

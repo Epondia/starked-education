@@ -1,45 +1,114 @@
-use soroban_sdk::{contracttype, Address, Env, String};
+use soroban_sdk::{contracttype, Address, Env, String, Symbol};
 
+/// The maximum allowed length of a proposal's title in bytes.
 pub const MAX_PROPOSAL_TITLE_BYTES: u32 = 200;
+/// The maximum allowed length of a proposal's description in bytes.
 pub const MAX_PROPOSAL_DESCRIPTION_BYTES: u32 = 2000;
+/// The minimum duration (in seconds) for a proposal voting period.
 pub const MIN_VOTING_PERIOD: u64 = 300;
+/// The maximum duration (in seconds) for a proposal voting period.
 pub const MAX_VOTING_PERIOD: u64 = 30 * 24 * 60 * 60;
+/// The cooldown period (in seconds) required before a proposer can submit a duplicate proposal title.
 pub const DUPLICATE_PROPOSAL_COOLDOWN: u64 = 24 * 60 * 60;
 
+// ═══════════════════════════════════════════════════════════════════
+//  Role-Based Access Control (RBAC)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Protocol roles for least-privilege access control.
+///
+/// - `Admin`: Full contract control — can grant/revoke any role, pause, configure.
+/// - `Issuer`: Can issue and manage credentials, create courses, mint badges.
+/// - `Verifier`: Can verify credentials and generate cross-chain proofs.
+///
+/// Out of scope: multisig (tracked separately) and off-chain roles.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Role {
+    Admin = 0,
+    Issuer = 1,
+    Verifier = 2,
+}
+
+impl Role {
+    /// Pack role discriminant as u32 for event payloads and storage.
+    pub fn to_u32(&self) -> u32 {
+        match self {
+            Role::Admin => 0,
+            Role::Issuer => 1,
+            Role::Verifier => 2,
+        }
+    }
+
+    /// Unpack role discriminant from u32.
+    pub fn from_u32(v: u32) -> Self {
+        match v {
+            0 => Role::Admin,
+            1 => Role::Issuer,
+            _ => Role::Verifier,
+        }
+    }
+}
+
+/// The status states of a governance proposal.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProposalStatus {
+    /// Proposal is currently active and open for voting.
     Active,
+    /// Voting period ended and quorum/votes succeeded.
     Succeeded,
+    /// Voting period ended and quorum/votes failed.
     Defeated,
+    /// Proposal succeeded and is queued in the timelock.
     Queued,
+    /// Proposal was executed and applied to on-chain state.
     Executed,
+    /// Proposal expired without execution.
     Expired,
 }
 
+/// A proposal structure tracking voting state and details.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct Proposal {
+    /// Unique proposal identifier.
     pub id: u64,
+    /// Proposer address who created this proposal.
     pub proposer: Address,
+    /// Human-readable title of the proposal.
     pub title: String,
+    /// Description details of the proposed action.
     pub description: String,
+    /// Ledger timestamp when voting starts.
     pub start_time: u64,
+    /// Ledger timestamp when voting ends.
     pub end_time: u64,
+    /// Ledger timestamp when the proposal can be or was executed.
     pub execution_time: u64,
+    /// Total voting power cast in support of the proposal.
     pub for_votes: i128,
+    /// Total voting power cast against the proposal.
     pub against_votes: i128,
+    /// Total voting power cast as abstained.
     pub abstain_votes: i128,
+    /// The current lifecycle status of the proposal.
     pub status: ProposalStatus,
+    /// The minimum required voting power for this proposal to succeed.
     pub quorum: i128,
 }
 
+/// A record tracking an individual vote cast by a voter.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct VoteRecord {
+    /// The address of the voter.
     pub voter: Address,
+    /// The unique proposal ID this vote was cast for.
     pub proposal_id: u64,
-    pub support: u32, // 0: Against, 1: For, 2: Abstain
+    /// Support type: 0: Against, 1: For, 2: Abstain.
+    pub support: u32,
+    /// The voting power (including token balance and reputation weight) cast.
     pub voting_power: i128,
 }
 
@@ -75,31 +144,64 @@ pub struct ScholarshipRecord {
     pub timestamp: u64,
 }
 
+/// Storage keys for the governance component instance/persistent storage.
 #[contracttype]
 pub enum GovernanceDataKey {
+    /// Proposal details keyed by proposal ID.
     Proposal(u64),
+    /// Monotonically increasing proposal count.
     ProposalCount,
+    /// Individual vote record keyed by (proposal_id, voter_address).
     Vote(u64, Address),
+    /// The platform token contract address.
     GovernanceToken,
+    /// Current threshold requirement for quorum.
     QuorumThreshold,
+    /// Stored default voting period duration in seconds.
     VotingPeriod,
+    /// Proposer cooldown key tracking when a title was last proposed.
     ProposalByProposerTitle(Address, String),
+    /// Current timelock delay in seconds.
     TimelockDelay,
+    /// Current multiplier factor for user reputation weight.
     ReputationMultiplier,
+    /// Delegation link: delegator -> delegatee.
     Delegate(Address),
+    /// Total balance held in the treasury.
     TreasuryBalance,
-    // Scholarship keys
-    Scholarship(u64),                   // ScholarshipProposal keyed by proposal_id
-    ScholarshipApplicant(u64, Address), // whether address has applied
-    ScholarshipRecord(u64, u32),        // disbursement record (proposal_id, index)
-    ScholarshipRecordCount(u64),        // number of disbursements for a proposal
-    // Per-student credential count (set externally / by credential registry)
+    /// ScholarshipProposal details keyed by proposal ID.
+    Scholarship(u64),
+    /// Flag indicating if an address has applied for a scholarship proposal.
+    ScholarshipApplicant(u64, Address),
+    /// Scholarship record keyed by (proposal_id, disbursement_index).
+    ScholarshipRecord(u64, u32),
+    /// Number of disbursements completed for a scholarship proposal.
+    ScholarshipRecordCount(u64),
+    /// Stored credential count for a student address.
     StudentCredentials(Address),
+    /// Role assignment flag: (role, member_address) -> boolean.
+    RoleMember(Role, Address),
+    /// Count of addresses holding a specific role.
+    RoleMemberCount(Role),
 }
 
+/// Governance component implementation hosting proposal lifecycle,
+/// treasury management, voting power delegation, and scholarship disbursement.
 pub struct Governance;
 
 impl Governance {
+    /// Calculate the voting power of a voter using quadratic token balance weighting and reputation weight.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `voter` – The address of the voter.
+    /// - `token` – The governance token contract address.
+    /// - `reputation` – The voter's reputation score to add as linear weight.
+    ///
+    /// # Returns
+    ///
+    /// The computed voting power as `i128`.
     pub fn get_voting_power(env: &Env, voter: Address, token: Address, reputation: u64) -> i128 {
         let token_client = soroban_sdk::token::Client::new(env, &token);
         let token_balance = token_client.balance(&voter);
@@ -108,6 +210,25 @@ impl Governance {
         sqrt_balance + reputation_power
     }
 
+    /// Create a new proposal for governance voting.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `proposer` – The address of the proposer; must sign.
+    /// - `title` – The proposal title.
+    /// - `description` – Details of the proposed action.
+    /// - `voting_period` – The duration of voting in seconds.
+    /// - `quorum` – The minimum required voting power for success.
+    ///
+    /// # Returns
+    ///
+    /// The unique proposal ID (`u64`, 1-based).
+    ///
+    /// # Panics
+    ///
+    /// - Panics if inputs fail validation (e.g. title too long, voting period out of bounds).
+    /// - Panics if proposer submits duplicate title within the cooldown period.
     pub fn create_proposal(
         env: Env,
         proposer: Address,
@@ -117,6 +238,16 @@ impl Governance {
         quorum: i128,
     ) -> u64 {
         proposer.require_auth();
+
+        // Validate inputs before creating the proposal
+        Self::validate_proposal(
+            &env,
+            proposer.clone(),
+            title.clone(),
+            description.clone(),
+            voting_period,
+        );
+
         let count: u64 = env
             .storage()
             .instance()
@@ -144,6 +275,13 @@ impl Governance {
         env.storage()
             .instance()
             .set(&GovernanceDataKey::ProposalCount, &id);
+
+        // Store timestamp for duplicate-proposal cooldown tracking
+        env.storage().instance().set(
+            &GovernanceDataKey::ProposalByProposerTitle(proposer, title),
+            &start_time,
+        );
+
         id
     }
 
@@ -159,7 +297,7 @@ impl Governance {
         per_recipient: i128,
         max_recipients: u32,
         eligibility: EligibilityCriteria,
-        application_window: u64, // seconds after execution during which students can apply
+        _application_window: u64, // seconds after execution during which students can apply
     ) -> u64 {
         if per_recipient <= 0 || total_amount < per_recipient as i128 {
             panic!("Invalid scholarship amounts");
@@ -207,6 +345,22 @@ impl Governance {
         id
     }
 
+    /// Cast a vote on a proposal.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `voter` – The address of the voter; must sign.
+    /// - `proposal_id` – The proposal ID to vote on.
+    /// - `support` – The support option (0 = Against, 1 = For, 2 = Abstain).
+    /// - `voting_power` – The computed voting power to cast.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the proposal does not exist.
+    /// - Panics if the voting period has already ended.
+    /// - Panics if the voter has already voted on this proposal.
+    /// - Panics if the support option is invalid.
     pub fn cast_vote(env: Env, voter: Address, proposal_id: u64, support: u32, voting_power: i128) {
         voter.require_auth();
         let mut proposal: Proposal = env
@@ -239,6 +393,19 @@ impl Governance {
         );
     }
 
+    /// Execute a successful proposal after the voting period ends.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `proposal_id` – The proposal ID to execute.
+    /// - `application_window` – The application window in seconds (for scholarship proposals).
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the proposal does not exist.
+    /// - Panics if the voting period is not yet complete.
+    /// - Panics if the proposal was already executed.
     pub fn execute_proposal(env: Env, proposal_id: u64, application_window: u64) {
         let mut proposal: Proposal = env
             .storage()
@@ -413,6 +580,20 @@ impl Governance {
             .set(&GovernanceDataKey::StudentCredentials(student), &count);
     }
 
+    /// Retrieve a scholarship proposal details by its ID.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `proposal_id` – The proposal ID.
+    ///
+    /// # Returns
+    ///
+    /// The `ScholarshipProposal` struct details.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if not a scholarship proposal.
     pub fn get_scholarship(env: &Env, proposal_id: u64) -> ScholarshipProposal {
         env.storage()
             .instance()
@@ -420,6 +601,21 @@ impl Governance {
             .expect("Not a scholarship proposal")
     }
 
+    /// Retrieve an individual scholarship disbursement record.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `proposal_id` – The scholarship proposal ID.
+    /// - `index` – The disbursement record index.
+    ///
+    /// # Returns
+    ///
+    /// The `ScholarshipRecord` struct details.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the record at `index` is not found.
     pub fn get_scholarship_record(env: &Env, proposal_id: u64, index: u32) -> ScholarshipRecord {
         env.storage()
             .instance()
@@ -427,6 +623,16 @@ impl Governance {
             .expect("Record not found")
     }
 
+    /// Get the total number of disbursements completed for a scholarship proposal.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `proposal_id` – The scholarship proposal ID.
+    ///
+    /// # Returns
+    ///
+    /// The total count of disbursements (`u32`).
     pub fn get_scholarship_record_count(env: &Env, proposal_id: u64) -> u32 {
         env.storage()
             .instance()
@@ -434,6 +640,13 @@ impl Governance {
             .unwrap_or(0)
     }
 
+    /// Delegate voting power from the caller to another address.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `from` – The delegating voter address; must sign.
+    /// - `to` – The address receiving the delegated voting power.
     pub fn delegate(env: Env, from: Address, to: Address) {
         from.require_auth();
         env.storage()
@@ -441,6 +654,16 @@ impl Governance {
             .set(&GovernanceDataKey::Delegate(from), &to);
     }
 
+    /// Get the address delegated to vote on behalf of a voter.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `voter` – The voter address to query.
+    ///
+    /// # Returns
+    ///
+    /// The delegate address if set, or the `voter` address itself if no delegation exists.
     pub fn get_delegate(env: &Env, voter: Address) -> Address {
         env.storage()
             .instance()
@@ -448,6 +671,12 @@ impl Governance {
             .unwrap_or(voter)
     }
 
+    /// Deposit tokens into the governance treasury.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `amount` – The amount of tokens to deposit.
     pub fn deposit_to_treasury(env: Env, amount: i128) {
         let current: i128 = env
             .storage()
@@ -459,7 +688,18 @@ impl Governance {
             .set(&GovernanceDataKey::TreasuryBalance, &(current + amount));
     }
 
-    pub fn withdraw_from_treasury(env: Env, amount: i128, recipient: Address) {
+    /// Withdraw tokens from the governance treasury.
+    ///
+    /// # Parameters
+    ///
+    /// - `env` – Soroban execution environment.
+    /// - `amount` – The amount of tokens to withdraw.
+    /// - `_recipient` – The recipient address (unused on-chain, tracks intent in params).
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the treasury has insufficient funds.
+    pub fn withdraw_from_treasury(env: Env, amount: i128, _recipient: Address) {
         let current: i128 = env
             .storage()
             .instance()
@@ -471,6 +711,131 @@ impl Governance {
         env.storage()
             .instance()
             .set(&GovernanceDataKey::TreasuryBalance, &(current - amount));
+    }
+
+    // ── Role-Based Access Control (RBAC) ──────────────────────────────────
+
+    /// Grant a role to an address. Only callable by an existing Admin.
+    /// On the very first Admin grant (when no Admin exists yet), the check
+    /// is bypassed so the contract can be bootstrapped. Emits an event on
+    /// grant. Rejects if the address already holds the role.
+    pub fn grant_role(env: &Env, admin: Address, role: Role, grantee: Address) {
+        admin.require_auth();
+
+        // Chicken-and-egg: the first Admin must be grantable without
+        // requiring an existing Admin.
+        let existing_admin_count: u32 = env
+            .storage()
+            .instance()
+            .get(&GovernanceDataKey::RoleMemberCount(Role::Admin))
+            .unwrap_or(0);
+        if existing_admin_count > 0 || role != Role::Admin {
+            Self::require_role(env, &admin, Role::Admin);
+        }
+
+        let key = GovernanceDataKey::RoleMember(role, grantee.clone());
+        if env.storage().instance().has(&key) {
+            panic!("RoleAlreadyGranted");
+        }
+        env.storage().instance().set(&key, &true);
+
+        let count_key = GovernanceDataKey::RoleMemberCount(role);
+        let count: u32 = env
+            .storage()
+            .instance()
+            .get(&count_key)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&count_key, &(count + 1));
+
+        // Emit role-grant event for auditability
+        env.events().publish(
+            (
+                Symbol::new(env, "governance"),
+                Symbol::new(env, "role_granted"),
+            ),
+            (role.to_u32(), grantee),
+        );
+    }
+
+    /// Revoke a role from an address. Only callable by an existing Admin.
+    /// Rejects if revoking the last Admin would lock the contract.
+    /// Emits an event on revoke.
+    pub fn revoke_role(env: &Env, admin: Address, role: Role, target: Address) {
+        admin.require_auth();
+        Self::require_role(env, &admin, Role::Admin);
+
+        let key = GovernanceDataKey::RoleMember(role, target.clone());
+        if !env.storage().instance().has(&key) {
+            panic!("RoleNotFound");
+        }
+
+        // Safety check: revoking the last Admin must not lock the contract.
+        if role == Role::Admin {
+            let count: u32 = env
+                .storage()
+                .instance()
+                .get(&GovernanceDataKey::RoleMemberCount(Role::Admin))
+                .unwrap_or(0);
+            if count <= 1 {
+                panic!("CannotRevokeLastAdmin");
+            }
+        }
+
+        env.storage().instance().remove(&key);
+
+        let count_key = GovernanceDataKey::RoleMemberCount(role);
+        let count: u32 = env
+            .storage()
+            .instance()
+            .get(&count_key)
+            .unwrap_or(1);
+        env.storage()
+            .instance()
+            .set(&count_key, &(count.saturating_sub(1)));
+
+        env.events().publish(
+            (
+                Symbol::new(env, "governance"),
+                Symbol::new(env, "role_revoked"),
+            ),
+            (role.to_u32(), target),
+        );
+    }
+
+    /// Check whether `addr` holds `role`. Returns `true` if the role is stored.
+    pub fn has_role(env: &Env, addr: &Address, role: Role) -> bool {
+        env.storage()
+            .instance()
+            .has(&GovernanceDataKey::RoleMember(role, addr.clone()))
+    }
+
+    /// Get the number of addresses that hold a given role.
+    pub fn get_role_member_count(env: &Env, role: Role) -> u32 {
+        env.storage()
+            .instance()
+            .get(&GovernanceDataKey::RoleMemberCount(role))
+            .unwrap_or(0)
+    }
+
+    /// Require that `caller` holds `required_role`. Panics with a clear message
+    /// if the caller is not authorized. Called at the top of protected functions.
+    pub fn require_role(env: &Env, caller: &Address, required_role: Role) {
+        if !Self::has_role(env, caller, required_role) {
+            panic!("UnauthorizedRole");
+        }
+    }
+
+    /// Require that `caller` holds at least one of the given roles.
+    /// Used when a function is gated on multiple possible roles (e.g. Admin OR Issuer).
+    pub fn require_any_role(env: &Env, caller: &Address, roles: &[Role]) {
+        for role in roles {
+            if Self::has_role(env, caller, *role) {
+                return;
+            }
+        }
+        panic!("UnauthorizedRole");
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -520,7 +885,9 @@ impl Governance {
             panic!("InvalidVotingPeriod: voting period out of bounds");
         }
 
-        if let Some(last_created_at) = env.storage().instance()
+        if let Some(last_created_at) = env
+            .storage()
+            .instance()
             .get::<_, u64>(&GovernanceDataKey::ProposalByProposerTitle(proposer, title))
         {
             let now = env.ledger().timestamp();

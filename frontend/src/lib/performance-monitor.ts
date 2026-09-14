@@ -158,7 +158,7 @@ class PerformanceMonitor {
             const timingData = {
               domContentLoaded: navEntry.domContentLoadedEventEnd - navEntry.domContentLoadedEventStart,
               loadComplete: navEntry.loadEventEnd - navEntry.loadEventStart,
-              domInteractive: navEntry.domInteractive - navEntry.activationStart,
+              domInteractive: navEntry.domInteractive - (navEntry.activationStart ?? 0),
               firstPaint: this.getFirstPaint(),
               firstContentfulPaint: this.getFirstContentfulPaint(),
             };
@@ -186,7 +186,7 @@ class PerformanceMonitor {
   }
 
   private checkAlerts(metric: keyof PerformanceMetrics, value: number) {
-    const threshold = this.alertThresholds[metric];
+    const threshold = this.alertThresholds[metric as keyof typeof this.alertThresholds];
     if (!threshold) return;
 
     let severity: 'low' | 'medium' | 'high' = 'low';

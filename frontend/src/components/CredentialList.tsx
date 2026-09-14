@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Credential } from '../types/profile';
 import { useProfile } from '../hooks/useProfile';
+import { Pagination } from './ui/pagination';
+import { CredentialListSkeleton } from './CredentialListSkeleton';
 import { 
   Award, 
   CheckCircle, 
@@ -21,12 +23,18 @@ import {
   Shield
 } from 'lucide-react';
 
+const DEFAULT_PAGE_SIZE = 20;
+
 interface CredentialListProps {
   credentials?: Credential[];
   showAddButton?: boolean;
   compact?: boolean;
   filterable?: boolean;
   searchable?: boolean;
+  /** Enable pagination (default: true when not compact) */
+  paginate?: boolean;
+  /** Page size for pagination (default: 20) */
+  pageSize?: number;
 }
 
 const VERIFICATION_STATUS_CONFIG = {
@@ -88,7 +96,9 @@ export function CredentialList({
   showAddButton = true,
   compact = false,
   filterable = true,
-  searchable = true
+  searchable = true,
+  paginate,
+  pageSize = DEFAULT_PAGE_SIZE,
 }: CredentialListProps) {
   const { credentials: hookCredentials, addCredential, updateCredentialStatus } = useProfile();
   const credentials = propCredentials || hookCredentials;
@@ -97,10 +107,19 @@ export function CredentialList({
   const [selectedType, setSelectedType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Enable pagination by default when not in compact mode
+  const shouldPaginate = paginate !== undefined ? paginate : !compact;
 
   // Get unique statuses and types
   const statuses = ['all', 'verified', 'pending', 'rejected', 'expired'];
   const types = ['all', 'certificate', 'badge', 'degree', 'license'];
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedStatus, selectedType]);
 
   // Filter credentials
   const filteredCredentials = useMemo(() => {
@@ -125,6 +144,25 @@ export function CredentialList({
       return true;
     });
   }, [credentials, searchQuery, selectedStatus, selectedType]);
+
+  // Paginated credentials
+  const totalFiltered = filteredCredentials.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const paginatedCredentials = shouldPaginate
+    ? filteredCredentials.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+    : filteredCredentials;
+
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+    // Scroll to top of credential list
+    const listEl = document.getElementById('credential-list-top');
+    listEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  // Show skeleton while credentials are loading (if using hook data)
+  if (!credentials && !propCredentials) {
+    return <CredentialListSkeleton />;
+  }
 
   // Statistics
   const stats = useMemo(() => {
@@ -164,7 +202,7 @@ export function CredentialList({
   if (compact) {
     return (
       <div className="space-y-3">
-        {filteredCredentials.slice(0, 3).map((credential) => {
+        {paginatedCredentials.slice(0, 3).map((credential) => {
           const statusConfig = VERIFICATION_STATUS_CONFIG[credential.verificationStatus];
           const typeConfig = CREDENTIAL_TYPE_CONFIG[credential.type];
           const StatusIcon = statusConfig.icon;
@@ -303,8 +341,8 @@ export function CredentialList({
       )}
 
       {/* Credential List */}
-      <div className="space-y-4">
-        {filteredCredentials.map((credential) => {
+      <div id="credential-list-top" className="space-y-4">
+        {paginatedCredentials.map((credential) => {
           const statusConfig = VERIFICATION_STATUS_CONFIG[credential.verificationStatus];
           const typeConfig = CREDENTIAL_TYPE_CONFIG[credential.type];
           const StatusIcon = statusConfig.icon;
@@ -405,6 +443,18 @@ export function CredentialList({
           );
         })}
       </div>
+
+      {/* Pagination */}
+      {shouldPaginate && totalPages > 1 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+          totalItems={totalFiltered}
+          pageSize={pageSize}
+          siblingCount={1}
+        />
+      )}
 
       {/* No Results */}
       {filteredCredentials.length === 0 && (
