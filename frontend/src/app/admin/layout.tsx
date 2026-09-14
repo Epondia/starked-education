@@ -33,9 +33,7 @@ export default function AdminLayout({
           <div className="min-h-screen bg-gray-50 overflow-x-hidden">
             <div className="flex">
               <AdminSidebar />
-              {/* Main content area: on mobile, offset top for the floating hamburger button */}
               <div className="flex-1 min-w-0">
-                {/* Extra top padding on mobile so content doesn't sit behind the floating sidebar toggle */}
                 <div className="pt-14 md:pt-0">
                   <AdminHeader />
                 </div>

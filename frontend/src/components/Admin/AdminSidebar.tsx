@@ -73,6 +73,7 @@ const sidebarItems: SidebarItem[] = [
       { title: 'System Settings', href: '/admin/operations/settings', icon: Settings },
       { title: 'Backup & Restore', href: '/admin/operations/backup', icon: Database },
       { title: 'Security', href: '/admin/operations/security', icon: Shield },
+      { title: 'Audit Logs', href: '/admin/audit-logs', icon: Shield },
       { title: 'Announcements', href: '/admin/operations/announcements', icon: Bell }
     ]
   }

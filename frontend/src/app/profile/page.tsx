@@ -1,14 +1,30 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState } from 'react';
+import nextDynamic from 'next/dynamic';
 import { useProfile } from '../../hooks/useProfile';
-import { ProfileEditor } from '../../components/ProfileEditor';
-import { AchievementDisplay } from '../../components/AchievementDisplay';
-import { CredentialList } from '../../components/CredentialList';
-import { ProfileStats } from '../../components/ProfileStats';
 import { ProfileHeader } from '../../components/Profile/ProfileHeader';
 import { ProfileSkeleton } from '../../components/Profile/ProfileSkeleton';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
+
+const ProfileEditor = nextDynamic(
+  () => import('../../components/ProfileEditor').then((m) => m.ProfileEditor),
+  { loading: () => <ProfileSkeleton /> }
+);
+const AchievementDisplay = nextDynamic(
+  () => import('../../components/AchievementDisplay').then((m) => m.AchievementDisplay),
+  { loading: () => <ProfileSkeleton /> }
+);
+const CredentialList = nextDynamic(
+  () => import('../../components/CredentialList').then((m) => m.CredentialList),
+  { loading: () => <ProfileSkeleton /> }
+);
+const ProfileStats = nextDynamic(
+  () => import('../../components/ProfileStats').then((m) => m.ProfileStats),
+  { loading: () => <ProfileSkeleton /> }
+);
 import { 
   User, 
   Trophy, 
@@ -103,7 +119,7 @@ export default function ProfilePage() {
       {/* Profile Header */}
       <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex flex-col sm:flex-row items-start sm:items-start justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <ProfileHeader user={profile} />
             </div>
