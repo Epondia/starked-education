@@ -26,6 +26,15 @@
   --text-muted: #9ca3af;
   --border-color: #e5e7eb;
   --shadow-color: rgba(0, 0, 0, 0.1);
+
+  /* ─── Responsive breakpoint tokens ──────────────────────────────── */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+
+  /* ─── Touch target ───────────────────────────────────────────────── */
+  --touch-target-min: 44px;
 }
 
 .dark {
@@ -43,10 +52,19 @@
 }
 
 /* ─── Base ───────────────────────────────────────────────────────── */
+html {
+  /* Prevent horizontal overflow on every breakpoint */
+  overflow-x: hidden;
+}
+
 body {
   color: var(--text-primary);
   background: var(--bg-primary);
   transition: color 0.2s ease, background-color 0.2s ease;
+  /* Prevent horizontal scroll bleed from absolutely-positioned children */
+  overflow-x: hidden;
+  /* Ensure the body is at least as wide as the viewport */
+  min-width: 0;
 }
 
 /* ─── Reduced-motion guard ───────────────────────────────────────── */
@@ -66,22 +84,76 @@ body {
   animation: spin 1s linear infinite;
 }
 
-/* Custom scrollbar - dark mode aware */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
-}
-
 /* ─── Scrollbar (theme-aware) ────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 6px; }
-::-webkit-scrollbar-track { background: hsl(var(--muted)); }
+::-webkit-scrollbar-track { background: var(--bg-secondary); }
 ::-webkit-scrollbar-thumb {
   background: var(--text-muted);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
+}
+
+/* ─── Responsive utility classes ────────────────────────────────── */
+
+/**
+ * .touch-target
+ * Ensures interactive elements meet the WCAG 2.5.5 / Apple HIG 44×44 px
+ * minimum touch target size on all pointer devices.
+ */
+@layer utilities {
+  .touch-target {
+    min-height: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+  }
+
+  /**
+   * .no-overflow
+   * Hard clip to prevent any horizontal bleed.  Apply on containers that
+   * might host wide tables or flex rows at small viewports.
+   */
+  .no-overflow {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
+  /**
+   * .responsive-container
+   * Fluid container with safe-area padding on iOS and
+   * a sensible max-width cap.
+   */
+  .responsive-container {
+    width: 100%;
+    max-width: 80rem; /* 1280 px — same as Tailwind's max-w-7xl */
+    margin-inline: auto;
+    padding-inline: max(1rem, env(safe-area-inset-left));
+  }
+
+  /**
+   * .scroll-x-auto
+   * Allow horizontal scrolling on overflow content (e.g. tables on mobile)
+   * while keeping the parent from blowing out.
+   */
+  .scroll-x-auto {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /**
+   * .pb-safe
+   * Bottom padding that accounts for the iOS home indicator and the
+   * MobileNav bottom bar (64 px).
+   */
+  .pb-safe {
+    padding-bottom: max(4rem, env(safe-area-inset-bottom));
+  }
+
+  /**
+   * .mobile-card
+   * Base card style used by MobileTable rows on small screens.
+   */
+  .mobile-card {
+    @apply rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm;
+  }
 }

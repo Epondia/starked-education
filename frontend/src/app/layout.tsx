@@ -6,6 +6,7 @@ import { GlobalShell } from '@/components/PWA/GlobalShell';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { OrganizationJsonLd } from '@/components/SEO';
 import { createMetadata } from '@/lib/seo';
+import MobileNavShell from '@/components/Mobile/MobileNavShell';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -57,7 +58,9 @@ export default function RootLayout({
         <ThemeProvider>
           <GlobalShell />
           <OrganizationJsonLd />
-          <div className="mx-auto w-full max-w-7xl px-4 pt-4">
+          {/* Mobile navigation — hidden on md+ screens, shown as hamburger + bottom bar on small screens */}
+          <MobileNavShell />
+          <div className="mx-auto w-full max-w-7xl px-4 pt-4 pb-safe">
             <Breadcrumb />
           </div>
           {children}
