@@ -103,7 +103,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 pb-safe">
       {/* Edit Profile Modal */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -119,13 +119,13 @@ export default function ProfilePage() {
       {/* Profile Header */}
       <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
+          <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
               <ProfileHeader user={profile} />
             </div>
             <button
               onClick={() => setShowEditModal(true)}
-              className="ml-6 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              className="shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 touch-target"
             >
               <Edit className="h-4 w-4" />
               Edit Profile
@@ -134,25 +134,28 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Navigation Tabs */}
+      {/* Navigation Tabs — horizontally scrollable on mobile */}
       <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
+          <div className="flex overflow-x-auto scroll-x-auto -mb-px gap-1 sm:gap-0" role="tablist" aria-label="Profile sections">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  aria-controls={`tab-panel-${tab.id}`}
                   onClick={() => setActiveTab(tab.id)}
                   className={`
-                    flex items-center gap-2 px-1 py-4 border-b-2 transition-colors
+                    flex items-center gap-2 px-3 sm:px-4 py-4 border-b-2 transition-colors whitespace-nowrap shrink-0 touch-target
                     ${activeTab === tab.id
                       ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                       : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                     }
                   `}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-4 w-4 shrink-0" />
                   <span className="font-medium">{tab.label}</span>
                 </button>
               );

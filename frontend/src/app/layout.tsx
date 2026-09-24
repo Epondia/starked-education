@@ -1,13 +1,12 @@
 import type { Metadata } from 'next';
-import { Suspense } from 'react';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { GlobalShell } from '@/components/PWA/GlobalShell';
-import { CommandPalette } from '@/components/ui/command-palette';
 import { OnboardingGate } from '@/components/onboarding/OnboardingWizard';
 import { createMetadata } from '@/lib/seo';
 import { OrganizationJsonLd } from '@/components/SEO';
+import MobileNavShell from '@/components/Mobile/MobileNavShell';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -59,6 +58,7 @@ export default function RootLayout({
         <OrganizationJsonLd />
         <ThemeProvider>
           <GlobalShell />
+          <MobileNavShell />
           <OnboardingGate>{children}</OnboardingGate>
         </ThemeProvider>
       </body>

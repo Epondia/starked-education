@@ -30,11 +30,13 @@ export default function AdminLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          <div className="min-h-screen bg-gray-50">
+          <div className="min-h-screen bg-gray-50 overflow-x-hidden">
             <div className="flex">
               <AdminSidebar />
-              <div className="flex-1">
-                <AdminHeader />
+              <div className="flex-1 min-w-0">
+                <div className="pt-14 md:pt-0">
+                  <AdminHeader />
+                </div>
                 <div className="mx-auto w-full max-w-7xl px-4 pt-2">
                   <Breadcrumb />
                 </div>
@@ -42,7 +44,7 @@ export default function AdminLayout({
                   id="admin-content-region"
                   aria-label="Admin content"
                   tabIndex={-1}
-                  className="focus:outline-none p-6"
+                  className="focus:outline-none p-4 sm:p-6"
                 >
                   {children}
                 </section>
