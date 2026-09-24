@@ -33,15 +33,28 @@ export interface MediaStats {
 
 export class MediaService {
   private ipfsClient: any;
+  private ipfsClientReady: Promise<void>;
   private processingQueue: Map<string, Promise<MediaFile>> = new Map();
 
   constructor() {
-    // Initialize IPFS client
+    // `ipfs-http-client@60` ships as ESM only ("type": "module"), so `require()`
+    // can never load it — that is what made the old init fail with
+    // `No "exports" main defined`. A bare `import()` gets down-levelled to
+    // `require()` by tsc under `module: commonjs`, so the dynamic import is
+    // hidden behind `new Function` to remain a genuine ESM import at runtime.
+    this.ipfsClient = null;
+    this.ipfsClientReady = this.initIpfsClient();
+  }
+
+  /**
+   * Load the ESM-only IPFS client asynchronously. IPFS is an optional external
+   * dependency: callers null-check `this.ipfsClient`, so an unreachable node
+   * degrades gracefully instead of crashing the server.
+   */
+  private async initIpfsClient(): Promise<void> {
     try {
-      // Lazily require ipfs-http-client so a missing/incompatible (ESM-only)
-      // package cannot crash the server at module-load time. IPFS is an
-      // optional external dependency, so degrade gracefully on failure.
-      const { create } = require('ipfs-http-client');
+      const importEsm = new Function('specifier', 'return import(specifier)');
+      const { create } = await importEsm('ipfs-http-client');
       this.ipfsClient = create({
         host: process.env.IPFS_HOST || 'localhost',
         port: parseInt(process.env.IPFS_PORT || '5001'),
@@ -260,16 +273,15 @@ export class MediaService {
       throw new Error('IPFS client not available');
     }
 
-    try {
-      // In a real implementation, this would read the file and upload to IPFS
-      // For now, return a mock hash
-      const mockHash = 'Qm' + Math.random().toString(36).substr(2, 44);
-      logger.info(`Uploaded to IPFS: ${mockHash}`);
-      return mockHash;
-    } catch (error) {
-      logger.error('Error uploading to IPFS:', error);
-      throw error;
-    }
+    // This previously returned a fabricated CID (`'Qm' + Math.random()...`),
+    // which produced credential/achievement metadata pointing at IPFS objects
+    // that do not exist. `fileUrl` is an opaque URL string, not the file bytes,
+    // so there is nothing to add here — fail loudly instead of inventing a hash.
+    // The caller catches this and simply records the upload without an
+    // `ipfsHash`, which is the honest state until real bytes are threaded through.
+    throw new Error(
+      `IPFS upload is not implemented for ${fileUrl}: pass the file bytes to add them to IPFS`
+    );
   }
 
   /**

@@ -66,13 +66,31 @@ class FederatedLearningController {
     this.modelValidator = new ModelValidator();
     this.analyticsDashboard = new AnalyticsDashboard();
     this.modelVersioning = new ModelVersioning();
-    
-    this.initializeServices();
+
+    // Deferred, not awaited: constructing this controller happens at module load
+    // (`routes/federatedLearning` is required by the server entry point), and the
+    // old eager 2048-bit Paillier key generation blocked the process for ~14s on
+    // every cold start, delaying the HTTP listener. Keys are now generated lazily
+    // via `SecureAggregation.ensureKeys()`.
+    this.ready = Promise.resolve()
+      .then(() => this.initializeServices())
+      .catch((error) => {
+        logger.error('Failed to initialize federated learning services:', error);
+        throw error;
+      });
+  }
+
+  /**
+   * Await key readiness before advertising the aggregation public parameters.
+   * Key generation is lazy (see `SecureAggregation.ensureKeys`).
+   */
+  async getPublicParameters() {
+    await this.secureAggregation.ensureKeys();
+    return this.secureAggregation.getPublicParameters();
   }
 
   async initializeServices() {
     try {
-      await this.secureAggregation.initializeKeys();
       await this.analyticsDashboard.initialize();
       await this.modelVersioning.initialize();
       
@@ -129,7 +147,7 @@ class FederatedLearningController {
         data: {
           sessionId,
           model: this.coordinator.globalModel,
-          publicParameters: this.secureAggregation.getPublicParameters()
+          publicParameters: await this.getPublicParameters()
         }
       });
     } catch (error) {
@@ -188,7 +206,7 @@ class FederatedLearningController {
         success: true,
         data: {
           participantId,
-          publicParameters: this.secureAggregation.getPublicParameters()
+          publicParameters: await this.getPublicParameters()
         }
       });
     } catch (error) {
@@ -551,7 +569,7 @@ class FederatedLearningController {
         },
         secureAggregation: {
           active: !!this.secureAggregation.publicKey,
-          keySize: this.secureAggregation.config.keySize
+          keySize: this.secureAggregation.keySize
         },
         differentialPrivacy: {
           active: !!this.differentialPrivacy,

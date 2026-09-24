@@ -326,8 +326,12 @@ app.get('/', (req, res) => {
 // Swagger API documentation
 setupSwagger(app, DEFAULT_VERSION);
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
+// Health check endpoint.
+// Served at `/health` as well as `/api/health`: the Render blueprint
+// (backend/render.yaml) sets `healthCheckPath: /health`, so without this alias
+// the platform's probe received a 404 and marked the service unhealthy while the
+// API itself was up and serving.
+const healthHandler = (req, res) => {
   const version = req.apiVersion || DEFAULT_VERSION;
   res.json(createVersionedResponse({
     status: 'healthy',
@@ -335,7 +339,9 @@ app.get('/api/health', (req, res) => {
     supportedVersions: SUPPORTED_VERSIONS,
     compression: getCompressionStats(),
   }, version));
-});
+};
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 // Unsupported version handler (only rejects truly unsupported versions)
 app.use('/api/v:version*', (req, res, next) => {
@@ -373,6 +379,28 @@ async function startServer() {
     });
     console.log('✅ Circuit breakers initialized');
 
+    // Bind the port before starting the background services. Those services can
+    // spend seconds retrying Redis when it is unavailable, and a platform
+    // liveness probe should not have to wait for them — the HTTP listener is
+    // what makes the instance healthy.
+    server.listen(PORT, () => {
+      console.log(`🚀 StarkEd Education Backend running on port ${PORT}`);
+      console.log(`📚 Quiz Management API available at /api/v1/quizzes`);
+      console.log(`📊 Event Logger API available at /api/v1/events`);
+      console.log(`🔄 Sync API available at /api/v1/sync`);
+      console.log(`📁 Content Management API available at /api/v1/content`);
+      console.log(`💰 Transaction Queue API available at /api/v1/transactions`);
+      console.log(`🤝 Collaboration API available at /api/v1/collaboration`);
+      console.log(`🧠 ACO API available at /api/v1/aco`);
+      console.log(`🌐 Federated Learning API available at /api/v1/federated-learning`);
+      console.log(`🧠 AGI Tutor API available at /api/v1/agi-tutor`);
+      console.log(`🔗 Webhook API available at /api/v1/webhooks`);
+      console.log(`🔐 Quantum-Resistant Secure Communication API available at /api/v1/secure-comm`);
+      console.log(`🔗 Event Indexer API    available at /api/v1/indexer (admin-only)`);
+      console.log(`🏥 Health check available at /health and /api/health`);
+      console.log(`✅ Transaction Queue System initialized successfully`);
+    });
+
     await transactionQueue.startProcessing();
     await transactionProcessor.start();
     await transactionEvents.startListening();
@@ -399,23 +427,6 @@ async function startServer() {
       console.log('ℹ️  Event Indexer disabled. Set EVENT_INDEXER_ENABLED=true to enable.');
     }
 
-    server.listen(PORT, () => {
-      console.log(`🚀 StarkEd Education Backend running on port ${PORT}`);
-      console.log(`📚 Quiz Management API available at /api/v1/quizzes`);
-      console.log(`📊 Event Logger API available at /api/v1/events`);
-      console.log(`🔄 Sync API available at /api/v1/sync`);
-      console.log(`📁 Content Management API available at /api/v1/content`);
-      console.log(`💰 Transaction Queue API available at /api/v1/transactions`);
-      console.log(`🤝 Collaboration API available at /api/v1/collaboration`);
-      console.log(`🧠 ACO API available at /api/v1/aco`);
-      console.log(`🌐 Federated Learning API available at /api/v1/federated-learning`);
-      console.log(`🧠 AGI Tutor API available at /api/v1/agi-tutor`);
-      console.log(`🔗 Webhook API available at /api/v1/webhooks`);
-      console.log(`🔐 Quantum-Resistant Secure Communication API available at /api/v1/secure-comm`);
-      console.log(`🔗 Event Indexer API    available at /api/v1/indexer (admin-only)`);
-      console.log(`🏥 Health check available at /api/health`);
-      console.log(`✅ Transaction Queue System initialized successfully`);
-    });
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);

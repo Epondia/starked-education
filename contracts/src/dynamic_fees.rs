@@ -82,7 +82,10 @@ impl DynamicFeeContract {
     /// # Panics
     ///
     /// - Panics if the fee system has already been initialized.
-    pub fn initialize(env: Env, admin: Address) {
+    ///
+    /// Named `initialize_fee_schedule` (not `initialize`) so it does not collide
+    /// with the core contract's `initialize` export in the shared WASM artifact.
+    pub fn initialize_fee_schedule(env: Env, admin: Address) {
         if env.storage().instance().has(&FeeKey::Admin) {
             panic!("Fee system already initialized");
         }
@@ -108,7 +111,10 @@ impl DynamicFeeContract {
     /// # Panics
     ///
     /// - Panics if the system has not been initialized.
-    pub fn get_admin(env: Env) -> Address {
+    ///
+    /// Named `get_fee_admin` (not `get_admin`) so it does not collide with the
+    /// core contract's `get_admin` export in the shared WASM artifact.
+    pub fn get_fee_admin(env: Env) -> Address {
         env.storage()
             .instance()
             .get(&FeeKey::Admin)

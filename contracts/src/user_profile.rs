@@ -141,8 +141,11 @@ pub struct UserProfileContract;
 
 #[contractimpl]
 impl UserProfileContract {
-    /// Initialize the contract
-    pub fn initialize(_env: Env) {
+    /// Initialize the contract.
+    ///
+    /// Named `initialize_profile` (not `initialize`) so it does not collide with
+    /// the core contract's `initialize` export in the shared WASM artifact.
+    pub fn initialize_profile(_env: Env) {
         // Contract initialization logic can be added here if needed
     }
 

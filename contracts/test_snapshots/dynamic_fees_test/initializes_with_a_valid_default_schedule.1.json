@@ -11,7 +11,7 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-              "function_name": "initialize",
+              "function_name": "initialize_fee_schedule",
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
@@ -320,7 +320,7 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000002"
               },
               {
-                "symbol": "initialize"
+                "symbol": "initialize_fee_schedule"
               }
             ],
             "data": {
@@ -343,7 +343,7 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "initialize"
+                "symbol": "initialize_fee_schedule"
               }
             ],
             "data": "void"
@@ -367,7 +367,7 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000002"
               },
               {
-                "symbol": "get_admin"
+                "symbol": "get_fee_admin"
               }
             ],
             "data": "void"
@@ -388,7 +388,7 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "get_admin"
+                "symbol": "get_fee_admin"
               }
             ],
             "data": {

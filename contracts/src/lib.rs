@@ -238,6 +238,21 @@ impl StarkEdContract {
         env.storage()
             .instance()
             .set(&DataKey::ProofValidityWindow, &3600u64);
+
+        // NOTE: the marketplace / dynamic-fees / tokenomics / user-profile modules
+        // are deliberately NOT provisioned from here. Each keeps its own exported
+        // initializer (`initialize_marketplace`, `initialize_fee_schedule`,
+        // `initialize_tokenomics`, `initialize_profile`), which an operator calls
+        // explicitly — see `scripts/deploy-testnet.sh`.
+        //
+        // They cannot be nested into this call because a `#[contracttype]` enum's
+        // unit variant is serialized as a bare symbol, not namespaced by the enum
+        // type: `DataKey::Admin`, `FeeKey::Admin` and `StorageKey::Admin` all
+        // encode to the *same* ledger key. Writing `DataKey::Admin` here already
+        // makes `initialize_fee_schedule` panic with "Fee system already
+        // initialized". Namespacing those keys (or splitting each contract into
+        // its own crate) is a prerequisite for sharing one instance.
+
         // Grant Admin role to the initial admin so it can assign other roles.
         Governance::grant_role(&env, admin.clone(), Role::Admin, admin);
     }

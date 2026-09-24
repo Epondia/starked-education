@@ -32,6 +32,26 @@ class SecureAggregation {
   }
 
   /**
+   * Ensure the Paillier key pair exists, generating it on first use.
+   *
+   * Generating a 2048-bit Paillier key pair is CPU-bound and synchronous, so it
+   * must never run during module load: doing so blocked the entire process for
+   * ~14 seconds on every cold start (`routes/federatedLearning` is `require`d by
+   * the server entry point). Anything that needs `this.publicKey` must `await`
+   * this first.
+   */
+  async ensureKeys() {
+    if (this.publicKey) return;
+    if (!this._keyInitPromise) {
+      // Memoised so concurrent callers share one key-generation pass.
+      this._keyInitPromise = this.initializeKeys().finally(() => {
+        this._keyInitPromise = null;
+      });
+    }
+    await this._keyInitPromise;
+  }
+
+  /**
    * Generate secret shares for a value
    */
   generateSecretShares(value, participantCount, threshold) {
@@ -344,6 +364,11 @@ class SecureAggregation {
    * Get cryptographic parameters for participants
    */
   getPublicParameters() {
+    if (!this.publicKey) {
+      throw new Error(
+        'Secure aggregation keys are not initialized — await ensureKeys() first'
+      );
+    }
     return {
       publicKey: {
         n: this.publicKey.n.toString(),

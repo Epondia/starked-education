@@ -300,7 +300,7 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
-                "symbol": "initialize"
+                "symbol": "initialize_marketplace"
               }
             ],
             "data": {
@@ -323,7 +323,7 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "initialize"
+                "symbol": "initialize_marketplace"
               }
             ],
             "data": "void"

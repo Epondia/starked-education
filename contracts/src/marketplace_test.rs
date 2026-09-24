@@ -18,7 +18,7 @@ fn test_marketplace_initialization() {
     let client = MarketplaceContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 }
 
 #[test]
@@ -32,7 +32,7 @@ fn test_listing_and_purchase() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let credential_id = 1u64;
     let price = 1000u64;
@@ -57,7 +57,7 @@ fn test_licensing_and_bonding_curve() {
     let admin = Address::generate(&env);
     let tenant = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let credential_id = 1u64;
 
@@ -85,7 +85,7 @@ fn test_staking_and_rewards() {
     let admin = Address::generate(&env);
     let staker = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let mut ledger_info = env.ledger().get();
     ledger_info.timestamp = 1000;
@@ -114,7 +114,7 @@ fn test_dispute_resolution() {
     let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = 1u64;
     let reason = String::from_str(&env, "Credential not valid");
@@ -141,7 +141,7 @@ fn test_escrow_create_and_confirm() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let credential_id = 1u64;
     let price = 1000u64;
@@ -177,7 +177,7 @@ fn test_escrow_timeout_refund() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let mut ledger_info = env.ledger().get();
     ledger_info.timestamp = 1000;
@@ -212,7 +212,7 @@ fn test_escrow_refund_then_relist() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let mut ledger_info = env.ledger().get();
     ledger_info.timestamp = 1000;
@@ -247,7 +247,7 @@ fn test_escrow_confirm_updates_trade_count() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let credential_id = 1u64;
     let listing_id = client.list_credential(&seller, &credential_id, &1000, &200);
@@ -272,7 +272,7 @@ fn test_escrow_escalate_to_dispute_by_buyer() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     let escrow_id = client.create_escrow(&buyer, &listing_id, &86400);
@@ -296,7 +296,7 @@ fn test_escrow_escalate_to_dispute_by_seller() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     let escrow_id = client.create_escrow(&buyer, &listing_id, &86400);
@@ -322,7 +322,7 @@ fn test_escrow_dispute_resolve_seller_wins() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     let escrow_id = client.create_escrow(&buyer, &listing_id, &86400);
@@ -348,7 +348,7 @@ fn test_escrow_dispute_resolve_buyer_wins() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     let escrow_id = client.create_escrow(&buyer, &listing_id, &86400);
@@ -379,7 +379,7 @@ fn test_escrow_dispute_resolve_updates_trade_count() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let credential_id = 1u64;
     let listing_id = client.list_credential(&seller, &credential_id, &1000, &200);
@@ -417,7 +417,7 @@ fn error_escrow_timeout_refund_before_expiry() {
     let admin = Address::generate(&env);
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     let escrow_id = client.create_escrow(&buyer, &listing_id, &3600);
@@ -435,7 +435,7 @@ fn error_escrow_double_release() {
     let admin = Address::generate(&env);
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     let escrow_id = client.create_escrow(&buyer, &listing_id, &86400);
@@ -454,7 +454,7 @@ fn error_escrow_double_refund() {
     let admin = Address::generate(&env);
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let mut ledger_info = env.ledger().get();
     ledger_info.timestamp = 1000;
@@ -480,7 +480,7 @@ fn error_escrow_unauthorized_confirm() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
     let attacker = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     let escrow_id = client.create_escrow(&buyer, &listing_id, &86400);
@@ -499,7 +499,7 @@ fn error_escrow_escalate_by_outsider() {
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
     let outsider = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     let escrow_id = client.create_escrow(&buyer, &listing_id, &86400);
@@ -518,7 +518,7 @@ fn error_escrow_zero_timeout() {
     let admin = Address::generate(&env);
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     // Should panic: timeout must be greater than zero
@@ -535,7 +535,7 @@ fn error_escrow_inactive_listing() {
     let admin = Address::generate(&env);
     let seller = Address::generate(&env);
     let buyer = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     client.create_escrow(&buyer, &listing_id, &86400);
@@ -553,7 +553,7 @@ fn error_escrow_self_dealing() {
     let client = MarketplaceContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let seller = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize_marketplace(&admin);
 
     let listing_id = client.list_credential(&seller, &1u64, &1000, &200);
     // Should panic: buyer cannot be the seller

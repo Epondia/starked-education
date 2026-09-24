@@ -29,12 +29,12 @@ fn setup_with_achievements<'a>(
     let admin = Address::generate(env);
     let staker = Address::generate(env);
 
-    profile.initialize();
+    profile.initialize_profile();
 
     let username = String::from_str(env, "staker");
     env.mock_all_auths();
 
-    tokenomics.initialize(&admin, &profile_id);
+    tokenomics.initialize_tokenomics(&admin, &profile_id);
 
     profile.create_or_update_profile(
         &staker,
@@ -141,9 +141,9 @@ fn test_staking_with_no_profile_multiplier() {
     let admin = Address::generate(&env);
     let staker = Address::generate(&env);
 
-    profile.initialize();
+    profile.initialize_profile();
     env.mock_all_auths();
-    tokenomics.initialize(&admin, &profile_id);
+    tokenomics.initialize_tokenomics(&admin, &profile_id);
 
     // Mint some tokens for the staker first
     tokenomics.mint_reward(&staker, &1000);
@@ -170,10 +170,10 @@ fn test_mint_reward() {
     let user = Address::generate(&env);
 
     env.mock_all_auths();
-    tokenomics.initialize(&admin, &profile_id);
+    tokenomics.initialize_tokenomics(&admin, &profile_id);
 
     tokenomics.mint_reward(&user, &1000);
-    assert_eq!(tokenomics.balance_of(&user, &0), 1000);
+    assert_eq!(tokenomics.get_token_balance(&user, &0), 1000);
     assert_eq!(tokenomics.total_supply(&0), 1000);
 }
 
@@ -191,7 +191,7 @@ fn test_stake_tokens_insufficient_balance() {
     // raised through the client (invoke_contract) abort the test process on this
     // soroban-sdk 20.x host, while direct calls unwind and are catchable.
     env.as_contract(&tokenomics_id, || {
-        TokenomicsContract::initialize(env.clone(), admin, profile_id);
+        TokenomicsContract::initialize_tokenomics(env.clone(), admin, profile_id);
         TokenomicsContract::stake_tokens(env.clone(), staker, 1000, 604800);
     });
 }
@@ -207,11 +207,11 @@ fn test_unstake_and_claim_early_panic() {
     let staker = Address::generate(&env);
 
     env.as_contract(&profile_id, || {
-        UserProfileContract::initialize(env.clone());
+        UserProfileContract::initialize_profile(env.clone());
     });
 
     env.mock_all_auths();
-    tokenomics.initialize(&admin, &profile_id);
+    tokenomics.initialize_tokenomics(&admin, &profile_id);
     tokenomics.mint_reward(&staker, &1000);
     // Setup via the client (each call is its own invocation/auth frame). Only the
     // panicking call is made directly: panics raised through the client abort the
@@ -234,10 +234,10 @@ fn test_stake_zero_amount() {
     let staker = Address::generate(&env);
 
     let profile = UserProfileContractClient::new(&env, &profile_id);
-    profile.initialize();
+    profile.initialize_profile();
 
     env.mock_all_auths();
-    tokenomics.initialize(&admin, &profile_id);
+    tokenomics.initialize_tokenomics(&admin, &profile_id);
 
     tokenomics.mint_reward(&staker, &1000);
     tokenomics.stake_tokens(&staker, &0, &604800);
@@ -247,7 +247,7 @@ fn test_stake_zero_amount() {
     env.ledger().set(ledger_info);
     tokenomics.unstake_and_claim(&staker);
 
-    assert_eq!(tokenomics.balance_of(&staker, &0), 1000);
+    assert_eq!(tokenomics.get_token_balance(&staker, &0), 1000);
 }
 
 #[test]
@@ -260,7 +260,7 @@ fn test_proposals_and_voting() {
     let user = Address::generate(&env);
 
     env.mock_all_auths();
-    tokenomics.initialize(&admin, &profile_id);
+    tokenomics.initialize_tokenomics(&admin, &profile_id);
 
     let proposal_id = tokenomics.create_proposal(
         &user,
@@ -271,11 +271,11 @@ fn test_proposals_and_voting() {
     assert_eq!(proposal_id, 1);
 
     tokenomics.mint_gov_for_test(&user, &100);
-    assert_eq!(tokenomics.balance_of(&user, &1), 100);
+    assert_eq!(tokenomics.get_token_balance(&user, &1), 100);
 
     tokenomics.vote_on_proposal(&user, &proposal_id, &5, &true);
 
-    assert_eq!(tokenomics.balance_of(&user, &1), 75); // 100 - 5^2
+    assert_eq!(tokenomics.get_token_balance(&user, &1), 75); // 100 - 5^2
 }
 
 #[test]
@@ -289,7 +289,7 @@ fn test_vote_insufficient_gov() {
     let user = Address::generate(&env);
 
     env.mock_all_auths();
-    tokenomics.initialize(&admin, &profile_id);
+    tokenomics.initialize_tokenomics(&admin, &profile_id);
 
     let proposal_id = tokenomics.create_proposal(
         &user,
@@ -319,10 +319,10 @@ fn test_scholarship_functions() {
     let user = Address::generate(&env);
 
     env.mock_all_auths();
-    tokenomics.initialize(&admin, &profile_id);
+    tokenomics.initialize_tokenomics(&admin, &profile_id);
 
     tokenomics.disburse_scholarship(&user, &5000);
-    assert_eq!(tokenomics.balance_of(&user, &0), 5000);
+    assert_eq!(tokenomics.get_token_balance(&user, &0), 5000);
     assert_eq!(tokenomics.total_supply(&0), 5000);
 
     tokenomics.return_scholarship_funds(&2000);
@@ -342,7 +342,7 @@ fn test_return_scholarship_funds_panic() {
     // raised through the client (invoke_contract) abort the test process on this
     // soroban-sdk 20.x host, while direct calls unwind and are catchable.
     env.as_contract(&tokenomics_id, || {
-        TokenomicsContract::initialize(env.clone(), admin, profile_id);
+        TokenomicsContract::initialize_tokenomics(env.clone(), admin, profile_id);
         TokenomicsContract::return_scholarship_funds(env.clone(), 1000);
     });
 }
@@ -358,17 +358,17 @@ fn test_multi_cycle_reward_distribution() {
     let admin = Address::generate(&env);
     let staker = Address::generate(&env);
 
-    profile.initialize();
+    profile.initialize_profile();
     env.mock_all_auths();
-    tokenomics.initialize(&admin, &profile_id);
+    tokenomics.initialize_tokenomics(&admin, &profile_id);
 
     // Cycle 1: mint and stake
     tokenomics.mint_reward(&staker, &10000);
-    assert_eq!(tokenomics.balance_of(&staker, &0), 10000);
+    assert_eq!(tokenomics.get_token_balance(&staker, &0), 10000);
 
     let lock_1_year = 31536000;
     tokenomics.stake_tokens(&staker, &10000, &lock_1_year);
-    assert_eq!(tokenomics.balance_of(&staker, &0), 0);
+    assert_eq!(tokenomics.get_token_balance(&staker, &0), 0);
 
     // Wait 1 year
     let mut ledger_info = env.ledger().get();
@@ -380,12 +380,12 @@ fn test_multi_cycle_reward_distribution() {
 
     // 10000 * 50% APY (5000 bps) * 1 year * 1x multiplier = 5000 reward
     // Total return = 10000 + 5000 = 15000
-    let balance_after_cycle1 = tokenomics.balance_of(&staker, &0);
+    let balance_after_cycle1 = tokenomics.get_token_balance(&staker, &0);
     assert_eq!(balance_after_cycle1, 15000);
 
     // Cycle 2: Restake all
     tokenomics.stake_tokens(&staker, &15000, &lock_1_year);
-    assert_eq!(tokenomics.balance_of(&staker, &0), 0);
+    assert_eq!(tokenomics.get_token_balance(&staker, &0), 0);
 
     // Wait another year
     let mut ledger_info = env.ledger().get();
@@ -397,6 +397,6 @@ fn test_multi_cycle_reward_distribution() {
 
     // 15000 * 50% * 1 year = 7500 reward
     // Total return = 15000 + 7500 = 22500
-    let balance_after_cycle2 = tokenomics.balance_of(&staker, &0);
+    let balance_after_cycle2 = tokenomics.get_token_balance(&staker, &0);
     assert_eq!(balance_after_cycle2, 22500);
 }

@@ -10,7 +10,7 @@ fn setup_env() -> (Env, Address, DynamicFeeContractClient<'static>) {
     let admin = Address::generate(&env);
     let contract_id = env.register_contract(None, DynamicFeeContract);
     let client = DynamicFeeContractClient::new(&env, &contract_id);
-    client.initialize(&admin);
+    client.initialize_fee_schedule(&admin);
     (env, admin, client)
 }
 
@@ -50,7 +50,7 @@ fn schedule(env: &Env) -> FeeSchedule {
 #[test]
 fn initializes_with_a_valid_default_schedule() {
     let (env, admin, client) = setup_env();
-    let stored_admin = client.get_admin();
+    let stored_admin = client.get_fee_admin();
     let stored_schedule = client.get_fee_schedule();
 
     assert_eq!(stored_admin, admin);

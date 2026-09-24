@@ -120,8 +120,11 @@ pub struct MarketplaceContract;
 
 #[contractimpl]
 impl MarketplaceContract {
-    /// Initialize the marketplace
-    pub fn initialize(env: Env, admin: Address) {
+    /// Initialize the marketplace.
+    ///
+    /// Named `initialize_marketplace` (not `initialize`) so it does not collide
+    /// with the core contract's `initialize` export in the shared WASM artifact.
+    pub fn initialize_marketplace(env: Env, admin: Address) {
         if env.storage().instance().has(&StorageKey::Admin) {
             panic!("Already initialized");
         }

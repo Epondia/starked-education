@@ -29,10 +29,14 @@ class IpfsService {
    */
   async init() {
     try {
-      // Lazily require ipfs-http-client so a missing/incompatible (ESM-only)
-      // package cannot crash the server at module-load time. IPFS is an
-      // optional external dependency, so degrade gracefully on failure.
-      const { create } = require('ipfs-http-client');
+      // `ipfs-http-client@60` ships as ESM only ("type": "module"), so
+      // `require()` can never load it — that produced
+      // `No "exports" main defined`. tsc down-levels a bare `import()` to
+      // `require()` under `module: commonjs`, so the dynamic import is hidden
+      // behind `new Function` to remain a genuine ESM import at runtime.
+      // IPFS is an optional external dependency, so degrade gracefully.
+      const importEsm = new Function('specifier', 'return import(specifier)');
+      const { create } = await importEsm('ipfs-http-client');
       const config = getClientConfig();
       this.client = create(config);
 

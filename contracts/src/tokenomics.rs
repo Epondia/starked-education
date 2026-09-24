@@ -74,8 +74,13 @@ pub struct TokenomicsContract;
 
 #[contractimpl]
 impl TokenomicsContract {
-    /// Initialize tokenomics system
-    pub fn initialize(env: Env, admin: Address, profile_contract: Address) {
+    /// Initialize tokenomics system.
+    ///
+    /// Namespaced as `initialize_tokenomics` because this crate compiles to a
+    /// single WASM artifact that also exports the core `initialize(admin)`. Two
+    /// exported symbols cannot share a name, so each logical contract in the
+    /// artifact carries a distinct initializer.
+    pub fn initialize_tokenomics(env: Env, admin: Address, profile_contract: Address) {
         admin.require_auth();
         env.storage()
             .instance()
@@ -94,7 +99,7 @@ impl TokenomicsContract {
         // recipient.require_auth(); // No auth needed as we are the "minter" or we'd check admin
 
         let token_type = 0; // Reward Token
-        let balance = Self::balance_of(env.clone(), recipient.clone(), token_type);
+        let balance = Self::get_token_balance(env.clone(), recipient.clone(), token_type);
         env.storage().persistent().set(
             &TokenomicsKey::TokenBalance(recipient.clone(), token_type),
             &(balance + amount),
@@ -121,7 +126,7 @@ impl TokenomicsContract {
         staker.require_auth();
 
         // Burn or transfer reward tokens to the stake pool
-        let balance = Self::balance_of(env.clone(), staker.clone(), 0);
+        let balance = Self::get_token_balance(env.clone(), staker.clone(), 0);
         if balance < amount {
             panic!("Insufficient balance");
         }
@@ -217,7 +222,7 @@ impl TokenomicsContract {
         let total_return = stake.amount + reward;
 
         // Mint reward tokens and give back original stake (simplified)
-        let balance = Self::balance_of(env.clone(), staker.clone(), 0);
+        let balance = Self::get_token_balance(env.clone(), staker.clone(), 0);
         env.storage().persistent().set(
             &TokenomicsKey::TokenBalance(staker.clone(), 0),
             &(balance + total_return),
@@ -255,7 +260,7 @@ impl TokenomicsContract {
     ) {
         voter.require_auth();
 
-        let gov_balance = Self::balance_of(env.clone(), voter.clone(), 1); // Governance token
+        let gov_balance = Self::get_token_balance(env.clone(), voter.clone(), 1); // Governance token
         let cost = votes_power * votes_power; // Quadratic cost
 
         if gov_balance < cost {
@@ -332,7 +337,7 @@ impl TokenomicsContract {
     pub fn disburse_scholarship(env: Env, recipient: Address, amount: u64) {
         // Only the contract itself (via governance execution) should call this.
         // In production, add an admin / governance contract address check here.
-        let balance = Self::balance_of(env.clone(), recipient.clone(), 0);
+        let balance = Self::get_token_balance(env.clone(), recipient.clone(), 0);
         env.storage().persistent().set(
             &TokenomicsKey::TokenBalance(recipient.clone(), 0),
             &(balance + amount),
@@ -405,6 +410,9 @@ impl TokenomicsContract {
 
     /// Return the token balance of a user for a given token type.
     ///
+    /// Named `get_token_balance` (not `balance_of`) to avoid colliding with the
+    /// core contract's NFT `balance_of` export in the shared WASM artifact.
+    ///
     /// # Parameters
     ///
     /// - `env` – Soroban execution environment.
@@ -414,7 +422,7 @@ impl TokenomicsContract {
     /// # Returns
     ///
     /// The token balance amount (`u64`).
-    pub fn balance_of(env: Env, user: Address, token_type: u32) -> u64 {
+    pub fn get_token_balance(env: Env, user: Address, token_type: u32) -> u64 {
         env.storage()
             .persistent()
             .get(&TokenomicsKey::TokenBalance(user, token_type))
@@ -447,7 +455,7 @@ impl TokenomicsContract {
     /// - `amount` – The amount to mint.
     #[cfg(any(test, feature = "testutils"))]
     pub fn mint_gov_for_test(env: Env, user: Address, amount: u64) {
-        let balance = Self::balance_of(env.clone(), user.clone(), 1);
+        let balance = Self::get_token_balance(env.clone(), user.clone(), 1);
         env.storage().persistent().set(
             &TokenomicsKey::TokenBalance(user.clone(), 1),
             &(balance + amount),
