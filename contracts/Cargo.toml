@@ -16,10 +16,10 @@ doctest = false
 # only installs its `#[global_allocator]` behind that feature. Without it the
 # `wasm32-unknown-unknown` build fails with "no global memory allocator found",
 # so the deployable .wasm artifact can never be produced.
-soroban-sdk = { version = "20.5.0", features = ["alloc"] }
+soroban-sdk = { version = "28.0.0", features = ["alloc"] }
 
 [dev-dependencies]
-soroban-sdk = { version = "20.5.0", features = ["testutils"] }
+soroban-sdk = { version = "28.0.0", features = ["testutils"] }
 serde_json = "1.0"
 
 [features]
