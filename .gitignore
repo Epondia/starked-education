@@ -30,8 +30,6 @@ jest_out.txt
 tsc_errors.txt
 
 # Environment & secrets
-.env
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -80,7 +78,6 @@ temp/
 backend/migrations/meta/
 
 # Editor / IDE
-.vscode/
 .idea/
 *.sublime-*
 *.code-workspace
@@ -108,3 +105,4 @@ prof/
 ehthumbs.db
 
 contracts/target
+config.bat
