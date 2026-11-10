@@ -6,9 +6,9 @@
   "scripts": {
     "generate-api-types": "openapi-typescript http://localhost:3001/api-docs.json --output src/types/api.ts",
     "generate-api-types:local": "openapi-typescript ./api-docs.json --output src/types/api.ts",
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "node init && next dev",
+    "build": "node init && next build",
+    "start": "node init && next start",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "type-check": "tsc --noEmit",
